@@ -1,0 +1,17 @@
+{
+  "name": "Aurum Fit",
+  "short_name": "Aurum",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f5f6f3",
+  "theme_color": "#27695f",
+  "description": "App personal para registrar comida, entrenamiento, pasos y progreso fisico.",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
