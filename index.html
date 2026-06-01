@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#27695f" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Aurum Fit" />
+    <title>Aurum Fit</title>
+    <link rel="manifest" href="manifest.json" />
+    <link rel="apple-touch-icon" href="icon.svg" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Registro personal</p>
+        <h1>Aurum Fit</h1>
+      </div>
+      <div class="top-actions">
+        <button id="exportBtn" class="secondary">Exportar</button>
+        <label class="secondary file-label">
+          Importar
+          <input id="importFile" type="file" accept="application/json" />
+        </label>
+      </div>
+    </header>
+
+    <main>
+      <section class="summary-grid" aria-label="Resumen">
+        <article>
+          <span>Calorías hoy</span>
+          <strong id="todayCalories">0 / 2200</strong>
+        </article>
+        <article>
+          <span>Proteína hoy</span>
+          <strong id="todayProtein">0 / 170 g</strong>
+        </article>
+        <article>
+          <span>Peso medio</span>
+          <strong id="avgWeight">Sin datos</strong>
+        </article>
+        <article>
+          <span>Pasos semana</span>
+          <strong id="avgSteps">Sin datos</strong>
+        </article>
+      </section>
+
+      <nav class="tabs" aria-label="Secciones">
+        <button class="tab active" data-tab="diario">Diario</button>
+        <button class="tab" data-tab="comida">Comida</button>
+        <button class="tab" data-tab="entreno">Entreno</button>
+        <button class="tab" data-tab="progreso">Progreso</button>
+        <button class="tab" data-tab="plan">Plan</button>
+      </nav>
+
+      <section id="diario" class="panel active">
+        <div class="panel-header">
+          <h2>Registro diario</h2>
+          <input id="entryDate" type="date" />
+        </div>
+        <form id="dailyForm" class="form-grid">
+          <label>Peso kg<input id="weight" type="number" step="0.1" placeholder="95.0" /></label>
+          <label>Cintura cm<input id="waist" type="number" step="0.1" placeholder="102" /></label>
+          <label>Pasos<input id="steps" type="number" step="1" placeholder="4500" /></label>
+          <label>Cardio min<input id="cardioMinutes" type="number" step="1" placeholder="30" /></label>
+          <label>Sueño 1-10<input id="sleep" type="number" min="1" max="10" step="1" /></label>
+          <label>Energía 1-10<input id="energy" type="number" min="1" max="10" step="1" /></label>
+          <label>Hambre 1-10<input id="hunger" type="number" min="1" max="10" step="1" /></label>
+          <label>Hombro dolor 0-10<input id="shoulderPain" type="number" min="0" max="10" step="1" /></label>
+          <label class="wide">Notas<textarea id="notes" rows="3" placeholder="Sensaciones, ruta, asma, molestias..."></textarea></label>
+          <button type="submit">Guardar día</button>
+        </form>
+      </section>
+
+      <section id="comida" class="panel">
+        <div class="panel-header">
+          <h2>Comida</h2>
+          <p class="hint">Objetivo base: 2200 kcal y 160-180 g proteína.</p>
+        </div>
+        <div class="quick-actions" aria-label="Comidas rápidas">
+          <button type="button" class="chip" data-food="Pollo + patata" data-calories="640" data-protein="55" data-carbs="65" data-fat="16">Pollo + patata</button>
+          <button type="button" class="chip" data-food="Yogur + avena" data-calories="520" data-protein="45" data-carbs="62" data-fat="10">Yogur + avena</button>
+          <button type="button" class="chip" data-food="Tortilla completa" data-calories="610" data-protein="48" data-carbs="45" data-fat="25">Tortilla</button>
+        </div>
+        <form id="foodForm" class="form-grid">
+          <label>Comida<input id="foodName" type="text" placeholder="Pollo con patata" required /></label>
+          <label>Calorías<input id="foodCalories" type="number" step="1" required /></label>
+          <label>Proteína g<input id="foodProtein" type="number" step="1" /></label>
+          <label>Carbohidratos g<input id="foodCarbs" type="number" step="1" /></label>
+          <label>Grasa g<input id="foodFat" type="number" step="1" /></label>
+          <button type="submit">Añadir comida</button>
+        </form>
+        <div class="list-block">
+          <h3>Hoy</h3>
+          <ul id="foodList" class="log-list"></ul>
+        </div>
+      </section>
+
+      <section id="entreno" class="panel">
+        <div class="panel-header">
+          <h2>Entreno</h2>
+          <p class="hint">RPE 6-7. Deja 3-4 repeticiones en recámara.</p>
+        </div>
+        <form id="workoutForm" class="form-grid">
+          <label>Ejercicio<input id="exerciseName" type="text" placeholder="Prensa de piernas" required /></label>
+          <label>Series<input id="sets" type="number" step="1" required /></label>
+          <label>Reps<input id="reps" type="text" placeholder="10,10,10" required /></label>
+          <label>Peso kg<input id="load" type="number" step="0.5" /></label>
+          <label>RPE<input id="rpe" type="number" min="1" max="10" step="0.5" /></label>
+          <label class="wide">Notas<input id="workoutNotes" type="text" placeholder="Agarre neutro, sin dolor..." /></label>
+          <button type="submit">Añadir ejercicio</button>
+        </form>
+        <div class="history-tools">
+          <input id="exerciseSearch" type="search" placeholder="Buscar historial por ejercicio" />
+        </div>
+        <div class="list-block">
+          <h3>Entreno de hoy</h3>
+          <ul id="workoutList" class="log-list"></ul>
+        </div>
+        <div class="list-block">
+          <h3>Historial</h3>
+          <ul id="exerciseHistory" class="log-list"></ul>
+        </div>
+      </section>
+
+      <section id="progreso" class="panel">
+        <div class="panel-header">
+          <h2>Progreso</h2>
+          <p class="hint">Mira tendencias semanales, no un día suelto.</p>
+        </div>
+        <div class="progress-grid">
+          <div>
+            <h3>Últimos 14 días</h3>
+            <table>
+              <thead><tr><th>Día</th><th>Peso</th><th>Kcal</th><th>Prot</th><th>Pasos</th></tr></thead>
+              <tbody id="progressRows"></tbody>
+            </table>
+          </div>
+          <div>
+            <h3>Decisión semanal</h3>
+            <div id="weeklyAdvice" class="advice"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="plan" class="panel">
+        <div class="panel-header">
+          <h2>Plan base</h2>
+          <p class="hint">Ajustable cuando tengas fecha de operación.</p>
+        </div>
+        <div class="plan-grid">
+          <article><h3>Semanas 1-4</h3><p>3 fuerza, 4 caminatas de 20-35 min, pasos 4500-6000. Sin correr.</p></article>
+          <article><h3>Semanas 5-8</h3><p>3 fuerza, caminatas de 35-70 min, pasos 6000-8000. Trote-caminar opcional si vas cómodo.</p></article>
+          <article><h3>Semanas 9-12</h3><p>3 fuerza, 150-220 min cardio suave semanal, pasos 8000-10000 como techo ideal.</p></article>
+          <article><h3>Reglas</h3><p>No fallo muscular, no dolor hombro mayor de 3/10, inhalador cerca, semana mala = plan mínimo.</p></article>
+        </div>
+        <div class="install-note">
+          En iPhone: abre Aurum Fit en Safari, toca compartir y elige "Añadir a pantalla de inicio".
+        </div>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
