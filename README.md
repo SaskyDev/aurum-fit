@@ -1,31 +1,35 @@
 # Aurum Fit
 
-Aurum Fit es una app web en desarrollo para registrar comida, entrenamiento, pasos y progreso fisico de forma simple, practica y sostenible.
-
-El proyecto nace como una herramienta personal para acompanar un plan de 12 semanas de perdida de grasa, recuperacion de forma fisica y vuelta progresiva al entrenamiento. La idea es evolucionarlo poco a poco hacia una app mas completa, con enfoque realista, sin motivacion vacia y con decisiones basadas en datos utiles.
+Aurum Fit es una PWA local-first en desarrollo para registrar entrenamiento y
+alimentación y consultar el progreso con contexto.
 
 ## Estado
 
-Proyecto publico en fase inicial. Actualmente funciona como PWA basica instalable en iPhone desde Safari.
+Prototipo en evolución. El incremento actual introduce un modelo local versionado
+y el primer flujo vertical de entrenamiento, sin cuentas ni backend.
 
 ## Funciones
 
-- Registro diario de peso, cintura, pasos, cardio, sueno, energia, hambre y hombro.
-- Registro de comidas con calorias y macros.
-- Registro de entrenamientos con series, repeticiones, peso y RPE.
-- Busqueda de historial por ejercicio.
-- Resumen de progreso de los ultimos 14 dias.
-- Exportacion e importacion de datos.
-- Preparada para instalarse en iPhone desde Safari.
+- Sesión de entrenamiento libre con estado en curso/finalizada.
+- Rutinas con días y ejercicios ordenados.
+- Inicio desde el día sugerido, otro día o entrenamiento libre.
+- Copia histórica del día para que editar la rutina no cambie sesiones pasadas.
+- Series independientes con repeticiones, peso, RPE, calentamiento y nota.
+- Guardado automático, recuperación tras recarga y copia local previa.
+- Edición, borrado confirmado y deshacer de series.
+- Referencia de la última sesión finalizada del mismo ejercicio.
+- Catálogo inicial de 24 ejercicios buscables/filtrables, sin medios de Gym Visual.
+- Ejercicios personales.
+- Conservación compatible de los registros diarios, comidas e historial anteriores.
+- Exportación e importación validadas.
 
 ## Roadmap
 
-- Biblioteca de comidas frecuentes.
-- Rutinas de fuerza predefinidas.
-- Graficas de peso, cintura, pasos y volumen de entrenamiento.
-- Recomendaciones semanales mas inteligentes.
-- Sincronizacion segura entre dispositivos.
-- Version movil/app nativa si el proyecto crece.
+- Añadir, omitir, sustituir y reordenar ejercicios durante una sesión.
+- Progreso comparable por ejercicio y frecuencia.
+- Producto nutricional por etiqueta/100 g y recetas personales.
+- Ampliación progresiva y revisada del catálogo.
+- Sincronización solo si la validación futura la necesita.
 
 ## Uso en iPhone
 
@@ -34,4 +38,26 @@ Proyecto publico en fase inicial. Actualmente funciona como PWA basica instalabl
 3. Elegir "Anadir a pantalla de inicio".
 4. Abrirla desde el icono creado.
 
-Los datos se guardan localmente en el navegador. Conviene exportar una copia de seguridad de vez en cuando.
+Los datos se guardan localmente en el navegador. Conviene exportar una copia de
+seguridad de vez en cuando.
+
+## Desarrollo
+
+No hay dependencias de ejecución. Para servir la PWA:
+
+```bash
+python3 -m http.server 8000
+```
+
+Para ejecutar las comprobaciones:
+
+```bash
+node --test
+```
+
+Documentación:
+
+- `docs/MODELO_LOCAL_V2.md`
+- `docs/IMPORTACION_CATALOGO.md`
+- `docs/SISTEMA_VISUAL.md`
+- `docs/PRUEBAS_MANUALES.md`

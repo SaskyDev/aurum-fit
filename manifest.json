@@ -5,7 +5,7 @@
   "display": "standalone",
   "background_color": "#f5f6f3",
   "theme_color": "#27695f",
-  "description": "App personal para registrar comida, entrenamiento, pasos y progreso fisico.",
+  "description": "Registro local de entrenamientos, series, alimentación y progreso.",
   "icons": [
     {
       "src": "icon.svg",
