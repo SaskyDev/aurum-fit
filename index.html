@@ -10,7 +10,7 @@
     <title>Aurum Fit</title>
     <link rel="manifest" href="manifest.json" />
     <link rel="apple-touch-icon" href="icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=8" />
+    <link rel="stylesheet" href="styles.css?v=10" />
   </head>
   <body>
     <header class="topbar">
@@ -24,10 +24,16 @@
       <div class="top-actions">
         <span class="local-badge"><span aria-hidden="true">●</span> Guardado local</span>
         <button id="exportBtn" class="button button-quiet" type="button">Exportar</button>
-        <label class="button button-quiet file-label">
+        <button id="importBtn" class="button button-quiet" type="button" aria-controls="importFile">
           Importar
-          <input id="importFile" type="file" accept="application/json" />
-        </label>
+        </button>
+        <input
+          id="importFile"
+          class="visually-hidden"
+          type="file"
+          accept="application/json"
+          aria-label="Seleccionar copia JSON de Aurum Fit"
+        />
       </div>
     </header>
 
@@ -315,6 +321,6 @@
       </section>
     </main>
 
-    <script type="module" src="app.js?v=9"></script>
+    <script type="module" src="app.js?v=10"></script>
   </body>
 </html>

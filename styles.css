@@ -51,8 +51,7 @@ select {
   font: inherit;
 }
 
-button,
-.file-label {
+button {
   touch-action: manipulation;
 }
 
@@ -172,8 +171,7 @@ h3 {
   font-size: 0.65rem;
 }
 
-.button,
-.file-label {
+.button {
   display: inline-flex;
   min-height: 44px;
   align-items: center;
@@ -227,8 +225,7 @@ h3 {
   padding-inline: 22px;
 }
 
-.button:hover,
-.file-label:hover {
+.button:hover {
   filter: brightness(0.96);
 }
 
@@ -238,8 +235,16 @@ h3 {
   opacity: 0.45;
 }
 
-.file-label input {
-  display: none;
+.visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
 }
 
 main {
@@ -1148,7 +1153,7 @@ th {
     font-size: 1.1rem;
   }
 
-  .file-label::after {
+  #importBtn::after {
     content: "↑";
     font-size: 1.1rem;
   }
@@ -1312,8 +1317,7 @@ th {
   input,
   textarea,
   select,
-  .button,
-  .file-label {
+  .button {
     font-size: 16px;
   }
 }

@@ -124,4 +124,46 @@ Ejecutar:
 node --test
 ```
 
-Resultado esperado en este checkpoint: 15 pruebas superadas.
+Resultado esperado en este checkpoint: 18 pruebas superadas.
+
+## Regresiones de este checkpoint de estabilidad
+
+### Actualización PWA desde una caché antigua
+
+1. Con la aplicación servida por HTTP, abrir las herramientas del navegador y
+   crear una caché `aurum-fit-shell-v1` con una copia antigua de `index.html`.
+2. Recargar con conexión y comprobar que la interfaz actual se muestra tras la
+   actualización del service worker.
+3. En `Application > Cache Storage`, verificar que queda `aurum-fit-shell-v10`
+   y que la caché v1 ha sido eliminada al activarse el worker nuevo.
+4. Cortar la conexión, recargar y comprobar que la interfaz actual sigue
+   disponible desde la caché, sin mezclar los archivos versionados antiguos.
+
+El documento se solicita primero a la red para no mostrar una interfaz vieja; si
+no hay conexión se usa la copia de la caché activa. Los recursos estáticos llevan
+la versión v10 y el cliente recarga una sola vez cuando cambia el controlador.
+
+### Importación, validación, búsqueda y navegación
+
+- Pulsar `Importar` con Tab y Espacio/Enter: el control recibe foco visible y
+  abre el selector de archivos con un nombre accesible.
+- Guardar una serie válida y después intentar `0` repeticiones: el éxito anterior
+  debe sustituirse por un error que indique que las repeticiones deben ser al
+  menos 1.
+- Buscar `jalon`: debe encontrar `Jalón al pecho en polea`.
+- Desde `Diario`, pulsar `Aurum Fit, inicio`: la URL termina en `#entreno`, la
+  pestaña Entreno queda activa y Diario deja de mostrarse.
+
+### Exportación (QA-EXPORT-001)
+
+1. Pulsar `Exportar`.
+2. Confirmar que el navegador inicia una descarga con nombre
+   `aurum-fit-v2-AAAA-MM-DD.json`.
+3. Abrir el archivo descargado: debe ser JSON válido y contener las claves
+   `schemaVersion`, `training` y `legacy`, con el estado visible antes de
+   exportar.
+
+La implementación no se modifica en este incremento: la prueba automatizada de
+contrato verifica el `Blob` JSON, el nombre de archivo y el disparo de
+`link.click()`. La descarga real debe confirmarse en el navegador durante la
+regresión independiente.

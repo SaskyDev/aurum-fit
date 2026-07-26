@@ -20,7 +20,7 @@ import {
   startFreeSession,
   startSessionFromRoutineDay,
   updateSet,
-} from "./core.js?v=9";
+} from "./core.js?v=10";
 
 const targets = { calories: 2200, protein: 170 };
 const $ = (id) => document.getElementById(id);
@@ -67,6 +67,15 @@ function getLegacyDay(date = $("entryDate").value || today, create = false, targ
 function numberValue(id) {
   const raw = $(id).value;
   return raw === "" ? null : Number(raw);
+}
+
+function normalizeCatalogSearch(value) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLocaleLowerCase("es");
 }
 
 function sum(items, key) {
@@ -624,6 +633,7 @@ function makeSetField(labelText, name, options = {}) {
 
 function renderSetForm(session, sessionExercise) {
   const form = createElement("form", "set-form");
+  form.noValidate = true;
   const reps = makeSetField("Repeticiones", "reps", {
     min: 1,
     max: 1000,
@@ -836,7 +846,7 @@ function renderCatalogResults() {
     return;
   }
 
-  const query = $("catalogSearch").value.trim().toLocaleLowerCase("es");
+  const query = normalizeCatalogSearch($("catalogSearch").value);
   const queryTokens = query.split(/\s+/).filter(Boolean);
   const category = $("catalogCategory").value;
   const equipment = $("catalogEquipment").value;
@@ -847,8 +857,9 @@ function renderCatalogResults() {
       entry.categoryEs,
       entry.equipmentEs,
       entry.target,
-    ].join(" ").toLocaleLowerCase("es");
-    return (!queryTokens.length || queryTokens.every((token) => searchable.includes(token)))
+    ].join(" ");
+    const normalizedSearchable = normalizeCatalogSearch(searchable);
+    return (!queryTokens.length || queryTokens.every((token) => normalizedSearchable.includes(token)))
       && (!category || entry.categoryEs === category)
       && (!equipment || entry.equipmentEs === equipment);
   });
@@ -932,14 +943,32 @@ function render() {
   renderTraining();
 }
 
+const tabIds = new Set([...document.querySelectorAll(".tab")].map((button) => button.dataset.tab));
+
+function showTab(tabId, { updateUrl = true } = {}) {
+  if (!tabIds.has(tabId)) return;
+  document.querySelectorAll(".tab, .panel").forEach((element) => element.classList.remove("active"));
+  document.querySelector(`.tab[data-tab="${tabId}"]`).classList.add("active");
+  $(tabId).classList.add("active");
+  if (updateUrl && window.location.hash !== `#${tabId}`) {
+    window.history.pushState({}, "", `#${tabId}`);
+  }
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function syncTabFromHash() {
+  showTab(window.location.hash.slice(1) || "entreno", { updateUrl: false });
+}
+
 document.querySelectorAll(".tab").forEach((button) => {
-  button.addEventListener("click", () => {
-    document.querySelectorAll(".tab, .panel").forEach((element) => element.classList.remove("active"));
-    button.classList.add("active");
-    $(button.dataset.tab).classList.add("active");
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  });
+  button.addEventListener("click", () => showTab(button.dataset.tab));
 });
+window.addEventListener("hashchange", syncTabFromHash);
+document.querySelector(".brand").addEventListener("click", (event) => {
+  event.preventDefault();
+  showTab("entreno");
+});
+syncTabFromHash();
 
 $("entryDate").value = today;
 $("entryDate").addEventListener("change", () => {
@@ -1076,6 +1105,8 @@ $("exportBtn").addEventListener("click", () => {
   URL.revokeObjectURL(url);
 });
 
+$("importBtn").addEventListener("click", () => $("importFile").click());
+
 $("importFile").addEventListener("change", async (event) => {
   const file = event.target.files[0];
   if (!file) return;
@@ -1114,5 +1145,11 @@ if (loadResult.notices.length) {
 }
 
 if ("serviceWorker" in navigator && location.protocol !== "file:") {
-  navigator.serviceWorker.register("service-worker.js");
+  const swReloadKey = "aurum-fit-sw-reloaded-v10";
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (sessionStorage.getItem(swReloadKey)) return;
+    sessionStorage.setItem(swReloadKey, "true");
+    window.location.reload();
+  });
+  navigator.serviceWorker.register("service-worker.js").then((registration) => registration.update());
 }

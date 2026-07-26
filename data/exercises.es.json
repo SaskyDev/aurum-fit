@@ -8,6 +8,13 @@
   },
   "policy": {
     "selection": "Muestra manual para los usuarios iniciales; no es el catálogo completo.",
+    "excludedRecords": [
+      {
+        "sourceId": "3211",
+        "nameEs": "Flexiones con apoyo de rodillas",
+        "reason": "Las instrucciones empiezan arrodilladas pero después indican extender las piernas y apoyar las puntas de los pies; describen otra variante y se excluyen hasta revisión de la fuente."
+      }
+    ],
     "excludedFields": [
       "image",
       "gif_url",
@@ -774,38 +781,6 @@
         "Haz una pausa breve y luego vuelve a la posición inicial.",
         "Repite el movimiento con el brazo izquierdo y la pierna derecha.",
         "Continúa alternando lados durante el número de repeticiones deseado."
-      ],
-      "measurementType": "weight_reps",
-      "reviewStatus": "pending_professional_review",
-      "source": {
-        "repository": "https://github.com/hasaneyldrm/exercises-dataset",
-        "commit": "7455efae41b330c265e7cd4b78dfa848e7ce5ebd",
-        "license": "MIT"
-      }
-    },
-    {
-      "id": "dataset-3211",
-      "sourceId": "3211",
-      "nameEs": "Flexiones con apoyo de rodillas",
-      "nameOriginal": "kneeling push-up (male)",
-      "category": "chest",
-      "categoryEs": "Pecho",
-      "bodyPart": "chest",
-      "equipment": "body weight",
-      "equipmentEs": "Peso corporal",
-      "target": "pectorals",
-      "muscleGroup": "triceps",
-      "secondaryMuscles": [
-        "triceps",
-        "shoulders"
-      ],
-      "instructionsEs": "Comienza arrodillado en el suelo con las manos separadas a la altura de los hombros, los dedos apuntando hacia adelante. Extiende las piernas hacia atrás, apoyándote en la punta de los pies, de modo que tu cuerpo forme una línea recta desde la cabeza hasta los talones. Activa el core y baja el cuerpo hacia el suelo flexionando los codos, manteniéndolos cerca de los costados. Continúa bajando hasta que el pecho esté justo encima del suelo, luego empuja hacia arriba a la posición inicial enderezando los brazos. Repite el número de repeticiones deseado.",
-      "instructionStepsEs": [
-        "Comienza arrodillado en el suelo con las manos separadas a la altura de los hombros, los dedos apuntando hacia adelante.",
-        "Extiende las piernas hacia atrás, apoyándote en la punta de los pies, de modo que tu cuerpo forme una línea recta desde la cabeza hasta los talones.",
-        "Activa el core y baja el cuerpo hacia el suelo flexionando los codos, manteniéndolos cerca de los costados.",
-        "Continúa bajando hasta que el pecho esté justo encima del suelo, luego empuja hacia arriba a la posición inicial enderezando los brazos.",
-        "Repite el número de repeticiones deseado."
       ],
       "measurementType": "weight_reps",
       "reviewStatus": "pending_professional_review",
