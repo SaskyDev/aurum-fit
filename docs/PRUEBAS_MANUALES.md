@@ -124,29 +124,37 @@ Ejecutar:
 node --test
 ```
 
-Resultado esperado en este checkpoint: 18 pruebas superadas.
+Resultado esperado en este checkpoint: 20 pruebas superadas.
 
 ## Regresiones de este checkpoint de estabilidad
 
 ### Actualización PWA desde una caché antigua
 
-1. Con la aplicación servida por HTTP, abrir las herramientas del navegador y
-   crear una caché `aurum-fit-shell-v1` con una copia antigua de `index.html`.
+1. Con la aplicación servida por HTTP y el worker v9 controlando el mismo
+   origen, abrir las herramientas del navegador y conservar una caché
+   `aurum-fit-shell-v9` con la copia antigua de `index.html`, estilos, scripts y
+   catálogo.
 2. Recargar con conexión y comprobar que la interfaz actual se muestra tras la
-   actualización del service worker.
-3. En `Application > Cache Storage`, verificar que queda `aurum-fit-shell-v10`
-   y que la caché v1 ha sido eliminada al activarse el worker nuevo.
+   activación del worker nuevo, sin mezclar recursos v9 y v12.
+3. En `Application > Cache Storage`, verificar que queda
+   `aurum-fit-shell-v12` y que la caché v9 ha sido eliminada al activarse el
+   worker nuevo.
 4. Cortar la conexión, recargar y comprobar que la interfaz actual sigue
    disponible desde la caché, sin mezclar los archivos versionados antiguos.
 
-El documento se solicita primero a la red para no mostrar una interfaz vieja; si
-no hay conexión se usa la copia de la caché activa. Los recursos estáticos llevan
-la versión v10 y el cliente recarga una sola vez cuando cambia el controlador.
+La nueva precarga usa URLs versionadas y se escribe en una caché nueva antes de
+activar el worker. El documento se solicita primero a la red para no mostrar una
+interfaz vieja; si no hay conexión se usa el `index.html?v=12` de la caché activa.
+El cliente recarga cuando cambia el controlador. El catálogo también usa
+`exercises.es.json?v=12`, por lo que la muestra de 23 ejercicios no puede
+reutilizar la respuesta v9 de 24 ejercicios.
 
 ### Importación, validación, búsqueda y navegación
 
 - Pulsar `Importar` con Tab y Espacio/Enter: el control recibe foco visible y
   abre el selector de archivos con un nombre accesible.
+- Guardar una serie válida y hacer doble clic en `Guardar serie`: solo debe
+  aparecer una serie y mantenerse la confirmación correcta, sin un error falso.
 - Guardar una serie válida y después intentar `0` repeticiones: el éxito anterior
   debe sustituirse por un error que indique que las repeticiones deben ser al
   menos 1.

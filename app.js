@@ -20,7 +20,7 @@ import {
   startFreeSession,
   startSessionFromRoutineDay,
   updateSet,
-} from "./core.js?v=10";
+} from "./core.js?v=12";
 
 const targets = { calories: 2200, protein: 170 };
 const $ = (id) => document.getElementById(id);
@@ -36,6 +36,7 @@ const today = localDateKey();
 const loadResult = loadAppState(localStorage);
 let state = loadResult.state;
 let catalog = [];
+const pendingSetSubmissions = new Set();
 
 function showNotice(message, { error = false, area = "trainingNotice" } = {}) {
   const notice = $(area);
@@ -127,14 +128,18 @@ function createButton(text, className, onClick) {
   return button;
 }
 
-function runOnce(control, action) {
-  if (control.disabled || control.dataset.pending === "true") return false;
+function runOnce(control, action, key = null) {
+  if (control.disabled || control.dataset.pending === "true" || (key && pendingSetSubmissions.has(key))) {
+    return false;
+  }
+  if (key) pendingSetSubmissions.add(key);
   control.dataset.pending = "true";
   control.disabled = true;
   const result = action();
   window.setTimeout(() => {
     delete control.dataset.pending;
     control.disabled = false;
+    if (key) pendingSetSubmissions.delete(key);
   }, 500);
   return result;
 }
@@ -684,6 +689,7 @@ function renderSetForm(session, sessionExercise) {
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();
+    const submissionKey = `${session.id}:${sessionExercise.id}`;
     const input = {
       reps: reps.input.value,
       loadKg: load.input.value,
@@ -698,7 +704,7 @@ function renderSetForm(session, sessionExercise) {
       } else {
         addSetToExercise(next, session.id, sessionExercise.id, input);
       }
-    }, editingSetId ? "Serie corregida y guardada." : "Serie guardada automáticamente."));
+    }, editingSetId ? "Serie corregida y guardada." : "Serie guardada automáticamente."), submissionKey);
     if (saved) form.reset();
   });
 
@@ -914,7 +920,7 @@ function renderCatalogResults() {
 
 async function loadCatalog() {
   try {
-    const response = await fetch("./data/exercises.es.json", { cache: "no-cache" });
+    const response = await fetch("./data/exercises.es.json?v=12", { cache: "no-cache" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     if (!Array.isArray(payload.exercises)) throw new Error("Estructura no válida");
@@ -1145,11 +1151,23 @@ if (loadResult.notices.length) {
 }
 
 if ("serviceWorker" in navigator && location.protocol !== "file:") {
-  const swReloadKey = "aurum-fit-sw-reloaded-v10";
+  let reloadingForServiceWorker = false;
+  const reportServiceWorkerUpdateFailure = (error) => {
+    const networkFailure = ["TypeError", "NetworkError"].includes(error?.name);
+    if (navigator.serviceWorker.controller && networkFailure) {
+      fetch("service-worker.js", { cache: "no-store" })
+        .then(() => console.error("No se pudo actualizar el service worker.", error))
+        .catch(() => {});
+      return;
+    }
+    console.error("No se pudo actualizar el service worker.", error);
+  };
   navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (sessionStorage.getItem(swReloadKey)) return;
-    sessionStorage.setItem(swReloadKey, "true");
+    if (reloadingForServiceWorker) return;
+    reloadingForServiceWorker = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register("service-worker.js").then((registration) => registration.update());
+  navigator.serviceWorker.register("service-worker.js")
+    .then((registration) => registration.update())
+    .catch(reportServiceWorkerUpdateFailure);
 }

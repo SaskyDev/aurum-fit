@@ -1,13 +1,13 @@
-const CACHE_NAME = "aurum-fit-shell-v10";
+const SHELL_VERSION = "12";
+const CACHE_NAME = `aurum-fit-shell-v${SHELL_VERSION}`;
 const ASSETS = [
-  "./",
-  "./index.html",
-  "./styles.css?v=10",
-  "./app.js?v=10",
-  "./core.js?v=10",
-  "./data/exercises.es.json",
-  "./manifest.json",
-  "./icon.svg",
+  `./index.html?v=${SHELL_VERSION}`,
+  `./styles.css?v=${SHELL_VERSION}`,
+  `./app.js?v=${SHELL_VERSION}`,
+  `./core.js?v=${SHELL_VERSION}`,
+  `./data/exercises.es.json?v=${SHELL_VERSION}`,
+  `./manifest.json?v=${SHELL_VERSION}`,
+  `./icon.svg?v=${SHELL_VERSION}`,
 ];
 
 function isDocumentRequest(request) {
@@ -23,13 +23,23 @@ function networkFirst(request) {
         return response;
       });
     })
-    .catch(() => caches.match(request).then((cached) => cached || caches.match("./index.html")));
+    .catch(() => caches.match(request).then((cached) => (
+      cached || caches.match(`./index.html?v=${SHELL_VERSION}`)
+    )));
+}
+
+function precacheShell(cache) {
+  return Promise.all(ASSETS.map(async (asset) => {
+    const response = await fetch(new Request(asset, { cache: "reload" }));
+    if (!response.ok) throw new Error(`No se pudo precargar ${asset}.`);
+    await cache.put(asset, response.clone());
+  }));
 }
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(ASSETS))
+      .then((cache) => precacheShell(cache))
       .then(() => self.skipWaiting()),
   );
 });
