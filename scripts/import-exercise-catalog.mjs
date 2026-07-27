@@ -35,7 +35,14 @@ const selection = [
   ["0241", "Extensión de tríceps en polea"],
   ["1373", "Elevación de gemelos de pie"],
   ["0276", "Dead bug"],
-  ["3211", "Flexiones con apoyo de rodillas"],
+];
+
+const excludedRecords = [
+  {
+    sourceId: "3211",
+    nameEs: "Flexiones con apoyo de rodillas",
+    reason: "Las instrucciones empiezan arrodilladas pero después indican extender las piernas y apoyar las puntas de los pies; describen otra variante y se excluyen hasta revisión de la fuente.",
+  },
 ];
 
 const categoryTranslations = {
@@ -66,6 +73,11 @@ function normalize(value) {
 
 const source = JSON.parse(fs.readFileSync(sourceFile, "utf8"));
 if (!Array.isArray(source)) throw new Error("El origen debe ser un array JSON.");
+
+for (const excluded of excludedRecords) {
+  const exercise = source.find((candidate) => candidate.id === excluded.sourceId);
+  if (!exercise) throw new Error(`No existe el ejercicio excluido ${excluded.sourceId}.`);
+}
 
 const ids = new Set();
 const duplicateNames = new Map();
@@ -129,6 +141,7 @@ const payload = {
   },
   policy: {
     selection: "Muestra manual para los usuarios iniciales; no es el catálogo completo.",
+    excludedRecords,
     excludedFields: ["image", "gif_url", "media_id", "attribution"],
     instructionsReview: "pending_professional_review",
   },

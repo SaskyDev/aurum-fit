@@ -124,4 +124,56 @@ Ejecutar:
 node --test
 ```
 
-Resultado esperado en este checkpoint: 15 pruebas superadas.
+Resultado esperado en este checkpoint: 21 pruebas superadas.
+
+## Regresiones de este checkpoint de estabilidad
+
+### Actualización PWA desde una caché antigua
+
+1. Con la aplicación servida por HTTP y el worker v9 controlando el mismo
+   origen, abrir las herramientas del navegador y conservar una caché
+   `aurum-fit-shell-v9` con la copia antigua de `index.html`, estilos, scripts y
+   catálogo.
+2. Recargar con conexión y comprobar que la interfaz actual se muestra tras la
+   activación del worker nuevo, sin mezclar recursos v9 y v12.
+3. En `Application > Cache Storage`, verificar que queda
+   `aurum-fit-shell-v12` y que la caché v9 ha sido eliminada al activarse el
+   worker nuevo.
+4. Cortar la conexión, recargar y comprobar que la interfaz actual sigue
+   disponible desde la caché, sin mezclar los archivos versionados antiguos.
+
+La nueva precarga usa URLs versionadas y se escribe en una caché nueva antes de
+activar el worker. Tras `clients.claim()`, el worker navega una vez las ventanas
+que ya estaban abiertas; así no depende de que el código antiguo capture
+`controllerchange`. El documento se solicita primero a la red para no mostrar
+una interfaz vieja; si no hay conexión se usa el `index.html?v=12` de la caché
+activa. El catálogo también usa
+`exercises.es.json?v=12`, por lo que la muestra de 23 ejercicios no puede
+reutilizar la respuesta v9 de 24 ejercicios.
+
+### Importación, validación, búsqueda y navegación
+
+- Pulsar `Importar` con Tab y Espacio/Enter: el control recibe foco visible y
+  abre el selector de archivos con un nombre accesible.
+- Guardar una serie válida y hacer doble clic en `Guardar serie`: solo debe
+  aparecer una serie y mantenerse la confirmación correcta, sin un error falso.
+- Guardar una serie válida y después intentar `0` repeticiones: el éxito anterior
+  debe sustituirse por un error que indique que las repeticiones deben ser al
+  menos 1.
+- Buscar `jalon`: debe encontrar `Jalón al pecho en polea`.
+- Desde `Diario`, pulsar `Aurum Fit, inicio`: la URL termina en `#entreno`, la
+  pestaña Entreno queda activa y Diario deja de mostrarse.
+
+### Exportación (QA-EXPORT-001)
+
+1. Pulsar `Exportar`.
+2. Confirmar que el navegador inicia una descarga con nombre
+   `aurum-fit-v2-AAAA-MM-DD.json`.
+3. Abrir el archivo descargado: debe ser JSON válido y contener las claves
+   `schemaVersion`, `training` y `legacy`, con el estado visible antes de
+   exportar.
+
+La implementación no se modifica en este incremento: la prueba automatizada de
+contrato verifica el `Blob` JSON, el nombre de archivo y el disparo de
+`link.click()`. La descarga real debe confirmarse en el navegador durante la
+regresión independiente.

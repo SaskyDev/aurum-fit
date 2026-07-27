@@ -20,7 +20,7 @@ import {
   startFreeSession,
   startSessionFromRoutineDay,
   updateSet,
-} from "./core.js?v=9";
+} from "./core.js?v=12";
 
 const targets = { calories: 2200, protein: 170 };
 const $ = (id) => document.getElementById(id);
@@ -36,6 +36,7 @@ const today = localDateKey();
 const loadResult = loadAppState(localStorage);
 let state = loadResult.state;
 let catalog = [];
+const pendingSetSubmissions = new Set();
 
 function showNotice(message, { error = false, area = "trainingNotice" } = {}) {
   const notice = $(area);
@@ -67,6 +68,15 @@ function getLegacyDay(date = $("entryDate").value || today, create = false, targ
 function numberValue(id) {
   const raw = $(id).value;
   return raw === "" ? null : Number(raw);
+}
+
+function normalizeCatalogSearch(value) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLocaleLowerCase("es");
 }
 
 function sum(items, key) {
@@ -118,14 +128,18 @@ function createButton(text, className, onClick) {
   return button;
 }
 
-function runOnce(control, action) {
-  if (control.disabled || control.dataset.pending === "true") return false;
+function runOnce(control, action, key = null) {
+  if (control.disabled || control.dataset.pending === "true" || (key && pendingSetSubmissions.has(key))) {
+    return false;
+  }
+  if (key) pendingSetSubmissions.add(key);
   control.dataset.pending = "true";
   control.disabled = true;
   const result = action();
   window.setTimeout(() => {
     delete control.dataset.pending;
     control.disabled = false;
+    if (key) pendingSetSubmissions.delete(key);
   }, 500);
   return result;
 }
@@ -624,6 +638,7 @@ function makeSetField(labelText, name, options = {}) {
 
 function renderSetForm(session, sessionExercise) {
   const form = createElement("form", "set-form");
+  form.noValidate = true;
   const reps = makeSetField("Repeticiones", "reps", {
     min: 1,
     max: 1000,
@@ -674,6 +689,7 @@ function renderSetForm(session, sessionExercise) {
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();
+    const submissionKey = `${session.id}:${sessionExercise.id}`;
     const input = {
       reps: reps.input.value,
       loadKg: load.input.value,
@@ -688,7 +704,7 @@ function renderSetForm(session, sessionExercise) {
       } else {
         addSetToExercise(next, session.id, sessionExercise.id, input);
       }
-    }, editingSetId ? "Serie corregida y guardada." : "Serie guardada automáticamente."));
+    }, editingSetId ? "Serie corregida y guardada." : "Serie guardada automáticamente."), submissionKey);
     if (saved) form.reset();
   });
 
@@ -836,7 +852,7 @@ function renderCatalogResults() {
     return;
   }
 
-  const query = $("catalogSearch").value.trim().toLocaleLowerCase("es");
+  const query = normalizeCatalogSearch($("catalogSearch").value);
   const queryTokens = query.split(/\s+/).filter(Boolean);
   const category = $("catalogCategory").value;
   const equipment = $("catalogEquipment").value;
@@ -847,8 +863,9 @@ function renderCatalogResults() {
       entry.categoryEs,
       entry.equipmentEs,
       entry.target,
-    ].join(" ").toLocaleLowerCase("es");
-    return (!queryTokens.length || queryTokens.every((token) => searchable.includes(token)))
+    ].join(" ");
+    const normalizedSearchable = normalizeCatalogSearch(searchable);
+    return (!queryTokens.length || queryTokens.every((token) => normalizedSearchable.includes(token)))
       && (!category || entry.categoryEs === category)
       && (!equipment || entry.equipmentEs === equipment);
   });
@@ -903,7 +920,7 @@ function renderCatalogResults() {
 
 async function loadCatalog() {
   try {
-    const response = await fetch("./data/exercises.es.json", { cache: "no-cache" });
+    const response = await fetch("./data/exercises.es.json?v=12", { cache: "no-cache" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     if (!Array.isArray(payload.exercises)) throw new Error("Estructura no válida");
@@ -932,14 +949,32 @@ function render() {
   renderTraining();
 }
 
+const tabIds = new Set([...document.querySelectorAll(".tab")].map((button) => button.dataset.tab));
+
+function showTab(tabId, { updateUrl = true } = {}) {
+  if (!tabIds.has(tabId)) return;
+  document.querySelectorAll(".tab, .panel").forEach((element) => element.classList.remove("active"));
+  document.querySelector(`.tab[data-tab="${tabId}"]`).classList.add("active");
+  $(tabId).classList.add("active");
+  if (updateUrl && window.location.hash !== `#${tabId}`) {
+    window.history.pushState({}, "", `#${tabId}`);
+  }
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function syncTabFromHash() {
+  showTab(window.location.hash.slice(1) || "entreno", { updateUrl: false });
+}
+
 document.querySelectorAll(".tab").forEach((button) => {
-  button.addEventListener("click", () => {
-    document.querySelectorAll(".tab, .panel").forEach((element) => element.classList.remove("active"));
-    button.classList.add("active");
-    $(button.dataset.tab).classList.add("active");
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  });
+  button.addEventListener("click", () => showTab(button.dataset.tab));
 });
+window.addEventListener("hashchange", syncTabFromHash);
+document.querySelector(".brand").addEventListener("click", (event) => {
+  event.preventDefault();
+  showTab("entreno");
+});
+syncTabFromHash();
 
 $("entryDate").value = today;
 $("entryDate").addEventListener("change", () => {
@@ -1076,6 +1111,8 @@ $("exportBtn").addEventListener("click", () => {
   URL.revokeObjectURL(url);
 });
 
+$("importBtn").addEventListener("click", () => $("importFile").click());
+
 $("importFile").addEventListener("change", async (event) => {
   const file = event.target.files[0];
   if (!file) return;
@@ -1114,5 +1151,23 @@ if (loadResult.notices.length) {
 }
 
 if ("serviceWorker" in navigator && location.protocol !== "file:") {
-  navigator.serviceWorker.register("service-worker.js");
+  let reloadingForServiceWorker = false;
+  const reportServiceWorkerUpdateFailure = (error) => {
+    const networkFailure = ["TypeError", "NetworkError"].includes(error?.name);
+    if (navigator.serviceWorker.controller && networkFailure) {
+      fetch("service-worker.js", { cache: "no-store" })
+        .then(() => console.error("No se pudo actualizar el service worker.", error))
+        .catch(() => {});
+      return;
+    }
+    console.error("No se pudo actualizar el service worker.", error);
+  };
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (reloadingForServiceWorker) return;
+    reloadingForServiceWorker = true;
+    window.location.reload();
+  });
+  navigator.serviceWorker.register("service-worker.js")
+    .then((registration) => registration.update())
+    .catch(reportServiceWorkerUpdateFailure);
 }

@@ -256,8 +256,10 @@ test("el catálogo generado conserva trazabilidad y excluye campos multimedia", 
   );
   const forbiddenFields = ["image", "gif_url", "media_id", "attribution"];
 
-  assert.equal(catalog.exercises.length, 24);
-  assert.equal(new Set(catalog.exercises.map((exercise) => exercise.id)).size, 24);
+  assert.equal(catalog.exercises.length, 23);
+  assert.equal(new Set(catalog.exercises.map((exercise) => exercise.id)).size, 23);
+  assert.equal(catalog.exercises.some((exercise) => exercise.id === "dataset-3211"), false);
+  assert.equal(catalog.policy.excludedRecords[0].sourceId, "3211");
   assert.equal(catalog.audit.sourceRecords, 1324);
   assert.equal(catalog.audit.exactDuplicateGroups, 6);
   assert.match(catalog.source.commit, /^[a-f0-9]{40}$/);

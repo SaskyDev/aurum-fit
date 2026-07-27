@@ -4,7 +4,7 @@ Fecha: 24 de julio de 2026.
 
 ## Decisión
 
-El primer catálogo incluye 24 ejercicios útiles para validar búsqueda, filtros y
+El primer catálogo incluye 23 ejercicios útiles para validar búsqueda, filtros y
 registro con los usuarios iniciales. No se copian 1.324 registros dentro de la
 interfaz.
 
@@ -17,6 +17,13 @@ MIT. Se excluyen de forma explícita:
 - `media_id`
 - `attribution` de los medios
 - todos los archivos de `images/` y `videos/`
+
+El registro `3211` (`Flexiones con apoyo de rodillas`) se excluye de la muestra.
+La fuente comienza describiendo una posición arrodillada, pero después indica
+extender las piernas y apoyar las puntas de los pies; esa contradicción describe
+otra variante. La exclusión queda registrada en `policy.excludedRecords` y se
+reproduce desde el script, sin inventar una corrección ni presentarlo como
+consejo médico.
 
 Las imágenes y GIF pertenecen a Gym Visual. Clonar el repositorio fuente no
 concede permiso para reutilizarlos.
