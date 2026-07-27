@@ -36,6 +36,22 @@ function precacheShell(cache) {
   }));
 }
 
+async function claimAndNavigateClients() {
+  await self.clients.claim();
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const clients = await self.clients.matchAll();
+    if (clients.length) {
+      await Promise.all(clients.map((client) => (
+        typeof client.navigate === "function"
+          ? Promise.resolve(client.navigate(client.url)).catch(() => {})
+          : undefined
+      )));
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}
+
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
@@ -50,7 +66,7 @@ self.addEventListener("activate", (event) => {
       .then((keys) => Promise.all(
         keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)),
       ))
-      .then(() => self.clients.claim()),
+      .then(claimAndNavigateClients),
   );
 });
 

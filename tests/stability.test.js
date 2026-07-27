@@ -11,6 +11,7 @@ function loadServiceWorker({ oldCaches = [] } = {}) {
   const puts = [];
   const fetched = [];
   const legacyCacheHits = [];
+  const navigations = [];
   const cache = {
     addAll: async (assets) => { opened.push({ name: "assets", assets }); },
     put: async (request, response) => { puts.push({ request, response }); },
@@ -32,7 +33,9 @@ function loadServiceWorker({ oldCaches = [] } = {}) {
     }
   }
   const legacyWorker = {
+    active: true,
     cache: new Map([
+      ["./", "v9"],
       ["./index.html", "v9"],
       ["./styles.css?v=10", "v9"],
       ["./app.js?v=10", "v9"],
@@ -40,6 +43,7 @@ function loadServiceWorker({ oldCaches = [] } = {}) {
       ["./data/exercises.es.json", "v9"],
     ]),
     intercept(request) {
+      if (!this.active) return null;
       const responseVersion = this.cache.get(request.url);
       if (!responseVersion) return null;
       legacyCacheHits.push(request.url);
@@ -57,7 +61,9 @@ function loadServiceWorker({ oldCaches = [] } = {}) {
     const url = String(request.url ?? "");
     return {
       ok: true,
-      version: url.includes("?v=12") ? "v12" : "v9",
+      version: request.mode === "navigate" || request.destination === "document" || url === "./" || url.includes("?v=12")
+        ? "v12"
+        : "v9",
       clone() { return this; },
     };
   };
@@ -67,12 +73,18 @@ function loadServiceWorker({ oldCaches = [] } = {}) {
     Request: FakeRequest,
     self: {
       addEventListener: (name, handler) => { listeners[name] = handler; },
-      clients: { claim: async () => {} },
+      clients: {
+        claim: async () => { legacyWorker.active = false; },
+        matchAll: async () => [{
+          url: "http://localhost:8000/",
+          navigate: async (url) => { navigations.push(url); },
+        }],
+      },
       skipWaiting: async () => {},
     },
   };
   vm.runInNewContext(source, context);
-  return { listeners, opened, deleted, puts, fetched, legacyCacheHits };
+  return { listeners, opened, deleted, puts, fetched, legacyCacheHits, legacyWorker, navigations };
 }
 
 test("actualiza desde una caché v9 y precarga un shell coherente v12", async () => {
@@ -81,6 +93,7 @@ test("actualiza desde una caché v9 y precarga un shell coherente v12", async ()
   worker.listeners.activate({ waitUntil: (promise) => { activation = promise; } });
   await activation;
   assert.deepEqual(worker.deleted, ["aurum-fit-shell-v1", "aurum-fit-shell-v9"]);
+  assert.deepEqual(worker.navigations, ["http://localhost:8000/"]);
 
   let installation;
   worker.listeners.install({ waitUntil: (promise) => { installation = promise; } });
@@ -89,6 +102,25 @@ test("actualiza desde una caché v9 y precarga un shell coherente v12", async ()
   assert.ok(worker.fetched.every((request) => request.url.includes("?v=12")));
   assert.deepEqual(worker.legacyCacheHits, []);
   assert.ok(worker.puts.every(({ response }) => response.version === "v12"));
+});
+
+test("la navegación antigua v9 converge a v12 tras reclamar el cliente", async () => {
+  const worker = loadServiceWorker({ oldCaches: ["aurum-fit-shell-v9"] });
+  const oldResponse = worker.legacyWorker.intercept({ url: "./" });
+  assert.equal(oldResponse.version, "v9");
+
+  let activation;
+  worker.listeners.activate({ waitUntil: (promise) => { activation = promise; } });
+  await activation;
+
+  let responsePromise;
+  worker.listeners.fetch({
+    request: { method: "GET", mode: "navigate", destination: "document", url: "./" },
+    respondWith: (promise) => { responsePromise = promise; },
+  });
+  const response = await responsePromise;
+  assert.equal(response.version, "v12");
+  assert.deepEqual(worker.navigations, ["http://localhost:8000/"]);
 });
 test("prioriza la red para documentos y actualiza la caché activa", async () => {
   const worker = loadServiceWorker();

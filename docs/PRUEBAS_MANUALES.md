@@ -124,7 +124,7 @@ Ejecutar:
 node --test
 ```
 
-Resultado esperado en este checkpoint: 20 pruebas superadas.
+Resultado esperado en este checkpoint: 21 pruebas superadas.
 
 ## Regresiones de este checkpoint de estabilidad
 
@@ -143,9 +143,11 @@ Resultado esperado en este checkpoint: 20 pruebas superadas.
    disponible desde la caché, sin mezclar los archivos versionados antiguos.
 
 La nueva precarga usa URLs versionadas y se escribe en una caché nueva antes de
-activar el worker. El documento se solicita primero a la red para no mostrar una
-interfaz vieja; si no hay conexión se usa el `index.html?v=12` de la caché activa.
-El cliente recarga cuando cambia el controlador. El catálogo también usa
+activar el worker. Tras `clients.claim()`, el worker navega una vez las ventanas
+que ya estaban abiertas; así no depende de que el código antiguo capture
+`controllerchange`. El documento se solicita primero a la red para no mostrar
+una interfaz vieja; si no hay conexión se usa el `index.html?v=12` de la caché
+activa. El catálogo también usa
 `exercises.es.json?v=12`, por lo que la muestra de 23 ejercicios no puede
 reutilizar la respuesta v9 de 24 ejercicios.
 
