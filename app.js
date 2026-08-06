@@ -16,11 +16,12 @@ import {
   persistState,
   removeExerciseFromRoutineDay,
   restoreLastDeletedSet,
+  setRoutineDayWeekday,
   setSuggestedRoutineDay,
   startFreeSession,
   startSessionFromRoutineDay,
   updateSet,
-} from "./core.js?v=12";
+} from "./core.js?v=13";
 
 const targets = { calories: 2200, protein: 170 };
 const $ = (id) => document.getElementById(id);
@@ -37,6 +38,12 @@ const loadResult = loadAppState(localStorage);
 let state = loadResult.state;
 let catalog = [];
 const pendingSetSubmissions = new Set();
+const restTimerState = {
+  duration: 60,
+  remaining: 60,
+  running: false,
+  intervalId: null,
+};
 
 function showNotice(message, { error = false, area = "trainingNotice" } = {}) {
   const notice = $(area);
@@ -103,6 +110,60 @@ function formatDateTime(value) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function formatTimer(seconds) {
+  const safeSeconds = Math.max(0, Math.round(seconds));
+  return `${String(Math.floor(safeSeconds / 60)).padStart(2, "0")}:${String(safeSeconds % 60).padStart(2, "0")}`;
+}
+
+function renderRestTimer() {
+  const display = $("restTimerDisplay");
+  const start = $("restTimerStartBtn");
+  const reset = $("restTimerResetBtn");
+  if (!display || !start || !reset) return;
+  display.textContent = formatTimer(restTimerState.remaining);
+  display.classList.toggle("timer-running", restTimerState.running);
+  start.textContent = restTimerState.running ? "Pausar" : "Iniciar";
+  reset.disabled = restTimerState.remaining === restTimerState.duration && !restTimerState.running;
+  document.querySelectorAll(".timer-preset").forEach((button) => {
+    button.classList.toggle("selected", Number(button.dataset.restSeconds) === restTimerState.duration);
+  });
+}
+
+function stopRestTimer() {
+  if (restTimerState.intervalId !== null) {
+    window.clearInterval(restTimerState.intervalId);
+    restTimerState.intervalId = null;
+  }
+  restTimerState.running = false;
+}
+
+function startOrPauseRestTimer() {
+  if (restTimerState.running) {
+    stopRestTimer();
+    renderRestTimer();
+    return;
+  }
+  if (restTimerState.remaining <= 0) restTimerState.remaining = restTimerState.duration;
+  restTimerState.running = true;
+  restTimerState.intervalId = window.setInterval(() => {
+    restTimerState.remaining -= 1;
+    if (restTimerState.remaining <= 0) {
+      restTimerState.remaining = 0;
+      stopRestTimer();
+      showNotice("Descanso terminado.", { area: "trainingNotice" });
+    }
+    renderRestTimer();
+  }, 1000);
+  renderRestTimer();
+}
+
+function setRestTimerDuration(seconds) {
+  stopRestTimer();
+  restTimerState.duration = seconds;
+  restTimerState.remaining = seconds;
+  renderRestTimer();
 }
 
 function dayTotals(day) {
@@ -196,6 +257,57 @@ function renderSummary() {
   $("avgSteps").textContent = steps.length
     ? String(Math.round(steps.reduce((total, value) => total + Number(value), 0) / steps.length))
     : "—";
+}
+
+function renderDailyDashboard() {
+  const todayDay = getLegacyDay();
+  const suggested = suggestedRoutineDay();
+  const title = $("dashboardWorkoutTitle");
+  const detail = $("dashboardWorkoutDetail");
+  const start = $("dashboardStartWorkoutBtn");
+  if (suggested) {
+    title.textContent = `${suggested.routine.name} · ${suggested.routineDay.name}`;
+    detail.textContent = `${countLabel(suggested.routineDay.exercises.length, "ejercicio")} · ${weekdayName(suggested.routineDay.weekday)}`;
+    start.disabled = !suggested.routineDay.exercises.length;
+  } else {
+    title.textContent = "Sin rutina asignada";
+    detail.textContent = "Elige una rutina y asigna un día de la semana.";
+    start.disabled = true;
+  }
+
+  const steps = Number(todayDay.steps) || 0;
+  const cardio = Number(todayDay.cardioMinutes) || 0;
+  $("dashboardActivityValue").textContent = `${steps.toLocaleString("es-ES")} pasos`;
+  $("dashboardActivityDetail").textContent = cardio ? `${cardio} min de cardio registrados.` : "Añade tus pasos y cardio en el registro diario.";
+
+  const weekStart = new Date();
+  weekStart.setHours(0, 0, 0, 0);
+  weekStart.setDate(weekStart.getDate() - 6);
+  const weekSessions = state.training.sessions.filter((session) => {
+    if (session.status !== "completed") return false;
+    return new Date(session.endedAt) >= weekStart;
+  });
+  $("dashboardWeekValue").textContent = countLabel(weekSessions.length, "sesión");
+  $("dashboardWeekDetail").textContent = `${weekSessions.reduce((total, session) => total + sessionSetCount(session), 0)} series completadas en los últimos 7 días.`;
+
+  const timeline = $("dailyTimeline");
+  timeline.replaceChildren();
+  lastNLegacyDates(5).forEach((date) => {
+    const day = state.legacy.days[date];
+    const totals = dayTotals(day);
+    const details = [
+      formatValue(day.weight, " kg"),
+      `${totals.calories} kcal`,
+      `${Number(day.steps) || 0} pasos`,
+    ].join(" · ");
+    const item = createElement("li", "timeline-item");
+    item.append(createElement("time", "timeline-date", date), createElement("div", "timeline-content", details));
+    if (day.notes) item.appendChild(createElement("small", "muted", day.notes));
+    timeline.appendChild(item);
+  });
+  if (!timeline.children.length) {
+    timeline.appendChild(createElement("li", "timeline-empty", "Todavía no hay registros. Guarda hoy tus primeras métricas."));
+  }
 }
 
 function renderFoods() {
@@ -325,11 +437,38 @@ function activeRoutines() {
 }
 
 function suggestedRoutineDay() {
+  const todayWeekday = new Date().getDay();
+  for (const routine of activeRoutines()) {
+    const scheduled = routine.days.find((day) => day.weekday === todayWeekday);
+    if (scheduled) return { routine, routineDay: scheduled };
+  }
   for (const routine of activeRoutines()) {
     const routineDay = routine.days.find((day) => day.id === routine.suggestedDayId);
     if (routineDay) return { routine, routineDay };
   }
   return null;
+}
+
+const weekdayOptions = [
+  { value: "1", label: "Lunes" },
+  { value: "2", label: "Martes" },
+  { value: "3", label: "Miércoles" },
+  { value: "4", label: "Jueves" },
+  { value: "5", label: "Viernes" },
+  { value: "6", label: "Sábado" },
+  { value: "0", label: "Domingo" },
+];
+
+function weekdayName(value) {
+  return weekdayOptions.find((option) => option.value === String(value))?.label ?? "Sin asignar";
+}
+
+function weekdayAssignments() {
+  return new Map(
+    activeRoutines()
+      .flatMap((routine) => routine.days.map((day) => [day.weekday, { routine, day }]))
+      .filter(([weekday]) => weekday !== null && weekday !== undefined),
+  );
 }
 
 function renderSessionChoices() {
@@ -449,6 +588,32 @@ function createRoutineDayCard(routine, routineDay, index) {
   }
   const actions = createElement("div", "order-actions");
 
+  const schedule = document.createElement("select");
+  schedule.className = "routine-weekday-select";
+  schedule.setAttribute("aria-label", `Asignar ${routineDay.name} a un día de la semana`);
+  schedule.appendChild(new Option("Sin asignar", ""));
+  const assignments = weekdayAssignments();
+  weekdayOptions.forEach((option) => {
+    const assigned = assignments.get(Number(option.value));
+    const item = new Option(option.label, option.value);
+    if (assigned && !(assigned.routine.id === routine.id && assigned.day.id === routineDay.id)) {
+      item.disabled = true;
+      item.textContent = `${option.label} · ocupado`;
+    }
+    schedule.appendChild(item);
+  });
+  schedule.value = routineDay.weekday === null || routineDay.weekday === undefined
+    ? ""
+    : String(routineDay.weekday);
+  schedule.addEventListener("change", () => {
+    commit(
+      (next) => setRoutineDayWeekday(next, routine.id, routineDay.id, schedule.value),
+      schedule.value
+        ? `${routineDay.name} asignado al ${weekdayName(schedule.value)}.`
+        : `${routineDay.name} quedó sin día asignado.`,
+    );
+  });
+
   const suggest = createButton("Sugerir", "button-secondary", () => {
     commit(
       (next) => setSuggestedRoutineDay(next, routine.id, routineDay.id),
@@ -476,7 +641,7 @@ function createRoutineDayCard(routine, routineDay, index) {
   down.title = "Bajar día";
   down.setAttribute("aria-label", `Bajar ${routineDay.name}`);
   down.disabled = index === routine.days.length - 1;
-  actions.append(suggest, up, down);
+  actions.append(schedule, suggest, up, down);
   header.append(title, actions);
 
   const list = createElement("ol", "routine-exercises");
@@ -611,7 +776,11 @@ function sessionSetCount(session) {
 function formatSet(workoutSet) {
   const parts = [`${workoutSet.reps} rep${workoutSet.reps === 1 ? "" : "s"}`];
   if (workoutSet.loadKg !== null) parts.push(`${workoutSet.loadKg} kg`);
-  if (workoutSet.rpe !== null) parts.push(`RPE ${workoutSet.rpe}`);
+  if (workoutSet.rir !== null && workoutSet.rir !== undefined) {
+    parts.push(`RIR ${workoutSet.rir}`);
+  } else if (workoutSet.rpe !== null && workoutSet.rpe !== undefined) {
+    parts.push(`RPE ${workoutSet.rpe}`);
+  }
   if (workoutSet.isWarmup) parts.push("calentamiento");
   return parts.join(" · ");
 }
@@ -654,12 +823,12 @@ function renderSetForm(session, sessionExercise) {
     inputMode: "decimal",
     placeholder: "60",
   });
-  const rpe = makeSetField("RPE opcional", "rpe", {
-    min: 1,
-    max: 10,
-    step: 0.5,
-    inputMode: "decimal",
-    placeholder: "7",
+  const rir = makeSetField("RIR opcional", "rir", {
+    min: 0,
+    max: 5,
+    step: 1,
+    inputMode: "numeric",
+    placeholder: "2",
   });
   const note = makeSetField("Nota opcional", "note", {
     type: "text",
@@ -685,7 +854,7 @@ function renderSetForm(session, sessionExercise) {
   });
   cancel.hidden = true;
   actions.append(submit, cancel);
-  form.append(reps.label, load.label, rpe.label, warmupLabel, note.label, actions);
+  form.append(reps.label, load.label, rir.label, warmupLabel, note.label, actions);
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -693,7 +862,7 @@ function renderSetForm(session, sessionExercise) {
     const input = {
       reps: reps.input.value,
       loadKg: load.input.value,
-      rpe: rpe.input.value,
+      rir: rir.input.value,
       isWarmup: warmup.checked,
       note: note.input.value,
     };
@@ -711,7 +880,7 @@ function renderSetForm(session, sessionExercise) {
   form.startEditing = (workoutSet) => {
     reps.input.value = workoutSet.reps;
     load.input.value = workoutSet.loadKg ?? "";
-    rpe.input.value = workoutSet.rpe ?? "";
+    rir.input.value = workoutSet.rir ?? "";
     warmup.checked = workoutSet.isWarmup;
     note.input.value = workoutSet.note ?? "";
     form.dataset.editingSetId = workoutSet.id;
@@ -822,6 +991,7 @@ function renderTraining() {
     }
   }
 
+  renderRestTimer();
   $("undoBar").hidden = !state.training.undo;
   renderCompletedSessions();
   renderCatalogResults();
@@ -920,7 +1090,7 @@ function renderCatalogResults() {
 
 async function loadCatalog() {
   try {
-    const response = await fetch("./data/exercises.es.json?v=12", { cache: "no-cache" });
+    const response = await fetch("./data/exercises.es.json?v=13", { cache: "no-cache" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     if (!Array.isArray(payload.exercises)) throw new Error("Estructura no válida");
@@ -941,6 +1111,7 @@ async function loadCatalog() {
 
 function render() {
   renderSummary();
+  renderDailyDashboard();
   renderFoods();
   renderLegacyHistory();
   renderProgress();
@@ -975,6 +1146,11 @@ document.querySelector(".brand").addEventListener("click", (event) => {
   showTab("entreno");
 });
 syncTabFromHash();
+
+$("dashboardStartWorkoutBtn").addEventListener("click", () => {
+  showTab("entreno");
+  $("startSuggestedDayBtn").click();
+});
 
 $("entryDate").value = today;
 $("entryDate").addEventListener("change", () => {
@@ -1080,6 +1256,20 @@ $("finishSessionBtn").addEventListener("click", () => {
   if (!active) return;
   if (!window.confirm("¿Finalizar este entrenamiento? Pasará al historial y dejará de ser editable.")) return;
   commit((next) => completeSession(next, active.id), "Entrenamiento finalizado.");
+  stopRestTimer();
+  restTimerState.remaining = restTimerState.duration;
+  renderRestTimer();
+});
+
+document.querySelectorAll(".timer-preset").forEach((button) => {
+  button.addEventListener("click", () => setRestTimerDuration(Number(button.dataset.restSeconds)));
+});
+
+$("restTimerStartBtn").addEventListener("click", startOrPauseRestTimer);
+$("restTimerResetBtn").addEventListener("click", () => {
+  stopRestTimer();
+  restTimerState.remaining = restTimerState.duration;
+  renderRestTimer();
 });
 
 $("addExerciseForm").addEventListener("submit", (event) => {

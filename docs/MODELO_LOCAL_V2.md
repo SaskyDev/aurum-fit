@@ -4,13 +4,18 @@ Fecha: 24 de julio de 2026.
 
 ## Objetivo del incremento
 
-Los dos primeros cortes verticales permiten:
+Este corte permite:
 
 - iniciar un entrenamiento libre;
 - crear rutinas con días y ejercicios ordenados;
 - iniciar desde el día sugerido o elegir otro día;
 - registrar series independientes;
 - recuperar la sesión al recargar y finalizarla.
+- asignar cada día de rutina a un día de la semana sin conflictos entre rutinas;
+- registrar RIR opcional de 0 a 5, manteniendo lectura de datos antiguos con RPE;
+- usar un temporizador manual de descanso de 30 s, 1, 2 o 3 minutos;
+- consultar un resumen de Diario/Progreso con actividad, sesiones recientes y
+  edición de métricas legadas.
 
 No incluye todavía omitir/sustituir/reordenar ejercicios durante una sesión ni
 nutrición por etiqueta.
@@ -68,12 +73,14 @@ reescribir el pasado.
 - La serie es la unidad guardada y tiene estado `completed`.
 - Repeticiones: entero entre 1 y 1000.
 - Peso opcional: entre 0 y 2000 kg.
-- RPE opcional: entre 1 y 10, en pasos de 0,5.
+- RIR opcional: entero entre 0 y 5. Los datos importados con RPE antiguo se
+  conservan para compatibilidad, pero la interfaz nueva usa RIR.
 - Nota opcional: máximo 300 caracteres.
 - Todo texto del usuario se representa con `textContent`, no con `innerHTML`.
 - Una sesión vacía no puede finalizarse.
 - Un día de rutina vacío no puede iniciarse.
 - No se permiten rutinas, días o ejercicios duplicados dentro del mismo contexto.
+- Dos rutinas activas no pueden compartir el mismo día de la semana.
 - La referencia anterior solo usa sesiones finalizadas del mismo ejercicio.
 - Importar exige una estructura v2 válida o una copia reconocible del prototipo.
 

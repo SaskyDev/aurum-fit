@@ -7,6 +7,8 @@ const MAX_EXERCISE_NAME_LENGTH = 80;
 const MAX_NOTE_LENGTH = 300;
 const MAX_ROUTINE_NAME_LENGTH = 80;
 const MAX_DAY_NAME_LENGTH = 60;
+const MIN_WEEKDAY = 0;
+const MAX_WEEKDAY = 6;
 const STORAGE_RECOVERY_MESSAGE =
   "No se pudo preparar el guardado local. Los datos existentes no se han borrado. "
   + "Exporta una copia y libera espacio del navegador antes de continuar.";
@@ -126,6 +128,13 @@ export function validateState(state) {
         || typeof routineDay.name !== "string"
         || !Number.isInteger(routineDay.order)
         || !Array.isArray(routineDay.exercises)
+        || (
+          routineDay.weekday !== undefined
+          && routineDay.weekday !== null
+          && (!Number.isInteger(routineDay.weekday)
+            || routineDay.weekday < MIN_WEEKDAY
+            || routineDay.weekday > MAX_WEEKDAY)
+        )
       ) {
         return "Hay un día de rutina no válido.";
       }
@@ -146,6 +155,18 @@ export function validateState(state) {
       && !routine.days.some((routineDay) => routineDay.id === routine.suggestedDayId)
     ) {
       return "El día sugerido no pertenece a su rutina.";
+    }
+  }
+
+  const assignedWeekdays = new Set();
+  for (const routine of state.training.routines) {
+    if (routine.status !== "active") continue;
+    for (const routineDay of routine.days) {
+      if (routineDay.weekday === null || routineDay.weekday === undefined) continue;
+      if (assignedWeekdays.has(routineDay.weekday)) {
+        return "Dos rutinas activas no pueden compartir un día de la semana.";
+      }
+      assignedWeekdays.add(routineDay.weekday);
     }
   }
 
@@ -443,12 +464,50 @@ export function addRoutineDay(
     id,
     name: result.value,
     order: routine.days.length + 1,
+    weekday: null,
     exercises: [],
   };
   routine.days.push(routineDay);
   routine.suggestedDayId ??= routineDay.id;
   routine.updatedAt = now;
   return routineDay;
+}
+
+export function setRoutineDayWeekday(
+  state,
+  routineId,
+  routineDayId,
+  weekday,
+  now = new Date().toISOString(),
+) {
+  const { routine, routineDay } = findRoutineDay(state, routineId, routineDayId);
+  const value = weekday === "" || weekday === null || weekday === undefined
+    ? null
+    : Number(weekday);
+  if (value !== null && (!Number.isInteger(value) || value < MIN_WEEKDAY || value > MAX_WEEKDAY)) {
+    throw new Error("El día de la semana no es válido.");
+  }
+  if (value !== null) {
+    const conflict = state.training.routines
+      .filter((candidate) => candidate.status === "active")
+      .flatMap((candidate) => candidate.days.map((candidateDay) => ({ candidate, candidateDay })))
+      .find(({ candidate, candidateDay }) => (
+        candidateDay.weekday === value
+        && !(candidate.id === routine.id && candidateDay.id === routineDay.id)
+      ));
+    if (conflict) {
+      throw new Error(
+        `El ${weekdayLabel(value)} ya está asignado a ${conflict.candidate.name} · ${conflict.candidateDay.name}.`,
+      );
+    }
+  }
+  routineDay.weekday = value;
+  routine.updatedAt = now;
+  return routineDay;
+}
+
+export function weekdayLabel(value) {
+  return ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"][value] ?? "día";
 }
 
 export function setSuggestedRoutineDay(
@@ -699,6 +758,9 @@ export function validateSetInput(input) {
   const rpe = optionalNumber(input.rpe, "El RPE", { min: 1, max: 10, step: 0.5 });
   if (rpe.error) return { error: rpe.error };
 
+  const rir = optionalNumber(input.rir, "El RIR", { min: 0, max: 5, step: 1 });
+  if (rir.error) return { error: rir.error };
+
   const note = String(input.note ?? "").trim();
   if (note.length > MAX_NOTE_LENGTH) {
     return { error: `La nota no puede superar ${MAX_NOTE_LENGTH} caracteres.` };
@@ -709,6 +771,7 @@ export function validateSetInput(input) {
       reps: repetitions.value,
       loadKg: load.value,
       rpe: rpe.value,
+      rir: rir.value,
       isWarmup: Boolean(input.isWarmup),
       note,
     },

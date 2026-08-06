@@ -4,10 +4,10 @@
 
 1. Ejecutar `python3 -m http.server 8000`.
 2. Abrir `http://localhost:8000`.
-3. Entrar en `Entreno` y pulsar `Iniciar entrenamiento libre`.
+3. Entrar en `Entrenamiento` y pulsar `Iniciar entrenamiento libre`.
 4. Recargar la página: la misma sesión debe seguir visible y en curso.
 5. Añadir `Press banca`.
-6. Registrar `10` repeticiones, `60` kg y RPE `7`.
+6. Registrar `10` repeticiones, `60` kg y RIR `2`.
 7. Editar la serie a `9` repeticiones y `62,5` kg.
 8. Borrarla, confirmar y pulsar `Deshacer`.
 9. Añadir otra serie y finalizar el entrenamiento.
@@ -19,7 +19,7 @@
 - Ejercicio vacío o de un carácter: debe explicar el mínimo.
 - Repeticiones vacías, decimales, negativas o superiores a 1000: deben rechazarse.
 - Peso negativo o superior a 2000: debe rechazarse.
-- RPE `0`, `10,2` o `11`: debe rechazarse.
+- RIR `-1`, `5,5` o `6`: debe rechazarse.
 - Nota de más de 300 caracteres: debe rechazarse.
 - Nombre o nota `<img src=x onerror=alert(1)>`: debe mostrarse como texto y no
   crear HTML ni ejecutar código.
@@ -124,7 +124,20 @@ Ejecutar:
 node --test
 ```
 
-Resultado esperado en este checkpoint: 21 pruebas superadas.
+Resultado esperado en este checkpoint: 23 pruebas superadas usando el patrón
+explícito `tests/*.test.js`.
+
+## Incremento actual: días, RIR, temporizador y Diario
+
+1. Crea dos rutinas con un día cada una y asigna el mismo día de la semana: la
+   segunda asignación debe bloquearse y explicar el conflicto.
+2. Asigna días distintos y abre `Diario / Progreso`: debe aparecer la rutina de
+   hoy cuando coincida con el día actual.
+3. Inicia una sesión y comprueba que el formulario muestra RIR de 0 a 5.
+4. Selecciona 30 s, 1, 2 y 3 min; `Iniciar`, `Pausar` y `Reiniciar` deben
+   actualizar el contador sin guardar datos de entrenamiento.
+5. Guarda métricas en `Editar métricas del día`: la línea aparece en `Diario
+   reciente` y los pasos se reflejan en el resumen.
 
 ## Regresiones de este checkpoint de estabilidad
 
@@ -135,9 +148,9 @@ Resultado esperado en este checkpoint: 21 pruebas superadas.
    `aurum-fit-shell-v9` con la copia antigua de `index.html`, estilos, scripts y
    catálogo.
 2. Recargar con conexión y comprobar que la interfaz actual se muestra tras la
-   activación del worker nuevo, sin mezclar recursos v9 y v12.
+   activación del worker nuevo, sin mezclar recursos v9 y v13.
 3. En `Application > Cache Storage`, verificar que queda
-   `aurum-fit-shell-v12` y que la caché v9 ha sido eliminada al activarse el
+   `aurum-fit-shell-v13` y que la caché v9 ha sido eliminada al activarse el
    worker nuevo.
 4. Cortar la conexión, recargar y comprobar que la interfaz actual sigue
    disponible desde la caché, sin mezclar los archivos versionados antiguos.
@@ -146,9 +159,9 @@ La nueva precarga usa URLs versionadas y se escribe en una caché nueva antes de
 activar el worker. Tras `clients.claim()`, el worker navega una vez las ventanas
 que ya estaban abiertas; así no depende de que el código antiguo capture
 `controllerchange`. El documento se solicita primero a la red para no mostrar
-una interfaz vieja; si no hay conexión se usa el `index.html?v=12` de la caché
+una interfaz vieja; si no hay conexión se usa el `index.html?v=13` de la caché
 activa. El catálogo también usa
-`exercises.es.json?v=12`, por lo que la muestra de 23 ejercicios no puede
+`exercises.es.json?v=13`, por lo que la muestra de 23 ejercicios no puede
 reutilizar la respuesta v9 de 24 ejercicios.
 
 ### Importación, validación, búsqueda y navegación
