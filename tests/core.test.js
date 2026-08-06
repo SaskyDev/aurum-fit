@@ -22,6 +22,7 @@ import {
   persistState,
   removeExerciseFromRoutineDay,
   restoreLastDeletedSet,
+  setRoutineDayWeekday,
   setSuggestedRoutineDay,
   startFreeSession,
   startSessionFromRoutineDay,
@@ -137,7 +138,19 @@ test("rechaza valores vacíos, extremos y contradictorios en una serie", () => {
   assert.match(validateSetInput({ reps: 8, loadKg: -1 }).error, /peso/i);
   assert.match(validateSetInput({ reps: 8, loadKg: 3000 }).error, /peso/i);
   assert.match(validateSetInput({ reps: 8, rpe: 10.2 }).error, /RPE/i);
+  assert.match(validateSetInput({ reps: 8, rir: 6 }).error, /RIR/i);
+  assert.match(validateSetInput({ reps: 8, rir: 1.5 }).error, /RIR/i);
   assert.match(validateSetInput({ reps: 8, note: "x".repeat(301) }).error, /nota/i);
+});
+
+test("guarda RIR de 0 a 5 y mantiene compatibilidad con RPE antiguo", () => {
+  const { state, session, exercise } = stateWithActiveSession();
+  const set = addSetToExercise(state, session.id, exercise.id, { reps: 8, loadKg: 80, rir: 2 });
+  assert.equal(set.rir, 2);
+  assert.equal(set.rpe, null);
+  const legacySet = addSetToExercise(state, session.id, exercise.id, { reps: 8, loadKg: 80, rpe: 8 });
+  assert.equal(legacySet.rpe, 8);
+  assert.equal(legacySet.rir, null);
 });
 
 test("crea, edita, borra y deshace series independientes", () => {
@@ -362,4 +375,22 @@ test("impide iniciar un día vacío y duplicar nombres dentro de una rutina", ()
   );
   assert.throws(() => createRoutine(state, " fuerza "), /ya existe/i);
   assert.throws(() => addRoutineDay(state, routine.id, " día a "), /ya existe/i);
+});
+
+test("asigna días de la semana sin permitir conflictos entre rutinas", () => {
+  const state = createEmptyState();
+  const first = createRoutine(state, "Rutina A");
+  const firstDay = addRoutineDay(state, first.id, "Empuje");
+  const second = createRoutine(state, "Rutina B");
+  const secondDay = addRoutineDay(state, second.id, "Pierna");
+
+  setRoutineDayWeekday(state, first.id, firstDay.id, 1);
+  assert.equal(firstDay.weekday, 1);
+  assert.throws(
+    () => setRoutineDayWeekday(state, second.id, secondDay.id, 1),
+    /lunes.*Rutina A.*Empuje/i,
+  );
+  setRoutineDayWeekday(state, second.id, secondDay.id, 3);
+  setRoutineDayWeekday(state, first.id, firstDay.id, null);
+  assert.equal(firstDay.weekday, null);
 });

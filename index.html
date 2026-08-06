@@ -8,9 +8,9 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Aurum Fit" />
     <title>Aurum Fit</title>
-    <link rel="manifest" href="manifest.json?v=12" />
-    <link rel="apple-touch-icon" href="icon.svg?v=12" />
-    <link rel="stylesheet" href="styles.css?v=12" />
+    <link rel="manifest" href="manifest.json?v=13" />
+    <link rel="apple-touch-icon" href="icon.svg?v=13" />
+    <link rel="stylesheet" href="styles.css?v=13" />
   </head>
   <body>
     <header class="topbar">
@@ -69,13 +69,13 @@
 
       <nav class="tabs" aria-label="Secciones principales">
         <button class="tab" type="button" data-tab="diario">
-          <span aria-hidden="true">◫</span> Diario
+          <span aria-hidden="true">◫</span> Diario / Progreso
         </button>
         <button class="tab" type="button" data-tab="comida">
           <span aria-hidden="true">◌</span> Nutrición
         </button>
         <button class="tab active" type="button" data-tab="entreno">
-          <span aria-hidden="true">◆</span> Entreno
+          <span aria-hidden="true">◆</span> Entrenamiento
         </button>
         <button class="tab" type="button" data-tab="progreso">
           <span aria-hidden="true">↗</span> Progreso
@@ -90,11 +90,35 @@
       <section id="diario" class="panel">
         <div class="section-heading">
           <div>
-            <p class="eyebrow">Prototipo conservado</p>
-            <h2>Registro diario</h2>
+            <p class="eyebrow">Tu día, de un vistazo</p>
+            <h2>Diario y progreso</h2>
           </div>
           <label class="date-field">Fecha<input id="entryDate" type="date" /></label>
         </div>
+        <div class="dashboard-grid" aria-label="Resumen del día">
+          <article class="dashboard-card dashboard-card-primary">
+            <span class="eyebrow">Entrenamiento de hoy</span>
+            <h3 id="dashboardWorkoutTitle">Sin rutina asignada</h3>
+            <p id="dashboardWorkoutDetail" class="muted">Elige una rutina y asigna un día de la semana.</p>
+            <button id="dashboardStartWorkoutBtn" class="button button-accent" type="button">Ir a entrenamiento</button>
+          </article>
+          <article class="dashboard-card">
+            <span class="eyebrow">Actividad registrada</span>
+            <strong id="dashboardActivityValue" class="dashboard-value">0 pasos</strong>
+            <p id="dashboardActivityDetail" class="muted">Añade tus pasos y cardio en el registro diario.</p>
+          </article>
+          <article class="dashboard-card">
+            <span class="eyebrow">Semana</span>
+            <strong id="dashboardWeekValue" class="dashboard-value">0 sesiones</strong>
+            <p id="dashboardWeekDetail" class="muted">Sesiones finalizadas en los últimos 7 días.</p>
+          </article>
+        </div>
+        <div class="timeline-block surface">
+          <div class="section-heading compact"><h3>Diario reciente</h3><span class="muted">Últimos registros</span></div>
+          <ul id="dailyTimeline" class="timeline-list"></ul>
+        </div>
+        <details class="daily-editor">
+          <summary>Editar métricas del día</summary>
         <form id="dailyForm" class="form-grid surface">
           <label>Peso <span>kg</span><input id="weight" type="number" min="0" max="500" step="0.1" inputmode="decimal" /></label>
           <label>Cintura <span>cm</span><input id="waist" type="number" min="0" max="400" step="0.1" inputmode="decimal" /></label>
@@ -107,6 +131,7 @@
           <label class="wide">Notas<textarea id="notes" rows="3" maxlength="500" placeholder="Sensaciones o contexto del día"></textarea></label>
           <button class="button button-primary" type="submit">Guardar día</button>
         </form>
+        </details>
       </section>
 
       <section id="comida" class="panel">
@@ -210,6 +235,24 @@
             <span>Serie borrada.</span>
             <button id="undoSetBtn" class="button button-link" type="button">Deshacer</button>
           </div>
+
+          <section class="rest-timer surface" aria-labelledby="restTimerTitle">
+            <div class="section-heading compact">
+              <div>
+                <p class="eyebrow">Descanso manual</p>
+                <h3 id="restTimerTitle">Temporizador entre series</h3>
+              </div>
+              <strong id="restTimerDisplay" class="timer-display">01:00</strong>
+            </div>
+            <div class="timer-controls">
+              <button class="button button-secondary timer-preset" type="button" data-rest-seconds="30">30 s</button>
+              <button class="button button-secondary timer-preset" type="button" data-rest-seconds="60">1 min</button>
+              <button class="button button-secondary timer-preset" type="button" data-rest-seconds="120">2 min</button>
+              <button class="button button-secondary timer-preset" type="button" data-rest-seconds="180">3 min</button>
+              <button id="restTimerStartBtn" class="button button-accent" type="button">Iniciar</button>
+              <button id="restTimerResetBtn" class="button button-quiet" type="button">Reiniciar</button>
+            </div>
+          </section>
 
           <section class="exercise-picker surface" aria-labelledby="exercisePickerTitle">
             <div class="section-heading compact">
@@ -324,6 +367,6 @@
       </section>
     </main>
 
-    <script type="module" src="app.js?v=12"></script>
+    <script type="module" src="app.js?v=13"></script>
   </body>
 </html>

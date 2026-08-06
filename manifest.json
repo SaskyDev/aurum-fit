@@ -3,8 +3,8 @@
   "short_name": "Aurum",
   "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#f5f6f3",
-  "theme_color": "#27695f",
+  "background_color": "#080b09",
+  "theme_color": "#c7f464",
   "description": "Registro local de entrenamientos, series, alimentación y progreso.",
   "icons": [
     {
