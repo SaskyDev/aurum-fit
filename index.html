@@ -8,13 +8,13 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Aurum Fit" />
     <title>Aurum Fit</title>
-    <link rel="manifest" href="manifest.json?v=13" />
-    <link rel="apple-touch-icon" href="icon.svg?v=13" />
-    <link rel="stylesheet" href="styles.css?v=13" />
+    <link rel="manifest" href="manifest.json?v=19" />
+    <link rel="apple-touch-icon" href="icon.svg?v=19" />
+    <link rel="stylesheet" href="styles.css?v=19" />
   </head>
   <body>
     <header class="topbar">
-      <a class="brand" href="#entreno" aria-label="Aurum Fit, inicio">
+      <a class="brand" href="#diario" aria-label="Aurum Fit, inicio">
         <span class="brand-mark" aria-hidden="true">A</span>
         <span>
           <span class="eyebrow">Registro local</span>
@@ -22,7 +22,9 @@
         </span>
       </a>
       <div class="top-actions">
+        <span id="demoBadge" class="demo-badge" hidden>Datos de ejemplo</span>
         <span class="local-badge"><span aria-hidden="true">●</span> Guardado local</span>
+        <button id="settingsBtn" class="button button-quiet icon-button" type="button" aria-label="Abrir configuración">⚙</button>
         <button id="exportBtn" class="button button-quiet" type="button">Exportar</button>
         <button id="importBtn" class="button button-quiet" type="button" aria-controls="importFile">
           Importar
@@ -41,78 +43,85 @@
     </header>
 
     <main>
-      <section class="page-intro" aria-labelledby="pageTitle">
-        <div>
-          <p class="eyebrow">Hoy</p>
-          <h1 id="pageTitle">Entrena con el progreso a la vista.</h1>
-          <p class="lede">Series independientes, referencia anterior y guardado automático sin depender de conexión.</p>
-        </div>
-        <div class="summary-grid" aria-label="Resumen del prototipo">
-          <article>
-            <span>Calorías</span>
-            <strong id="todayCalories">0</strong>
-          </article>
-          <article>
-            <span>Proteína</span>
-            <strong id="todayProtein">0 g</strong>
-          </article>
-          <article>
-            <span>Peso medio</span>
-            <strong id="avgWeight">—</strong>
-          </article>
-          <article>
-            <span>Pasos</span>
-            <strong id="avgSteps">—</strong>
-          </article>
-        </div>
-      </section>
-
       <nav class="tabs" aria-label="Secciones principales">
-        <button class="tab" type="button" data-tab="diario">
-          <span aria-hidden="true">◫</span> Diario / Progreso
+        <button class="tab" type="button" data-tab="entreno">
+          <span aria-hidden="true">◆</span> Entrenamiento
+        </button>
+        <button class="tab active" type="button" data-tab="diario">
+          <span aria-hidden="true">◫</span> Diario
         </button>
         <button class="tab" type="button" data-tab="comida">
           <span aria-hidden="true">◌</span> Nutrición
-        </button>
-        <button class="tab active" type="button" data-tab="entreno">
-          <span aria-hidden="true">◆</span> Entrenamiento
-        </button>
-        <button class="tab" type="button" data-tab="progreso">
-          <span aria-hidden="true">↗</span> Progreso
-        </button>
-        <button class="tab" type="button" data-tab="ayuda">
-          <span aria-hidden="true">?</span> Ayuda
         </button>
       </nav>
 
       <p id="appNotice" class="notice" role="status" aria-live="polite" hidden></p>
 
-      <section id="diario" class="panel">
-        <div class="section-heading">
+      <section id="diario" class="panel active">
+        <header class="diary-header">
           <div>
-            <p class="eyebrow">Tu día, de un vistazo</p>
-            <h2>Diario y progreso</h2>
+            <p class="eyebrow">Hoy</p>
+            <h2 id="diaryDateTitle">Tu diario</h2>
           </div>
           <label class="date-field">Fecha<input id="entryDate" type="date" /></label>
-        </div>
-        <div class="dashboard-grid" aria-label="Resumen del día">
-          <article class="dashboard-card dashboard-card-primary">
-            <span class="eyebrow">Entrenamiento de hoy</span>
-            <h3 id="dashboardWorkoutTitle">Sin rutina asignada</h3>
-            <p id="dashboardWorkoutDetail" class="muted">Elige una rutina y asigna un día de la semana.</p>
-            <button id="dashboardStartWorkoutBtn" class="button button-accent" type="button">Ir a entrenamiento</button>
-          </article>
-          <article class="dashboard-card">
-            <span class="eyebrow">Actividad registrada</span>
-            <strong id="dashboardActivityValue" class="dashboard-value">0 pasos</strong>
-            <p id="dashboardActivityDetail" class="muted">Añade tus pasos y cardio en el registro diario.</p>
-          </article>
-          <article class="dashboard-card">
-            <span class="eyebrow">Semana</span>
-            <strong id="dashboardWeekValue" class="dashboard-value">0 sesiones</strong>
-            <p id="dashboardWeekDetail" class="muted">Sesiones finalizadas en los últimos 7 días.</p>
-          </article>
-        </div>
+        </header>
+        <section class="daily-summary surface" aria-label="Resumen del día">
+          <div class="weekly-ring" id="weeklyRing">
+            <div>
+              <strong id="weeklyRingValue">0 / 0</strong>
+              <span>objetivos del día</span>
+            </div>
+          </div>
+          <div class="daily-metric-list">
+            <article class="daily-metric daily-metric-calories">
+              <div><span aria-hidden="true">◉</span><small>Calorías</small></div>
+              <strong id="dashboardNutritionValue">0 / 2.200 kcal</strong>
+              <progress id="dashboardCaloriesProgress" max="2200" value="0"></progress>
+              <p id="dashboardNutritionDetail" class="muted">Objetivo y consumo registrados manualmente.</p>
+            </article>
+            <article class="daily-metric daily-metric-steps">
+              <div><span aria-hidden="true">◆</span><small>Pasos</small></div>
+              <strong id="dashboardActivityValue">0 / 10.000 pasos</strong>
+              <progress id="dashboardStepsProgress" max="10000" value="0"></progress>
+              <p id="dashboardActivityDetail" class="muted">Añade tus pasos en el registro diario.</p>
+            </article>
+          </div>
+        </section>
+        <article class="today-plan surface">
+          <div class="today-plan-heading">
+            <div>
+              <p class="eyebrow">Plan de hoy</p>
+              <h3 id="dashboardWorkoutTitle">Sin rutina asignada</h3>
+              <p id="dashboardWorkoutDetail" class="muted">Elige una rutina y asígnala a un día.</p>
+            </div>
+            <span aria-hidden="true">›</span>
+          </div>
+          <ol id="dashboardWorkoutExercises" class="today-exercise-list"></ol>
+          <button id="dashboardStartWorkoutBtn" class="button button-accent button-large" type="button">Empezar entrenamiento</button>
+        </article>
+        <section class="diary-progress surface" aria-labelledby="exerciseProgressTitle">
+          <div class="section-heading compact">
+            <div>
+              <p class="eyebrow">Historial inmutable</p>
+              <h3 id="exerciseProgressTitle">Evolución por ejercicio</h3>
+            </div>
+            <label>Ejercicio<select id="progressExerciseSelect"><option value="">Sin ejercicios finalizados</option></select></label>
+          </div>
+          <div class="period-tabs" role="group" aria-label="Periodo del diario">
+            <button class="period-tab active" type="button" data-period="total">Desde el inicio</button>
+            <button class="period-tab" type="button" data-period="month">Mes</button>
+            <button class="period-tab" type="button" data-period="week">Semana</button>
+            <button class="period-tab" type="button" data-period="day">Hoy</button>
+          </div>
+          <div class="chart-legend" aria-hidden="true"><span class="legend-load">Peso (kg)</span><span class="legend-reps">Repeticiones</span></div>
+          <div id="exerciseProgressChart" class="exercise-chart" role="img" aria-label="Evolución de peso y repeticiones"></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Fecha</th><th>Peso</th><th>Repeticiones</th><th>RIR</th></tr></thead>
+              <tbody id="exerciseProgressRows"></tbody>
+            </table>
+          </div>
+        </section>
         <div class="timeline-block surface">
           <div class="section-heading compact"><h3>Diario reciente</h3><span class="muted">Últimos registros</span></div>
           <ul id="dailyTimeline" class="timeline-list"></ul>
@@ -140,8 +149,20 @@
             <p class="eyebrow">Prototipo conservado</p>
             <h2>Nutrición</h2>
           </div>
-          <p class="section-note">El modelo por etiqueta y 100 g llegará en un incremento separado.</p>
+          <p class="section-note">Registro manual por etiqueta: cada marca conserva sus propios valores nutricionales.</p>
         </div>
+        <section class="nutrition-overview surface" aria-label="Resumen de calorías y macronutrientes">
+          <div class="nutrition-calories">
+            <span>Consumidas</span>
+            <strong id="nutritionCaloriesValue">0</strong>
+            <small>/ 2.200 kcal</small>
+          </div>
+          <div class="macro-list">
+            <div><span>Proteína <strong id="nutritionProteinValue">0 / 170 g</strong></span><progress id="nutritionProteinProgress" max="170" value="0"></progress></div>
+            <div><span>Carbohidratos <strong id="nutritionCarbsValue">0 g</strong></span><progress id="nutritionCarbsProgress" max="300" value="0"></progress></div>
+            <div><span>Grasas <strong id="nutritionFatValue">0 g</strong></span><progress id="nutritionFatProgress" max="100" value="0"></progress></div>
+          </div>
+        </section>
         <div class="quick-actions" aria-label="Comidas rápidas del prototipo">
           <button type="button" class="chip" data-food="Pollo + patata" data-calories="640" data-protein="55" data-carbs="65" data-fat="16">Pollo + patata</button>
           <button type="button" class="chip" data-food="Yogur + avena" data-calories="520" data-protein="45" data-carbs="62" data-fat="10">Yogur + avena</button>
@@ -159,51 +180,51 @@
           <h3>Comidas del día</h3>
           <ul id="foodList" class="log-list"></ul>
         </div>
+        <div class="nutrition-library">
+          <section class="list-block surface">
+            <div class="section-heading compact">
+              <div><p class="eyebrow">Platos reutilizables</p><h3>Recetas</h3></div>
+              <span id="recipeCount" class="count-badge">0 recetas</span>
+            </div>
+            <div id="recipeList" class="recipe-list"></div>
+          </section>
+          <section class="list-block surface">
+            <div class="section-heading compact">
+              <div><p class="eyebrow">Cada marca es distinta</p><h3>Etiquetas guardadas</h3></div>
+              <span id="labelCount" class="count-badge">0 etiquetas</span>
+            </div>
+            <div id="labelList" class="label-list"></div>
+            <details class="label-editor">
+              <summary>+ Añadir una etiqueta</summary>
+              <form id="labelForm" class="form-grid compact-form">
+                <label class="wide photo-field">Foto de la etiqueta
+                  <input id="labelPhoto" type="file" accept="image/*" capture="environment" />
+                  <span>La foto sirve de referencia; todavía no se lee automáticamente.</span>
+                </label>
+                <img id="labelPhotoPreview" class="label-photo-preview wide" alt="Vista previa de la etiqueta" hidden />
+                <label>Producto<input id="labelProduct" type="text" maxlength="100" required placeholder="Espaguetis" /></label>
+                <label>Marca<input id="labelBrand" type="text" maxlength="80" required placeholder="Gallo" /></label>
+                <label>Kcal / 100 g<input id="labelCalories" type="number" min="0" max="2000" step="1" required /></label>
+                <label>Proteína / 100 g<input id="labelProtein" type="number" min="0" max="100" step="0.1" /></label>
+                <label>HC / 100 g<input id="labelCarbs" type="number" min="0" max="100" step="0.1" /></label>
+                <label>Grasa / 100 g<input id="labelFat" type="number" min="0" max="100" step="0.1" /></label>
+                <button class="button button-accent wide" type="submit">Guardar etiqueta</button>
+              </form>
+            </details>
+          </section>
+        </div>
       </section>
 
-      <section id="entreno" class="panel active">
-        <div class="workout-hero">
+      <section id="entreno" class="panel">
+        <div class="training-header">
           <div>
-            <p class="eyebrow eyebrow-light">Núcleo de entrenamiento</p>
-            <h2>Registra lo que haces, serie a serie.</h2>
-            <p>La sesión se guarda con cada cambio y reaparece si cierras la aplicación.</p>
+            <p class="eyebrow eyebrow-light">Rutinas y sesiones</p>
+            <h2>Entrenamiento</h2>
           </div>
           <span id="sessionStatusBadge" class="status-badge">Sin sesión activa</span>
         </div>
 
         <p id="trainingNotice" class="notice" role="status" aria-live="polite" hidden></p>
-
-        <section id="sessionStarter" class="session-starter surface">
-          <div class="section-heading compact">
-            <div>
-              <p class="eyebrow">Elige cómo empezar</p>
-              <h3>¿Qué vas a entrenar?</h3>
-            </div>
-            <span class="muted">La elección se copia dentro del historial.</span>
-          </div>
-          <div class="start-options">
-            <article class="start-option start-option-primary">
-              <span class="exercise-source">Día sugerido</span>
-              <h4 id="suggestedDayTitle">Crea una rutina primero</h4>
-              <p id="suggestedDayDetail">El primer día será el sugerido automáticamente.</p>
-              <button id="startSuggestedDayBtn" class="button button-accent button-large" type="button" disabled>Empezar sugerido</button>
-            </article>
-            <article class="start-option">
-              <span class="exercise-source">Elegir otro día</span>
-              <label>
-                Rutina y día
-                <select id="routineDaySelect"><option value="">Sin días disponibles</option></select>
-              </label>
-              <button id="startSelectedDayBtn" class="button button-secondary button-large" type="button" disabled>Empezar este día</button>
-            </article>
-            <article class="start-option">
-              <span class="exercise-source">Sin planificación</span>
-              <h4>Entrenamiento libre</h4>
-              <p>Añade ejercicios sobre la marcha como hasta ahora.</p>
-              <button id="startFreeSessionBtn" class="button button-primary button-large" type="button">Empezar libre</button>
-            </article>
-          </div>
-        </section>
 
         <section id="routineManager" class="routine-manager">
           <div class="section-heading">
@@ -217,8 +238,24 @@
               <button class="button button-accent" type="submit">Crear rutina</button>
             </form>
           </div>
+          <article id="activeSessionResume" class="active-session-resume surface" hidden>
+            <div>
+              <p class="eyebrow">Entrenamiento en curso</p>
+              <h3 id="activeSessionResumeTitle">Continúa donde lo dejaste</h3>
+              <p id="activeSessionResumeMeta" class="muted"></p>
+            </div>
+            <button id="continueSessionBtn" class="button button-accent" type="button">Continuar entrenamiento</button>
+          </article>
           <datalist id="routineExerciseOptions"></datalist>
           <div id="routineList" class="routine-list"></div>
+          <section class="free-workout-option surface">
+            <div>
+              <p class="eyebrow">Opción secundaria</p>
+              <h3>Entrenamiento libre</h3>
+              <p class="muted">Úsalo solo cuando quieras entrenar sin modificar ni seguir una rutina.</p>
+            </div>
+            <button id="startFreeSessionBtn" class="button button-secondary" type="button">Empezar entrenamiento libre</button>
+          </section>
         </section>
 
         <section id="activeSessionPanel" hidden>
@@ -228,7 +265,10 @@
               <h3 id="activeSessionTitle">Entrenamiento libre</h3>
               <p id="activeSessionMeta" class="muted"></p>
             </div>
-            <button id="finishSessionBtn" class="button button-primary" type="button">Finalizar</button>
+            <div class="session-toolbar-actions">
+              <button id="backToRoutinesBtn" class="button button-quiet" type="button">Ver rutinas</button>
+              <button id="finishSessionBtn" class="button button-primary" type="button">Finalizar</button>
+            </div>
           </div>
 
           <div id="undoBar" class="undo-bar" hidden>
@@ -236,31 +276,16 @@
             <button id="undoSetBtn" class="button button-link" type="button">Deshacer</button>
           </div>
 
-          <section class="rest-timer surface" aria-labelledby="restTimerTitle">
-            <div class="section-heading compact">
-              <div>
-                <p class="eyebrow">Descanso manual</p>
-                <h3 id="restTimerTitle">Temporizador entre series</h3>
-              </div>
-              <strong id="restTimerDisplay" class="timer-display">01:00</strong>
-            </div>
-            <div class="timer-controls">
-              <button class="button button-secondary timer-preset" type="button" data-rest-seconds="30">30 s</button>
-              <button class="button button-secondary timer-preset" type="button" data-rest-seconds="60">1 min</button>
-              <button class="button button-secondary timer-preset" type="button" data-rest-seconds="120">2 min</button>
-              <button class="button button-secondary timer-preset" type="button" data-rest-seconds="180">3 min</button>
-              <button id="restTimerStartBtn" class="button button-accent" type="button">Iniciar</button>
-              <button id="restTimerResetBtn" class="button button-quiet" type="button">Reiniciar</button>
-            </div>
-          </section>
-
           <section class="exercise-picker surface" aria-labelledby="exercisePickerTitle">
             <div class="section-heading compact">
               <div>
-                <p class="eyebrow">Catálogo inicial</p>
-                <h3 id="exercisePickerTitle">Añadir ejercicio</h3>
+                <p class="eyebrow">Solo para esta sesión</p>
+                <h3 id="exercisePickerTitle">Añadir ejercicio extra hoy</h3>
               </div>
-              <span id="catalogCount" class="count-badge">Cargando…</span>
+              <div class="picker-heading-actions">
+                <button id="cancelReplacementBtn" class="button button-quiet" type="button" hidden>Cancelar sustitución</button>
+                <span id="catalogCount" class="count-badge">Cargando…</span>
+              </div>
             </div>
             <div class="catalog-controls">
               <label class="search-field">
@@ -275,9 +300,14 @@
                 Equipo
                 <select id="catalogEquipment"><option value="">Todos</option></select>
               </label>
+              <label>
+                Músculo principal
+                <select id="catalogTarget"><option value="">Todos</option></select>
+              </label>
             </div>
-            <p id="catalogStatus" class="field-help">Selección pequeña del dataset auditado, sin imágenes ni GIF.</p>
+            <p id="catalogStatus" class="field-help">Escribe para buscar. El ejercicio se guardará en el Diario, no en la rutina.</p>
             <div id="catalogResults" class="catalog-results"></div>
+            <div id="catalogResultActions" class="catalog-result-actions"></div>
 
             <div class="personal-exercise">
               <div>
@@ -295,78 +325,35 @@
           <div id="sessionExerciseList" class="session-exercises"></div>
         </section>
 
-        <section class="history-layout">
-          <div class="list-block surface">
-            <div class="section-heading compact">
-              <h3>Sesiones finalizadas</h3>
-              <span class="muted">Últimas 5</span>
-            </div>
-            <ul id="completedSessionList" class="log-list"></ul>
-          </div>
-          <div class="list-block surface">
-            <div class="section-heading compact">
-              <div>
-                <p class="eyebrow">Datos anteriores</p>
-                <h3>Historial del prototipo</h3>
-              </div>
-            </div>
-            <input id="exerciseSearch" type="search" placeholder="Buscar registros antiguos" />
-            <ul id="exerciseHistory" class="log-list spaced"></ul>
+      </section>
+
+      <section id="ajustes" class="panel settings-panel">
+        <div class="section-heading">
+          <div><p class="eyebrow">Cuenta y objetivos</p><h2>Ajustes</h2></div>
+          <button id="settingsCloseBtn" class="button button-quiet" type="button">Cerrar</button>
+        </div>
+        <form id="settingsForm" class="form-grid surface settings-form">
+          <label class="wide">Nombre<input id="profileName" type="text" maxlength="80" placeholder="Tu nombre" /></label>
+          <label>Fecha de nacimiento<input id="profileBirthDate" type="date" /></label>
+          <label>Altura <span>cm</span><input id="profileHeight" type="number" min="50" max="300" step="1" /></label>
+          <label>Peso actual <span>kg</span><input id="profileWeight" type="number" min="20" max="500" step="0.1" /></label>
+          <label>Objetivo de calorías<input id="targetCalories" type="number" min="500" max="10000" step="1" required /></label>
+          <label>Objetivo de proteína <span>g</span><input id="targetProtein" type="number" min="0" max="1000" step="1" required /></label>
+          <label>Objetivo de pasos<input id="targetSteps" type="number" min="0" max="100000" step="1" required /></label>
+          <p class="health-boundary wide">Estos objetivos son manuales. Aurum Fit no diagnostica ni prescribe calorías, entrenamiento o tratamiento médico.</p>
+          <button class="button button-accent wide" type="submit">Guardar ajustes</button>
+        </form>
+        <section class="surface demo-controls">
+          <div><p class="eyebrow">Modo demostración</p><h3>Ver la app con historial completo</h3><p class="muted">Añade rutinas, entrenamientos, comidas, recetas y progreso ficticios. Siempre estarán señalados y pueden retirarse sin borrar tus datos reales.</p></div>
+          <div class="form-actions">
+            <button id="loadDemoBtn" class="button button-secondary" type="button">Cargar datos de ejemplo</button>
+            <button id="removeDemoBtn" class="button button-danger" type="button">Quitar datos de ejemplo</button>
           </div>
         </section>
       </section>
 
-      <section id="progreso" class="panel">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">Descripción, no diagnóstico</p>
-            <h2>Progreso registrado</h2>
-          </div>
-          <p class="section-note">Las tendencias describen tus datos; no determinan por sí solas salud o rendimiento.</p>
-        </div>
-        <div class="progress-grid">
-          <div class="surface table-wrap">
-            <h3>Últimos 14 registros del prototipo</h3>
-            <table>
-              <thead><tr><th>Día</th><th>Peso</th><th>Kcal</th><th>Prot</th><th>Pasos</th></tr></thead>
-              <tbody id="progressRows"></tbody>
-            </table>
-          </div>
-          <div class="surface">
-            <h3>Contexto</h3>
-            <div id="weeklyAdvice" class="advice"></div>
-          </div>
-        </div>
-      </section>
-
-      <section id="ayuda" class="panel">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">Límites claros</p>
-            <h2>Qué hace Aurum Fit</h2>
-          </div>
-        </div>
-        <div class="help-grid">
-          <article class="surface">
-            <span class="help-number">01</span>
-            <h3>Registra</h3>
-            <p>Guarda datos introducidos por ti. No diagnostica lesiones, fatiga ni enfermedades.</p>
-          </article>
-          <article class="surface">
-            <span class="help-number">02</span>
-            <h3>Compara</h3>
-            <p>Muestra referencias históricas comparables, sin afirmar que una cifra aislada sea progreso físico.</p>
-          </article>
-          <article class="surface">
-            <span class="help-number">03</span>
-            <h3>Funciona localmente</h3>
-            <p>Los datos permanecen en este navegador. Exporta copias periódicas para proteger tu historial.</p>
-          </article>
-        </div>
-        <p class="health-note">Ante dolor agudo, síntomas preocupantes o una lesión, detén la actividad y consulta a un profesional cualificado.</p>
-      </section>
     </main>
 
-    <script type="module" src="app.js?v=13"></script>
+    <script type="module" src="app.js?v=19"></script>
   </body>
 </html>

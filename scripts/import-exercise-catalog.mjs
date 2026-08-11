@@ -11,7 +11,7 @@ if (!sourceFile || !sourceCommit) {
   );
 }
 
-const selection = [
+const curatedNames = new Map([
   ["0025", "Press de banca con barra"],
   ["0314", "Press inclinado con mancuernas"],
   ["0576", "Press de pecho en máquina"],
@@ -35,7 +35,7 @@ const selection = [
   ["0241", "Extensión de tríceps en polea"],
   ["1373", "Elevación de gemelos de pie"],
   ["0276", "Dead bug"],
-];
+]);
 
 const excludedRecords = [
   {
@@ -59,13 +59,59 @@ const categoryTranslations = {
 };
 
 const equipmentTranslations = {
+  assisted: "Asistido",
+  band: "Banda",
   barbell: "Barra",
   "body weight": "Peso corporal",
+  "bosu ball": "Bosu",
   cable: "Polea",
   dumbbell: "Mancuernas",
+  "elliptical machine": "Elíptica",
+  "ez barbell": "Barra EZ",
+  hammer: "Martillo",
+  kettlebell: "Kettlebell",
   "leverage machine": "Máquina",
+  "medicine ball": "Balón medicinal",
+  "olympic barbell": "Barra olímpica",
+  "resistance band": "Banda de resistencia",
+  roller: "Rodillo",
+  rope: "Cuerda",
+  "skierg machine": "Máquina SkiErg",
   "sled machine": "Prensa/máquina de trineo",
+  "smith machine": "Máquina Smith",
+  "stability ball": "Fitball",
+  "stationary bike": "Bicicleta estática",
+  "stepmill machine": "Máquina de escaleras",
+  tire: "Neumático",
+  "trap bar": "Barra hexagonal",
+  "upper body ergometer": "Ergómetro de tren superior",
+  weighted: "Lastrado",
+  "wheel roller": "Rueda abdominal",
 };
+
+const muscleTranslations = {
+  abductors: "Abductores",
+  abs: "Abdominales",
+  adductors: "Aductores",
+  biceps: "Bíceps",
+  calves: "Gemelos",
+  "cardiovascular system": "Sistema cardiovascular",
+  delts: "Deltoides",
+  forearms: "Antebrazos",
+  glutes: "Glúteos",
+  hamstrings: "Isquiotibiales",
+  lats: "Dorsales",
+  "levator scapulae": "Elevador de la escápula",
+  pectorals: "Pectorales",
+  quads: "Cuádriceps",
+  "serratus anterior": "Serrato anterior",
+  spine: "Columna",
+  traps: "Trapecios",
+  triceps: "Tríceps",
+  "upper back": "Espalda superior",
+};
+
+const preferredDuplicateIds = new Set(["0576"]);
 
 function normalize(value) {
   return value.trim().replace(/\s+/g, " ").toLocaleLowerCase("en");
@@ -99,26 +145,54 @@ const exactDuplicateGroups = [...duplicateNames.entries()]
   .filter(([, duplicateIds]) => duplicateIds.length > 1)
   .map(([key, duplicateIds]) => ({ key, ids: duplicateIds }));
 
-const selected = selection.map(([sourceId, nameEs]) => {
-  const exercise = source.find((candidate) => candidate.id === sourceId);
-  if (!exercise) throw new Error(`No existe el ejercicio seleccionado ${sourceId}.`);
-  if (!exercise.instructions?.es) {
-    throw new Error(`Faltan instrucciones en español para ${sourceId}.`);
+const duplicateExclusions = exactDuplicateGroups.flatMap(({ key, ids: duplicateIds }) => {
+  const preferred = duplicateIds.find((id) => preferredDuplicateIds.has(id))
+    ?? duplicateIds.slice().sort()[0];
+  return duplicateIds
+    .filter((id) => id !== preferred)
+    .map((sourceId) => ({ sourceId, duplicateOf: preferred, key }));
+});
+const excludedIds = new Set([
+  ...excludedRecords.map((record) => record.sourceId),
+  ...duplicateExclusions.map((record) => record.sourceId),
+]);
+
+for (const sourceId of curatedNames.keys()) {
+  if (!source.some((candidate) => candidate.id === sourceId)) {
+    throw new Error(`No existe el ejercicio curado ${sourceId}.`);
   }
+  if (excludedIds.has(sourceId)) {
+    throw new Error(`El ejercicio curado ${sourceId} quedó excluido por la política.`);
+  }
+}
+
+const selected = source.filter((exercise) => !excludedIds.has(exercise.id)).map((exercise) => {
+  if (!exercise.instructions?.es) {
+    throw new Error(`Faltan instrucciones en español para ${exercise.id}.`);
+  }
+  const curatedName = curatedNames.get(exercise.id);
+  const categoryEs = categoryTranslations[exercise.category] ?? exercise.category;
+  const equipmentEs = equipmentTranslations[exercise.equipment] ?? exercise.equipment;
+  const targetEs = muscleTranslations[exercise.target] ?? exercise.target;
+  const muscleGroupEs = muscleTranslations[exercise.muscle_group] ?? exercise.muscle_group;
 
   return {
-    id: `dataset-${sourceId}`,
-    sourceId,
-    nameEs,
+    id: `dataset-${exercise.id}`,
+    sourceId: exercise.id,
+    nameEs: curatedName ?? exercise.name,
+    nameLocale: curatedName ? "es" : "en",
     nameOriginal: exercise.name,
     category: exercise.category,
-    categoryEs: categoryTranslations[exercise.category] ?? exercise.category,
+    categoryEs,
     bodyPart: exercise.body_part,
     equipment: exercise.equipment,
-    equipmentEs: equipmentTranslations[exercise.equipment] ?? exercise.equipment,
+    equipmentEs,
     target: exercise.target,
+    targetEs,
     muscleGroup: exercise.muscle_group,
+    muscleGroupEs,
     secondaryMuscles: exercise.secondary_muscles,
+    searchAliasesEs: [...new Set([categoryEs, equipmentEs, targetEs, muscleGroupEs])],
     instructionsEs: exercise.instructions.es,
     instructionStepsEs: exercise.instruction_steps?.es ?? [],
     measurementType: "weight_reps",
@@ -140,9 +214,11 @@ const payload = {
     copyright: "Copyright (c) 2026 Hasan Emir Yıldırım",
   },
   policy: {
-    selection: "Muestra manual para los usuarios iniciales; no es el catálogo completo.",
+    selection: "Catálogo completo del commit auditado, sin duplicados exactos ni registros excluidos.",
     excludedRecords,
+    duplicateExclusions,
     excludedFields: ["image", "gif_url", "media_id", "attribution"],
+    naming: "Los nombres españoles curados se conservan; el resto usa el nombre original inglés hasta su revisión.",
     instructionsReview: "pending_professional_review",
   },
   audit: {
@@ -158,5 +234,6 @@ fs.writeFileSync(outputFile, `${JSON.stringify(payload, null, 2)}\n`);
 
 console.log(
   `Generados ${selected.length} ejercicios de ${source.length}; `
-  + `${exactDuplicateGroups.length} grupos duplicados detectados. Sin campos multimedia.`,
+  + `${duplicateExclusions.length} duplicados exactos y ${excludedRecords.length} registros excluidos. `
+  + "Sin campos multimedia.",
 );

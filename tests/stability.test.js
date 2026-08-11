@@ -61,8 +61,8 @@ function loadServiceWorker({ oldCaches = [] } = {}) {
     const url = String(request.url ?? "");
     return {
       ok: true,
-      version: request.mode === "navigate" || request.destination === "document" || url === "./" || url.includes("?v=13")
-        ? "v13"
+      version: request.mode === "navigate" || request.destination === "document" || url === "./" || url.includes("?v=19")
+        ? "v19"
         : "v9",
       clone() { return this; },
     };
@@ -87,7 +87,7 @@ function loadServiceWorker({ oldCaches = [] } = {}) {
   return { listeners, opened, deleted, puts, fetched, legacyCacheHits, legacyWorker, navigations };
 }
 
-test("actualiza desde una caché v9 y precarga un shell coherente v13", async () => {
+test("actualiza desde una caché v9 y precarga un shell coherente v19", async () => {
   const worker = loadServiceWorker({ oldCaches: ["aurum-fit-shell-v1", "aurum-fit-shell-v9"] });
   let activation;
   worker.listeners.activate({ waitUntil: (promise) => { activation = promise; } });
@@ -99,12 +99,12 @@ test("actualiza desde una caché v9 y precarga un shell coherente v13", async ()
   worker.listeners.install({ waitUntil: (promise) => { installation = promise; } });
   await installation;
   assert.equal(worker.fetched.length, 7);
-  assert.ok(worker.fetched.every((request) => request.url.includes("?v=13")));
+  assert.ok(worker.fetched.every((request) => request.url.includes("?v=19")));
   assert.deepEqual(worker.legacyCacheHits, []);
-  assert.ok(worker.puts.every(({ response }) => response.version === "v13"));
+  assert.ok(worker.puts.every(({ response }) => response.version === "v19"));
 });
 
-test("la navegación antigua v9 converge a v13 tras reclamar el cliente", async () => {
+test("la navegación antigua v9 converge a v19 tras reclamar el cliente", async () => {
   const worker = loadServiceWorker({ oldCaches: ["aurum-fit-shell-v9"] });
   const oldResponse = worker.legacyWorker.intercept({ url: "./" });
   assert.equal(oldResponse.version, "v9");
@@ -119,7 +119,7 @@ test("la navegación antigua v9 converge a v13 tras reclamar el cliente", async 
     respondWith: (promise) => { responsePromise = promise; },
   });
   const response = await responsePromise;
-  assert.equal(response.version, "v13");
+  assert.equal(response.version, "v19");
   assert.deepEqual(worker.navigations, ["http://localhost:8000/"]);
 });
 test("prioriza la red para documentos y actualiza la caché activa", async () => {
@@ -150,4 +150,68 @@ test("Importar deja el input fuera del foco y la actualización offline no silen
   assert.match(app, /fetch\("service-worker\.js", \{ cache: "no-store" \}\)/);
   assert.match(app, /console\.error\("No se pudo actualizar el service worker\./);
   assert.doesNotMatch(app, /swReloadKey/);
+});
+
+test("la navegación principal tiene tres destinos y Diario es el inicio", () => {
+  const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const tabs = [...html.matchAll(/data-tab="([^"]+)"/g)].map((match) => match[1]);
+
+  assert.deepEqual(tabs, ["entreno", "diario", "comida"]);
+  assert.match(html, /<section id="diario" class="panel active">/);
+  assert.match(app, /window\.location\.hash\.slice\(1\) \|\| "diario"/);
+});
+
+test("el catálogo espera una búsqueda y la sesión distingue los tres tipos de serie", () => {
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  assert.match(app, /No mostramos todo el catálogo de golpe/);
+  assert.match(app, /new Option\("Efectiva", "effective"\)/);
+  assert.match(app, /new Option\("Aproximación", "approach"\)/);
+  assert.match(app, /new Option\("Calentamiento", "warmup"\)/);
+});
+
+test("la interfaz limita el catálogo y coloca un temporizador dentro del ejercicio abierto", () => {
+  const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  assert.match(app, /let catalogResultLimit = 4/);
+  assert.match(app, /Ver todos \(\$\{matches\.length\.toLocaleString/);
+  assert.match(app, /createExerciseRestTimer\(sessionExercise\.id\)/);
+  assert.match(app, /document\.querySelectorAll\("\.session-exercise\[open\]"\)/);
+  assert.doesNotMatch(html, /id="restTimerDisplay"/);
+});
+
+test("Diario, demostración, etiquetas y ajustes tienen una base visible y separada", () => {
+  const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  assert.match(html, /id="weeklyRingValue"/);
+  assert.match(html, /id="dashboardWorkoutExercises"/);
+  assert.match(html, /id="labelPhoto"[^>]*capture="environment"/);
+  assert.match(html, /id="ajustes" class="panel settings-panel"/);
+  assert.match(app, /seedDemoData\(next\)/);
+  assert.match(app, /next\.meta\.demoDismissed = true/);
+});
+
+test("Entrenamiento prioriza rutinas y deja sesión libre e historial fuera del flujo principal", () => {
+  const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const routinePosition = html.indexOf('id="routineManager"');
+  const freePosition = html.indexOf('id="startFreeSessionBtn"');
+  assert.ok(routinePosition >= 0 && freePosition > routinePosition);
+  assert.match(html, /id="activeSessionResume"/);
+  assert.match(html, /id="continueSessionBtn"/);
+  assert.match(html, /id="backToRoutinesBtn"/);
+  assert.doesNotMatch(html, /id="completedSessionList"/);
+  assert.doesNotMatch(html, /id="exerciseHistory"/);
+  assert.match(app, /let trainingView = "routines"/);
+  assert.match(app, /\$\("routineManager"\)\.hidden = trainingView !== "routines"/);
+});
+
+test("el anillo calcula cumplimiento diario y calorías no reutiliza el texto de proteína", () => {
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  assert.match(html, /objetivos del día/);
+  assert.match(app, /const dailyGoalRatios = \[/);
+  assert.match(app, /\$\("weeklyRingValue"\)\.textContent = `\$\{dailyProgress\}%`/);
+  assert.match(app, /Quedan \$\{remainingCalories\.toLocaleString/);
+  assert.doesNotMatch(app, /dashboardNutritionDetail"\)\.textContent = `\$\{selectedTotals\.protein/);
 });

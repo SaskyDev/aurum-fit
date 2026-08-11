@@ -124,7 +124,7 @@ Ejecutar:
 node --test
 ```
 
-Resultado esperado en este checkpoint: 23 pruebas superadas usando el patrón
+Resultado esperado en este checkpoint: 36 pruebas superadas usando el patrón
 explícito `tests/*.test.js`.
 
 ## Incremento actual: días, RIR, temporizador y Diario
@@ -134,10 +134,37 @@ explícito `tests/*.test.js`.
 2. Asigna días distintos y abre `Diario / Progreso`: debe aparecer la rutina de
    hoy cuando coincida con el día actual.
 3. Inicia una sesión y comprueba que el formulario muestra RIR de 0 a 5.
-4. Selecciona 30 s, 1, 2 y 3 min; `Iniciar`, `Pausar` y `Reiniciar` deben
-   actualizar el contador sin guardar datos de entrenamiento.
+4. Abre un ejercicio y selecciona 30 s, 1, 2 y 3 min; `Iniciar`, `Pausar` y
+   `Reiniciar` deben actualizar su contador. Al abrir otro ejercicio, el anterior
+   se recoge y su temporizador se pausa.
 5. Guarda métricas en `Editar métricas del día`: la línea aparece en `Diario
    reciente` y los pasos se reflejan en el resumen.
+
+## Demostración, ajustes y etiquetas
+
+1. En una instalación limpia, comprobar que aparece `Datos de ejemplo` y que el
+   Diario muestra pasos, comidas, una rutina para el día, gráfica e historial.
+2. Abrir `Ajustes > Quitar datos de ejemplo`: deben desaparecer solo las
+   entidades ficticias. Recargar y confirmar que no se vuelven a crear solas.
+3. Volver a cargar la demostración y comprobar que existen tres rutinas y seis
+   días de entrenamiento, sin dos días de rutinas distintas asignados al mismo
+   día de la semana.
+4. Cambiar calorías, proteína y pasos en Ajustes: el Diario y Nutrición deben usar
+   los nuevos objetivos sin calcular ni recomendar valores automáticamente.
+5. Añadir una etiqueta con producto, marca, valores por 100 g y foto. Tras
+   recargar, deben conservarse la tarjeta y una copia reducida de la imagen.
+6. Seleccionar una fotografía enorme: si la reducción aún supera el límite, la
+   aplicación debe explicarlo sin perder los datos ya guardados.
+
+## Sesión en acordeón
+
+1. Empezar un día con al menos tres ejercicios: solo el primero queda abierto.
+2. Guardar una serie y abrir el segundo ejercicio: el primero se recoge y el
+   segundo se abre; al volver al primero, la serie continúa visible.
+3. Iniciar el temporizador del primer ejercicio y abrir el segundo: el contador
+   anterior debe pausarse y solo puede quedar un temporizador activo.
+4. Recargar durante la sesión: las series reaparecen porque son datos guardados;
+   el temporizador se reinicia porque es una ayuda efímera, no historial.
 
 ## Regresiones de este checkpoint de estabilidad
 
@@ -148,9 +175,9 @@ explícito `tests/*.test.js`.
    `aurum-fit-shell-v9` con la copia antigua de `index.html`, estilos, scripts y
    catálogo.
 2. Recargar con conexión y comprobar que la interfaz actual se muestra tras la
-   activación del worker nuevo, sin mezclar recursos v9 y v13.
+   activación del worker nuevo, sin mezclar recursos v9 y v19.
 3. En `Application > Cache Storage`, verificar que queda
-   `aurum-fit-shell-v13` y que la caché v9 ha sido eliminada al activarse el
+   `aurum-fit-shell-v19` y que la caché v9 ha sido eliminada al activarse el
    worker nuevo.
 4. Cortar la conexión, recargar y comprobar que la interfaz actual sigue
    disponible desde la caché, sin mezclar los archivos versionados antiguos.
@@ -159,12 +186,24 @@ La nueva precarga usa URLs versionadas y se escribe en una caché nueva antes de
 activar el worker. Tras `clients.claim()`, el worker navega una vez las ventanas
 que ya estaban abiertas; así no depende de que el código antiguo capture
 `controllerchange`. El documento se solicita primero a la red para no mostrar
-una interfaz vieja; si no hay conexión se usa el `index.html?v=13` de la caché
+una interfaz vieja; si no hay conexión se usa el `index.html?v=19` de la caché
 activa. El catálogo también usa
-`exercises.es.json?v=13`, por lo que la muestra de 23 ejercicios no puede
-reutilizar la respuesta v9 de 24 ejercicios.
+`exercises.es.json?v=19`, por lo que el catálogo deduplicado de 1.317 ejercicios
+no puede reutilizar una respuesta antigua.
 
 ### Importación, validación, búsqueda y navegación
+
+- Iniciar una sesión y abrir el selector de ejercicio: sin búsqueda ni filtros,
+  debe indicar `1.317 disponibles` sin renderizar una lista completa.
+- Buscar `press`: debe mostrar cuatro tarjetas al principio, colocando primero
+  los nombres españoles curados. `Ver 4 más` amplía por bloques y `Ver todos`
+  revela el total de coincidencias.
+- Buscar `pecho` y `bíceps`: deben aparecer resultados por nombre, categoría o
+  músculo aunque algunos nombres de ejercicios continúen en inglés.
+- Filtrar por categoría, equipo y músculo principal en móvil: no debe aparecer
+  desplazamiento horizontal.
+- En el editor de rutina, escribir dos o más caracteres: el `datalist` debe
+  contener como máximo veinte sugerencias, no los 1.317 ejercicios.
 
 - Pulsar `Importar` con Tab y Espacio/Enter: el control recibe foco visible y
   abre el selector de archivos con un nombre accesible.
@@ -174,8 +213,8 @@ reutilizar la respuesta v9 de 24 ejercicios.
   debe sustituirse por un error que indique que las repeticiones deben ser al
   menos 1.
 - Buscar `jalon`: debe encontrar `Jalón al pecho en polea`.
-- Desde `Diario`, pulsar `Aurum Fit, inicio`: la URL termina en `#entreno`, la
-  pestaña Entreno queda activa y Diario deja de mostrarse.
+- Desde cualquier sección, pulsar `Aurum Fit, inicio`: la URL termina en
+  `#diario`, Diario queda activo y el resto de paneles deja de mostrarse.
 
 ### Exportación (QA-EXPORT-001)
 
