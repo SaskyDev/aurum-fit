@@ -8,9 +8,9 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Aurum Fit" />
     <title>Aurum Fit</title>
-    <link rel="manifest" href="manifest.json?v=19" />
-    <link rel="apple-touch-icon" href="icon.svg?v=19" />
-    <link rel="stylesheet" href="styles.css?v=19" />
+    <link rel="manifest" href="manifest.json?v=26" />
+    <link rel="apple-touch-icon" href="icon.svg?v=26" />
+    <link rel="stylesheet" href="styles.css?v=26" />
   </head>
   <body>
     <header class="topbar">
@@ -22,7 +22,6 @@
         </span>
       </a>
       <div class="top-actions">
-        <span id="demoBadge" class="demo-badge" hidden>Datos de ejemplo</span>
         <span class="local-badge"><span aria-hidden="true">●</span> Guardado local</span>
         <button id="settingsBtn" class="button button-quiet icon-button" type="button" aria-label="Abrir configuración">⚙</button>
         <button id="exportBtn" class="button button-quiet" type="button">Exportar</button>
@@ -60,8 +59,8 @@
       <section id="diario" class="panel active">
         <header class="diary-header">
           <div>
-            <p class="eyebrow">Hoy</p>
-            <h2 id="diaryDateTitle">Tu diario</h2>
+            <h2>Hoy</h2>
+            <p id="diaryDateTitle" class="diary-date-subtitle">Tu diario</p>
           </div>
           <label class="date-field">Fecha<input id="entryDate" type="date" /></label>
         </header>
@@ -69,18 +68,18 @@
           <div class="weekly-ring" id="weeklyRing">
             <div>
               <strong id="weeklyRingValue">0 / 0</strong>
-              <span>objetivos del día</span>
+              <span id="dailyGoalCount">0 de 0 objetivos</span>
             </div>
           </div>
           <div class="daily-metric-list">
             <article class="daily-metric daily-metric-calories">
-              <div><span aria-hidden="true">◉</span><small>Calorías</small></div>
+              <div><span class="metric-icon" aria-hidden="true">🔥</span><small>Calorías</small></div>
               <strong id="dashboardNutritionValue">0 / 2.200 kcal</strong>
               <progress id="dashboardCaloriesProgress" max="2200" value="0"></progress>
               <p id="dashboardNutritionDetail" class="muted">Objetivo y consumo registrados manualmente.</p>
             </article>
             <article class="daily-metric daily-metric-steps">
-              <div><span aria-hidden="true">◆</span><small>Pasos</small></div>
+              <div><span class="metric-icon" aria-hidden="true">👟</span><small>Pasos</small></div>
               <strong id="dashboardActivityValue">0 / 10.000 pasos</strong>
               <progress id="dashboardStepsProgress" max="10000" value="0"></progress>
               <p id="dashboardActivityDetail" class="muted">Añade tus pasos en el registro diario.</p>
@@ -227,34 +226,55 @@
         <p id="trainingNotice" class="notice" role="status" aria-live="polite" hidden></p>
 
         <section id="routineManager" class="routine-manager">
-          <div class="section-heading">
-            <div>
-              <p class="eyebrow">Plan editable</p>
-              <h2>Tus rutinas</h2>
+          <div id="routineOverview">
+            <div class="section-heading compact">
+              <div><p class="eyebrow">Mis planes</p><h2>Tus rutinas</h2></div>
+              <span id="routineCount" class="count-badge">0 rutinas</span>
             </div>
-            <form id="createRoutineForm" class="inline-form surface routine-create-form">
-              <label class="sr-only" for="routineName">Nombre de la rutina</label>
-              <input id="routineName" type="text" minlength="2" maxlength="80" placeholder="Ej. Torso y pierna" required />
-              <button class="button button-accent" type="submit">Crear rutina</button>
-            </form>
+            <article id="activeSessionResume" class="active-session-resume surface" hidden>
+              <div>
+                <p class="eyebrow">Entrenamiento en curso</p>
+                <h3 id="activeSessionResumeTitle">Continúa donde lo dejaste</h3>
+                <p id="activeSessionResumeMeta" class="muted"></p>
+              </div>
+              <div class="active-session-actions">
+                <button id="discardSessionFromRoutinesBtn" class="button button-danger" type="button">Descartar</button>
+                <button id="continueSessionBtn" class="button button-accent" type="button">Continuar entrenamiento</button>
+              </div>
+            </article>
+            <div id="routineList" class="routine-list"></div>
+            <details id="createRoutineCard" class="create-routine-card surface">
+              <summary><span class="create-routine-plus" aria-hidden="true">+</span><span><strong>Crear nueva rutina</strong><small>Elige nombre y días de repetición</small></span></summary>
+              <form id="createRoutineForm" class="create-routine-form">
+                <label>Nombre de la rutina<input id="routineName" type="text" minlength="2" maxlength="80" placeholder="Ej. Push Pull Legs" required /></label>
+                <fieldset class="weekday-fieldset">
+                  <legend>¿Qué días se repite?</legend>
+                  <div id="newRoutineWeekdays" class="weekday-selector" aria-label="Días de la nueva rutina"></div>
+                  <small>Los días ocupados por una rutina real no se pueden repetir.</small>
+                </fieldset>
+                <button class="button button-accent button-large" type="submit">Crear rutina</button>
+              </form>
+            </details>
+            <button id="startFreeSessionBtn" class="free-routine-card surface" type="button">
+              <span class="routine-icon routine-icon-free" aria-hidden="true">＋</span>
+              <span><strong>Entrenamiento libre</strong><small>Monta una sesión puntual sin cambiar tus rutinas</small></span>
+              <span class="routine-card-chevron" aria-hidden="true">›</span>
+            </button>
           </div>
-          <article id="activeSessionResume" class="active-session-resume surface" hidden>
-            <div>
-              <p class="eyebrow">Entrenamiento en curso</p>
-              <h3 id="activeSessionResumeTitle">Continúa donde lo dejaste</h3>
-              <p id="activeSessionResumeMeta" class="muted"></p>
-            </div>
-            <button id="continueSessionBtn" class="button button-accent" type="button">Continuar entrenamiento</button>
-          </article>
-          <datalist id="routineExerciseOptions"></datalist>
-          <div id="routineList" class="routine-list"></div>
-          <section class="free-workout-option surface">
-            <div>
-              <p class="eyebrow">Opción secundaria</p>
-              <h3>Entrenamiento libre</h3>
-              <p class="muted">Úsalo solo cuando quieras entrenar sin modificar ni seguir una rutina.</p>
-            </div>
-            <button id="startFreeSessionBtn" class="button button-secondary" type="button">Empezar entrenamiento libre</button>
+
+          <section id="routineDetailPanel" class="routine-detail-panel" hidden>
+            <button id="routineDetailBackBtn" class="button button-quiet back-button" type="button">← Todas las rutinas</button>
+            <header class="routine-detail-header surface">
+              <span id="routineDetailIcon" class="routine-icon" aria-hidden="true">◆</span>
+              <div><p class="eyebrow">Detalle de rutina</p><h2 id="routineDetailTitle">Rutina</h2><p id="routineDetailMeta" class="muted"></p></div>
+            </header>
+            <datalist id="routineExerciseOptions"></datalist>
+            <div id="routineDetailDays" class="routine-day-list"></div>
+            <form id="addRoutineDayForm" class="add-routine-day surface">
+              <div><strong>+ Añadir día de entrenamiento</strong><small>Selecciona un día libre; el nombre se crea automáticamente.</small></div>
+              <div id="addRoutineDayWeekdays" class="weekday-selector compact-weekdays" aria-label="Nuevo día de entrenamiento"></div>
+              <button class="button button-secondary" type="submit">Añadir día</button>
+            </form>
           </section>
         </section>
 
@@ -267,6 +287,7 @@
             </div>
             <div class="session-toolbar-actions">
               <button id="backToRoutinesBtn" class="button button-quiet" type="button">Ver rutinas</button>
+              <button id="discardSessionBtn" class="button button-danger" type="button">Descartar sesión</button>
               <button id="finishSessionBtn" class="button button-primary" type="button">Finalizar</button>
             </div>
           </div>
@@ -276,53 +297,59 @@
             <button id="undoSetBtn" class="button button-link" type="button">Deshacer</button>
           </div>
 
-          <section class="exercise-picker surface" aria-labelledby="exercisePickerTitle">
-            <div class="section-heading compact">
-              <div>
-                <p class="eyebrow">Solo para esta sesión</p>
-                <h3 id="exercisePickerTitle">Añadir ejercicio extra hoy</h3>
-              </div>
-              <div class="picker-heading-actions">
-                <button id="cancelReplacementBtn" class="button button-quiet" type="button" hidden>Cancelar sustitución</button>
-                <span id="catalogCount" class="count-badge">Cargando…</span>
-              </div>
-            </div>
-            <div class="catalog-controls">
-              <label class="search-field">
-                <span>Buscar por nombre, músculo o equipo</span>
-                <input id="catalogSearch" type="search" placeholder="Ej. press banca" autocomplete="off" />
-              </label>
-              <label>
-                Categoría
-                <select id="catalogCategory"><option value="">Todas</option></select>
-              </label>
-              <label>
-                Equipo
-                <select id="catalogEquipment"><option value="">Todos</option></select>
-              </label>
-              <label>
-                Músculo principal
-                <select id="catalogTarget"><option value="">Todos</option></select>
-              </label>
-            </div>
-            <p id="catalogStatus" class="field-help">Escribe para buscar. El ejercicio se guardará en el Diario, no en la rutina.</p>
-            <div id="catalogResults" class="catalog-results"></div>
-            <div id="catalogResultActions" class="catalog-result-actions"></div>
-
-            <div class="personal-exercise">
-              <div>
-                <strong>¿No aparece?</strong>
-                <span>Crea un ejercicio personal; se reutilizará por nombre.</span>
-              </div>
-              <form id="addExerciseForm" class="inline-form">
-                <label class="sr-only" for="newExerciseName">Nombre del ejercicio personal</label>
-                <input id="newExerciseName" type="text" minlength="2" maxlength="80" placeholder="Nombre del ejercicio" required />
-                <button class="button button-secondary" type="submit">Añadir personal</button>
-              </form>
-            </div>
-          </section>
-
           <div id="sessionExerciseList" class="session-exercises"></div>
+
+          <details class="exercise-picker surface">
+            <summary class="exercise-picker-summary">
+              <span aria-hidden="true">＋</span>
+              <span><strong>Añadir ejercicio solo hoy</strong><small>No modifica la rutina original</small></span>
+            </summary>
+            <div class="exercise-picker-content">
+              <div class="section-heading compact">
+                <div>
+                  <p class="eyebrow">Solo para esta sesión</p>
+                  <h3 id="exercisePickerTitle">Añadir ejercicio extra hoy</h3>
+                </div>
+                <div class="picker-heading-actions">
+                  <button id="cancelReplacementBtn" class="button button-quiet" type="button" hidden>Cancelar alternativa</button>
+                  <span id="catalogCount" class="count-badge">Cargando…</span>
+                </div>
+              </div>
+              <div class="catalog-controls">
+                <label class="search-field">
+                  <span>Buscar por nombre, músculo o equipo</span>
+                  <input id="catalogSearch" type="search" placeholder="Ej. press banca" autocomplete="off" />
+                </label>
+                <label>
+                  Categoría
+                  <select id="catalogCategory"><option value="">Todas</option></select>
+                </label>
+                <label>
+                  Equipo
+                  <select id="catalogEquipment"><option value="">Todos</option></select>
+                </label>
+                <label>
+                  Músculo principal
+                  <select id="catalogTarget"><option value="">Todos</option></select>
+                </label>
+              </div>
+              <p id="catalogStatus" class="field-help">Escribe para buscar. El ejercicio se guardará en el Diario, no en la rutina.</p>
+              <div id="catalogResults" class="catalog-results"></div>
+              <div id="catalogResultActions" class="catalog-result-actions"></div>
+
+              <div class="personal-exercise">
+                <div>
+                  <strong>¿No aparece?</strong>
+                  <span>Crea un ejercicio personal; se reutilizará por nombre.</span>
+                </div>
+                <form id="addExerciseForm" class="inline-form">
+                  <label class="sr-only" for="newExerciseName">Nombre del ejercicio personal</label>
+                  <input id="newExerciseName" type="text" minlength="2" maxlength="80" placeholder="Nombre del ejercicio" required />
+                  <button class="button button-secondary" type="submit">Añadir personal</button>
+                </form>
+              </div>
+            </div>
+          </details>
         </section>
 
       </section>
@@ -343,17 +370,10 @@
           <p class="health-boundary wide">Estos objetivos son manuales. Aurum Fit no diagnostica ni prescribe calorías, entrenamiento o tratamiento médico.</p>
           <button class="button button-accent wide" type="submit">Guardar ajustes</button>
         </form>
-        <section class="surface demo-controls">
-          <div><p class="eyebrow">Modo demostración</p><h3>Ver la app con historial completo</h3><p class="muted">Añade rutinas, entrenamientos, comidas, recetas y progreso ficticios. Siempre estarán señalados y pueden retirarse sin borrar tus datos reales.</p></div>
-          <div class="form-actions">
-            <button id="loadDemoBtn" class="button button-secondary" type="button">Cargar datos de ejemplo</button>
-            <button id="removeDemoBtn" class="button button-danger" type="button">Quitar datos de ejemplo</button>
-          </div>
-        </section>
       </section>
 
     </main>
 
-    <script type="module" src="app.js?v=19"></script>
+    <script type="module" src="app.js?v=26"></script>
   </body>
 </html>

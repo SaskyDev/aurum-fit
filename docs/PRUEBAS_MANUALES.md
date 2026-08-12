@@ -140,15 +140,14 @@ explícito `tests/*.test.js`.
 5. Guarda métricas en `Editar métricas del día`: la línea aparece en `Diario
    reciente` y los pasos se reflejan en el resumen.
 
-## Demostración, ajustes y etiquetas
+## Limpieza publicada, ajustes y etiquetas
 
-1. En una instalación limpia, comprobar que aparece `Datos de ejemplo` y que el
-   Diario muestra pasos, comidas, una rutina para el día, gráfica e historial.
-2. Abrir `Ajustes > Quitar datos de ejemplo`: deben desaparecer solo las
-   entidades ficticias. Recargar y confirmar que no se vuelven a crear solas.
-3. Volver a cargar la demostración y comprobar que existen tres rutinas y seis
-   días de entrenamiento, sin dos días de rutinas distintas asignados al mismo
-   día de la semana.
+1. Actualizar una instalación con datos reales y demostración: deben desaparecer
+   las entidades `isDemo`, sus sesiones derivadas y la rutina llamada exactamente
+   `Rutina de prueba`, conservando el resto del Diario, rutinas, series y comidas.
+2. Recargar: los datos ficticios no deben volver a crearse y la limpieza no debe
+   repetirse innecesariamente.
+3. Comprobar que `aurum-fit-v2-backup` conserva el estado anterior a la limpieza.
 4. Cambiar calorías, proteína y pasos en Ajustes: el Diario y Nutrición deben usar
    los nuevos objetivos sin calcular ni recomendar valores automáticamente.
 5. Añadir una etiqueta con producto, marca, valores por 100 g y foto. Tras
@@ -166,6 +165,30 @@ explícito `tests/*.test.js`.
 4. Recargar durante la sesión: las series reaparecen porque son datos guardados;
    el temporizador se reinicia porque es una ayuda efímera, no historial.
 
+## Rutinas y descanso personalizable
+
+1. En Entrenamiento, comprobar que primero aparecen todas las rutinas, después
+   `Crear nueva rutina` y, como última opción, `Entrenamiento libre`.
+2. Abrir `Crear nueva rutina`: seleccionar varios días como en una alarma y
+   comprobar que un día ocupado por otra rutina real está deshabilitado.
+3. Crear la rutina: cada día seleccionado aparece una sola vez en su tarjeta y
+   no vuelve a pedirse dentro del detalle.
+4. Entrar en una rutina y abrir un día: los ejercicios se editan antes de
+   empezar. Iniciar el día debe abrir la sesión activa, no otro editor.
+   Al añadir un ejercicio solo se pide su nombre, sin series ni repeticiones.
+5. En la sesión, comprobar que `Añadir ejercicio solo hoy` aparece plegado al
+   final y que añadirlo no modifica la rutina original.
+6. Dentro del ejercicio abierto, pulsar `+ Personalizar`, introducir `7:43` y
+   aplicar: el contador debe mostrar `07:43`. Valores vacíos, negativos, 60
+   segundos o más de `59:59` deben rechazarse con un mensaje comprensible.
+7. Dejar una sesión en curso, volver a Rutinas y comprobar que todas las demás
+   muestran por qué no pueden empezar. Pulsar `Descartar`, cancelar una vez y
+   confirmar después: la sesión desaparece y las rutinas vuelven a poder iniciarse.
+8. Abrir un ejercicio sin series: las acciones alternativas no deben competir
+   con el registro principal. Abrir `¿No puedes realizar este ejercicio hoy?` y
+   comprobar que permite elegir una alternativa o marcarlo como no realizado.
+   Esta última opción debe ofrecer después `Volver a incluir hoy`.
+
 ## Regresiones de este checkpoint de estabilidad
 
 ### Actualización PWA desde una caché antigua
@@ -175,9 +198,9 @@ explícito `tests/*.test.js`.
    `aurum-fit-shell-v9` con la copia antigua de `index.html`, estilos, scripts y
    catálogo.
 2. Recargar con conexión y comprobar que la interfaz actual se muestra tras la
-   activación del worker nuevo, sin mezclar recursos v9 y v19.
+   activación del worker nuevo, sin mezclar recursos v9 y v26.
 3. En `Application > Cache Storage`, verificar que queda
-   `aurum-fit-shell-v19` y que la caché v9 ha sido eliminada al activarse el
+   `aurum-fit-shell-v26` y que la caché v9 ha sido eliminada al activarse el
    worker nuevo.
 4. Cortar la conexión, recargar y comprobar que la interfaz actual sigue
    disponible desde la caché, sin mezclar los archivos versionados antiguos.
@@ -186,9 +209,9 @@ La nueva precarga usa URLs versionadas y se escribe en una caché nueva antes de
 activar el worker. Tras `clients.claim()`, el worker navega una vez las ventanas
 que ya estaban abiertas; así no depende de que el código antiguo capture
 `controllerchange`. El documento se solicita primero a la red para no mostrar
-una interfaz vieja; si no hay conexión se usa el `index.html?v=19` de la caché
+una interfaz vieja; si no hay conexión se usa el `index.html?v=26` de la caché
 activa. El catálogo también usa
-`exercises.es.json?v=19`, por lo que el catálogo deduplicado de 1.317 ejercicios
+`exercises.es.json?v=26`, por lo que el catálogo deduplicado de 1.317 ejercicios
 no puede reutilizar una respuesta antigua.
 
 ### Importación, validación, búsqueda y navegación

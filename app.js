@@ -4,29 +4,27 @@ import {
   addRoutineDay,
   addSetToExercise,
   completeSession,
-  createRoutine,
+  cleanupPublishedData,
+  createRoutineWithWeekdays,
   deleteSet,
+  discardSession,
   findLastComparableExercise,
   getActiveSession,
   loadAppState,
-  moveRoutineDay,
+  PUBLIC_CLEANUP_VERSION,
   moveRoutineExercise,
   normalizeExerciseName,
   parseImportPayload,
   persistState,
   removeExerciseFromRoutineDay,
-  removeDemoData,
   replaceSessionExerciseForToday,
   restoreLastDeletedSet,
-  seedDemoData,
   setSessionExerciseSkipped,
   setRoutineDayWeekday,
-  setSuggestedRoutineDay,
   startFreeSession,
   startSessionFromRoutineDay,
-  updateRoutineExercisePlan,
   updateSet,
-} from "./core.js?v=19";
+} from "./core.js?v=26";
 
 const defaultTargets = { calories: 2200, protein: 170, steps: 10000 };
 const $ = (id) => document.getElementById(id);
@@ -43,11 +41,11 @@ const loadResult = loadAppState(localStorage);
 let state = loadResult.state;
 let catalog = [];
 let diaryPeriod = "total";
-let expandedRoutineId = null;
 let replacementTargetExerciseId = null;
 let expandedSessionExerciseId = null;
 let catalogResultLimit = 4;
 let trainingView = "routines";
+let selectedRoutineId = null;
 const pendingSetSubmissions = new Set();
 const restTimerStates = new Map();
 
@@ -67,6 +65,22 @@ function ensureUiState(targetState) {
 }
 
 ensureUiState(state);
+
+if (state.meta.publicCleanupVersion !== PUBLIC_CLEANUP_VERSION) {
+  try {
+    const cleaned = structuredClone(state);
+    cleanupPublishedData(cleaned);
+    state = persistState(localStorage, cleaned);
+    loadResult.notices.push(
+      "Se retiraron los datos de demostración y las rutinas identificadas exactamente como pruebas. Tus registros reales se conservaron.",
+    );
+  } catch (error) {
+    console.warn("No se pudo completar la limpieza segura de datos ficticios.", error);
+    loadResult.notices.push(
+      "No se pudo retirar la demostración automáticamente. Tus datos existentes no se modificaron.",
+    );
+  }
+}
 
 function showNotice(message, { error = false, area = "trainingNotice" } = {}) {
   const notice = $(area);
@@ -310,8 +324,50 @@ function createExerciseRestTimer(exerciseId) {
     renderExerciseTimer(exerciseId);
   });
   reset.dataset.restReset = "";
-  controls.append(toggle, reset);
+  const custom = createButton("+ Personalizar", "button-secondary timer-custom-button", () => {
+    editor.hidden = !editor.hidden;
+    if (!editor.hidden) minutes.focus();
+  });
+  const editor = createElement("form", "custom-timer-form");
+  editor.hidden = true;
+  const minutes = document.createElement("input");
+  minutes.type = "number";
+  minutes.min = "0";
+  minutes.max = "59";
+  minutes.step = "1";
+  minutes.value = "1";
+  minutes.inputMode = "numeric";
+  minutes.setAttribute("aria-label", "Minutos de descanso personalizados");
+  const separator = createElement("span", "", ":");
+  const seconds = document.createElement("input");
+  seconds.type = "number";
+  seconds.min = "0";
+  seconds.max = "59";
+  seconds.step = "1";
+  seconds.value = "0";
+  seconds.inputMode = "numeric";
+  seconds.setAttribute("aria-label", "Segundos de descanso personalizados");
+  const apply = createElement("button", "button button-accent", "Aplicar");
+  apply.type = "submit";
+  editor.append(minutes, separator, seconds, apply);
+  editor.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const minuteValue = Number(minutes.value);
+    const secondValue = Number(seconds.value);
+    const duration = minuteValue * 60 + secondValue;
+    if (!Number.isInteger(minuteValue) || !Number.isInteger(secondValue)
+      || minuteValue < 0 || minuteValue > 59 || secondValue < 0 || secondValue > 59
+      || duration < 1 || duration > 3599) {
+      showNotice("El descanso personalizado debe estar entre 00:01 y 59:59.", { error: true });
+      return;
+    }
+    setExerciseTimerDuration(exerciseId, duration);
+    editor.hidden = true;
+    showNotice(`Descanso personalizado: ${formatTimer(duration)}.`);
+  });
+  controls.append(custom, toggle, reset);
   root.append(heading, controls);
+  root.appendChild(editor);
   window.requestAnimationFrame(() => renderExerciseTimer(exerciseId));
   return root;
 }
@@ -418,6 +474,8 @@ function renderDailyDashboard() {
     : 0;
   $("weeklyRing").style.setProperty("--ring-progress", String(dailyProgress));
   $("weeklyRingValue").textContent = `${dailyProgress}%`;
+  const completedGoals = dailyGoalRatios.filter((ratio) => ratio >= 1).length;
+  $("dailyGoalCount").textContent = `${completedGoals} de ${dailyGoalRatios.length} objetivos`;
   const title = $("dashboardWorkoutTitle");
   const detail = $("dashboardWorkoutDetail");
   const start = $("dashboardStartWorkoutBtn");
@@ -428,10 +486,7 @@ function renderDailyDashboard() {
     detail.textContent = `${countLabel(suggested.routineDay.exercises.length, "ejercicio")} · ${weekdayName(suggested.routineDay.weekday)}`;
     suggested.routineDay.exercises.slice().sort((a, b) => a.order - b.order).forEach((exercise) => {
       const item = createElement("li");
-      item.append(
-        createElement("span", "", `${exercise.order}. ${exercise.exerciseName}`),
-        createElement("strong", "", `${exercise.plannedSets ?? 3} × ${exercise.repMin ?? 8}–${exercise.repMax ?? 12}`),
-      );
+      item.append(createElement("span", "", `${exercise.order}. ${exercise.exerciseName}`));
       exerciseList.appendChild(item);
     });
     start.dataset.routineDay = routineDayValue(suggested.routine.id, suggested.routineDay.id);
@@ -616,9 +671,6 @@ function renderSettings() {
   $("targetCalories").value = targets.calories;
   $("targetProtein").value = targets.protein;
   $("targetSteps").value = targets.steps;
-  const hasDemo = Boolean(state.meta?.demoSeedVersion);
-  $("demoBadge").hidden = !hasDemo;
-  $("removeDemoBtn").disabled = !hasDemo;
 }
 
 function renderProgress() {
@@ -804,13 +856,49 @@ const weekdayOptions = [
   { value: "0", label: "Domingo" },
 ];
 
+const weekdayShort = new Map([
+  [1, "Lun"], [2, "Mar"], [3, "Mié"], [4, "Jue"], [5, "Vie"], [6, "Sáb"], [0, "Dom"],
+]);
+
+function createWeekdaySelector({ name, selected = [], disabled = [], single = false }) {
+  const fragment = document.createDocumentFragment();
+  weekdayOptions.forEach(({ value, label }) => {
+    const weekday = Number(value);
+    const wrapper = createElement("label", "weekday-choice");
+    const input = document.createElement("input");
+    input.type = single ? "radio" : "checkbox";
+    input.name = name;
+    input.value = value;
+    input.checked = selected.includes(weekday);
+    input.disabled = disabled.includes(weekday);
+    const visual = createElement("span", "", weekdayShort.get(weekday));
+    visual.title = input.disabled ? `${label}: ocupado` : label;
+    wrapper.append(input, visual);
+    fragment.appendChild(wrapper);
+  });
+  return fragment;
+}
+
+function selectedWeekdays(containerId) {
+  return [...$(containerId).querySelectorAll("input:checked")].map((input) => Number(input.value));
+}
+
+function renderNewRoutineWeekdays() {
+  const occupied = [...weekdayAssignments({ includeDemo: false }).keys()];
+  $("newRoutineWeekdays").replaceChildren(createWeekdaySelector({
+    name: "new-routine-weekdays",
+    disabled: occupied,
+  }));
+}
+
 function weekdayName(value) {
   return weekdayOptions.find((option) => option.value === String(value))?.label ?? "Sin asignar";
 }
 
-function weekdayAssignments() {
+function weekdayAssignments({ includeDemo = true } = {}) {
   return new Map(
     activeRoutines()
+      .filter((routine) => includeDemo || !routine.isDemo)
       .flatMap((routine) => routine.days.map((day) => [day.weekday, { routine, day }]))
       .filter(([weekday]) => weekday !== null && weekday !== undefined),
   );
@@ -820,15 +908,7 @@ function createRoutineExerciseRow(routine, routineDay, routineExercise, index) {
   const row = createElement("li", "routine-exercise-row");
   row.appendChild(createElement("span", "routine-order", String(routineExercise.order)));
   const summary = createElement("div", "routine-exercise-summary");
-  summary.append(
-    createElement("strong", "", routineExercise.exerciseName),
-    createElement(
-      "small",
-      "",
-      `${routineExercise.plannedSets ?? 3} × ${routineExercise.repMin ?? 8}–${routineExercise.repMax ?? 12} repeticiones`,
-    ),
-  );
-  if (routineExercise.note) summary.appendChild(createElement("small", "muted", routineExercise.note));
+  summary.appendChild(createElement("strong", "", routineExercise.exerciseName));
   row.appendChild(summary);
   const actions = createElement("div", "order-actions");
   const moveUp = createButton("↑", "button-secondary", () => {
@@ -877,40 +957,8 @@ function createRoutineExerciseRow(routine, routineDay, routineExercise, index) {
       "Ejercicio quitado de la rutina. El historial permanece intacto.",
     );
   });
-  const edit = createButton("Editar", "button-secondary", () => {
-    editor.hidden = !editor.hidden;
-  });
-  actions.append(edit, moveUp, moveDown, remove);
+  actions.append(moveUp, moveDown, remove);
   row.appendChild(actions);
-  const editor = createElement("form", "routine-plan-form");
-  editor.hidden = true;
-  const plannedSets = makeSetField("Series", "plannedSets", { min: 1, max: 20, step: 1 });
-  const repMin = makeSetField("Reps mín.", "repMin", { min: 1, max: 1000, step: 1 });
-  const repMax = makeSetField("Reps máx.", "repMax", { min: 1, max: 1000, step: 1 });
-  const note = makeSetField("Nota opcional", "note", { type: "text", maxLength: 300, full: true });
-  plannedSets.input.value = routineExercise.plannedSets ?? 3;
-  repMin.input.value = routineExercise.repMin ?? 8;
-  repMax.input.value = routineExercise.repMax ?? 12;
-  note.input.value = routineExercise.note ?? "";
-  const save = createElement("button", "button button-accent full", "Guardar planificación");
-  save.type = "submit";
-  editor.append(plannedSets.label, repMin.label, repMax.label, note.label, save);
-  editor.addEventListener("submit", (event) => {
-    event.preventDefault();
-    commit((next) => updateRoutineExercisePlan(
-      next,
-      routine.id,
-      routineDay.id,
-      routineExercise.id,
-      {
-        plannedSets: plannedSets.input.value,
-        repMin: repMin.input.value,
-        repMax: repMax.input.value,
-        note: note.input.value,
-      },
-    ), "Plan del ejercicio actualizado para futuras sesiones.");
-  });
-  row.appendChild(editor);
   return row;
 }
 
@@ -918,65 +966,18 @@ function createRoutineDayCard(routine, routineDay, index) {
   const card = createElement("article", "routine-day");
   const header = createElement("div", "routine-day-header");
   const title = createElement("div", "routine-day-title");
-  title.appendChild(createElement("h4", "", `${routineDay.order}. ${routineDay.name}`));
-  if (routine.suggestedDayId === routineDay.id) {
-    title.appendChild(createElement("span", "suggested-badge", "Sugerido"));
-  }
+  title.append(
+    createElement("span", "routine-day-icon", "◆"),
+    createElement("h4", "", routineDay.name),
+    createElement(
+      "span",
+      "weekday-badge",
+      routineDay.weekday === null || routineDay.weekday === undefined
+        ? "Sin asignar"
+        : weekdayShort.get(routineDay.weekday),
+    ),
+  );
   const actions = createElement("div", "order-actions");
-
-  const schedule = document.createElement("select");
-  schedule.className = "routine-weekday-select";
-  schedule.setAttribute("aria-label", `Asignar ${routineDay.name} a un día de la semana`);
-  schedule.appendChild(new Option("Sin asignar", ""));
-  const assignments = weekdayAssignments();
-  weekdayOptions.forEach((option) => {
-    const assigned = assignments.get(Number(option.value));
-    const item = new Option(option.label, option.value);
-    if (assigned && !(assigned.routine.id === routine.id && assigned.day.id === routineDay.id)) {
-      item.disabled = true;
-      item.textContent = `${option.label} · ocupado`;
-    }
-    schedule.appendChild(item);
-  });
-  schedule.value = routineDay.weekday === null || routineDay.weekday === undefined
-    ? ""
-    : String(routineDay.weekday);
-  schedule.addEventListener("change", () => {
-    commit(
-      (next) => setRoutineDayWeekday(next, routine.id, routineDay.id, schedule.value),
-      schedule.value
-        ? `${routineDay.name} asignado al ${weekdayName(schedule.value)}.`
-        : `${routineDay.name} quedó sin día asignado.`,
-    );
-  });
-
-  const suggest = createButton("Sugerir", "button-secondary", () => {
-    commit(
-      (next) => setSuggestedRoutineDay(next, routine.id, routineDay.id),
-      `${routineDay.name} es ahora el día sugerido.`,
-    );
-  });
-  suggest.disabled = routine.suggestedDayId === routineDay.id;
-
-  const up = createButton("↑", "button-secondary", () => {
-    commit(
-      (next) => moveRoutineDay(next, routine.id, routineDay.id, "up"),
-      "Orden de los días actualizado.",
-    );
-  });
-  up.title = "Subir día";
-  up.setAttribute("aria-label", `Subir ${routineDay.name}`);
-  up.disabled = index === 0;
-
-  const down = createButton("↓", "button-secondary", () => {
-    commit(
-      (next) => moveRoutineDay(next, routine.id, routineDay.id, "down"),
-      "Orden de los días actualizado.",
-    );
-  });
-  down.title = "Bajar día";
-  down.setAttribute("aria-label", `Bajar ${routineDay.name}`);
-  down.disabled = index === routine.days.length - 1;
   const start = createButton("Empezar", "button-accent", () => {
     trainingView = "session";
     const started = commit(
@@ -987,7 +988,7 @@ function createRoutineDayCard(routine, routineDay, index) {
   });
   start.disabled = !routineDay.exercises.length || Boolean(getActiveSession(state));
   if (getActiveSession(state)) start.title = "Finaliza el entrenamiento en curso antes de empezar otro.";
-  actions.append(schedule, suggest, up, down, start);
+  actions.append(start);
   header.append(title, actions);
 
   const list = createElement("ol", "routine-exercises");
@@ -1018,35 +1019,13 @@ function createRoutineDayCard(routine, routineDay, index) {
   exerciseInput.placeholder = "Buscar o crear ejercicio";
   exerciseInput.setAttribute("aria-label", `Ejercicio para ${routineDay.name}`);
   exerciseInput.addEventListener("input", () => renderRoutineExerciseOptions(exerciseInput.value));
-  const plannedSetsInput = document.createElement("input");
-  plannedSetsInput.type = "number";
-  plannedSetsInput.min = "1";
-  plannedSetsInput.max = "20";
-  plannedSetsInput.step = "1";
-  plannedSetsInput.value = "3";
-  plannedSetsInput.setAttribute("aria-label", "Series previstas");
-  plannedSetsInput.title = "Series previstas";
-  const repMinInput = document.createElement("input");
-  repMinInput.type = "number";
-  repMinInput.min = "1";
-  repMinInput.max = "1000";
-  repMinInput.value = "8";
-  repMinInput.setAttribute("aria-label", "Repeticiones mínimas");
-  repMinInput.title = "Repeticiones mínimas";
-  const repMaxInput = document.createElement("input");
-  repMaxInput.type = "number";
-  repMaxInput.min = "1";
-  repMaxInput.max = "1000";
-  repMaxInput.value = "12";
-  repMaxInput.setAttribute("aria-label", "Repeticiones máximas");
-  repMaxInput.title = "Repeticiones máximas";
   const addExerciseButton = createElement(
     "button",
     "button button-secondary",
     "Añadir ejercicio",
   );
   addExerciseButton.type = "submit";
-  exerciseForm.append(exerciseInput, plannedSetsInput, repMinInput, repMaxInput, addExerciseButton);
+  exerciseForm.append(exerciseInput, addExerciseButton);
   exerciseForm.addEventListener("submit", (event) => {
     event.preventDefault();
     const entry = catalogEntryForName(exerciseInput.value);
@@ -1058,19 +1037,11 @@ function createRoutineDayCard(routine, routineDay, index) {
         entry?.nameEs ?? exerciseInput.value,
         {
           exerciseId: entry?.id,
-          plannedSets: plannedSetsInput.value,
-          repMin: repMinInput.value,
-          repMax: repMaxInput.value,
         },
       );
       attachCatalogMetadata(next, routineExercise.exerciseId, entry);
     }, `${entry?.nameEs ?? exerciseInput.value.trim()} añadido a ${routineDay.name}.`);
-    if (saved) {
-      exerciseForm.reset();
-      plannedSetsInput.value = "3";
-      repMinInput.value = "8";
-      repMaxInput.value = "12";
-    }
+    if (saved) exerciseForm.reset();
   });
 
   card.append(header, list, exerciseForm);
@@ -1081,61 +1052,29 @@ function renderRoutineManager() {
   const list = $("routineList");
   list.replaceChildren();
   const routines = activeRoutines();
-  if (!routines.some((routine) => routine.id === expandedRoutineId)) {
-    expandedRoutineId = routines[0]?.id ?? null;
-  }
-  routines.forEach((routine) => {
-    const card = createElement("details", "routine-card");
+  $("routineCount").textContent = countLabel(routines.length, "rutina");
+  routines.forEach((routine, routineIndex) => {
+    const card = createElement("button", "routine-overview-card surface");
+    card.type = "button";
     card.classList.toggle("routine-card-demo", Boolean(routine.isDemo));
-    card.open = routine.id === expandedRoutineId;
-    card.addEventListener("toggle", () => {
-      if (!card.open) return;
-      expandedRoutineId = routine.id;
-      list.querySelectorAll("details.routine-card").forEach((other) => {
-        if (other !== card) other.open = false;
-      });
-    });
-    const header = createElement("summary", "routine-header");
-    const title = document.createElement("div");
-    title.append(
-      createElement("span", "exercise-source", routine.isDemo ? "Rutina de ejemplo" : "Rutina local"),
-      createElement("h3", "", routine.name),
-      createElement("p", "muted", `${countLabel(routine.days.length, "día")} · pulsa para revisar y editar`),
+    const icon = createElement("span", "routine-icon", ["◆", "●", "▲", "✦"][routineIndex % 4]);
+    const text = createElement("span", "routine-overview-copy");
+    text.append(
+      createElement("strong", "", routine.name),
+      createElement("small", "", `${countLabel(routine.days.length, "día")} · ${routine.days.reduce((total, day) => total + day.exercises.length, 0)} ejercicios`),
     );
-    header.append(title, createElement("span", "routine-open-hint", "Ver rutina"));
-
-    const dayList = createElement("div", "routine-day-list");
+    const weekdays = createElement("span", "routine-weekday-pills");
     routine.days
-      .slice()
-      .sort((a, b) => a.order - b.order)
-      .forEach((routineDay, index) => {
-        dayList.appendChild(createRoutineDayCard(routine, routineDay, index));
-      });
-    if (!routine.days.length) {
-      renderEmpty(dayList, "Crea el primer día", "Por ejemplo: Torso, Pierna o Día A.");
-    }
-
-    const dayForm = createElement("form", "routine-day-form");
-    const dayInput = document.createElement("input");
-    dayInput.type = "text";
-    dayInput.minLength = 2;
-    dayInput.maxLength = 60;
-    dayInput.required = true;
-    dayInput.placeholder = "Nombre del día";
-    dayInput.setAttribute("aria-label", `Nuevo día para ${routine.name}`);
-    const addDayButton = createElement("button", "button button-primary", "Añadir día");
-    addDayButton.type = "submit";
-    dayForm.append(dayInput, addDayButton);
-    dayForm.addEventListener("submit", (event) => {
-      event.preventDefault();
-      const saved = commit(
-        (next) => addRoutineDay(next, routine.id, dayInput.value),
-        `Día ${dayInput.value.trim()} añadido.`,
-      );
-      if (saved) dayForm.reset();
+      .filter((day) => day.weekday !== null && day.weekday !== undefined)
+      .sort((left, right) => ((left.weekday + 6) % 7) - ((right.weekday + 6) % 7))
+      .forEach((day) => weekdays.appendChild(createElement("span", "", weekdayShort.get(day.weekday))));
+    text.appendChild(weekdays);
+    card.append(icon, text, createElement("span", "routine-card-chevron", "›"));
+    card.addEventListener("click", () => {
+      selectedRoutineId = routine.id;
+      renderRoutineManager();
+      window.scrollTo({ top: 0, behavior: "smooth" });
     });
-
-    card.append(header, dayList, dayForm);
     list.appendChild(card);
   });
 
@@ -1146,6 +1085,28 @@ function renderRoutineManager() {
       "Crea una rutina pequeña y añade sus días en orden.",
     );
   }
+  renderNewRoutineWeekdays();
+
+  const selectedRoutine = routines.find((routine) => routine.id === selectedRoutineId);
+  $("routineOverview").hidden = Boolean(selectedRoutine);
+  $("routineDetailPanel").hidden = !selectedRoutine;
+  if (!selectedRoutine) return;
+  $("routineDetailTitle").textContent = selectedRoutine.name;
+  $("routineDetailMeta").textContent = `${countLabel(selectedRoutine.days.length, "día")} · ${selectedRoutine.days.reduce((total, day) => total + day.exercises.length, 0)} ejercicios`;
+  $("routineDetailIcon").textContent = "◆";
+  const detailDays = $("routineDetailDays");
+  detailDays.replaceChildren();
+  selectedRoutine.days
+    .slice()
+    .sort((left, right) => left.order - right.order)
+    .forEach((routineDay, index) => detailDays.appendChild(createRoutineDayCard(selectedRoutine, routineDay, index)));
+  if (!detailDays.children.length) renderEmpty(detailDays, "Añade el primer día", "Selecciona abajo uno de los días disponibles.");
+  const occupied = [...weekdayAssignments({ includeDemo: Boolean(selectedRoutine.isDemo) }).keys()];
+  $("addRoutineDayWeekdays").replaceChildren(createWeekdaySelector({
+    name: "add-routine-day-weekday",
+    disabled: occupied,
+    single: true,
+  }));
 }
 
 function renderRoutineExerciseOptions(query = "") {
@@ -1173,12 +1134,6 @@ function renderRoutineExerciseOptions(query = "") {
 
 function sessionSetCount(session) {
   return session.exercises.reduce((total, exercise) => total + exercise.sets.length, 0);
-}
-
-function effectiveSetCount(sessionExercise) {
-  return sessionExercise.sets.filter(
-    (workoutSet) => (workoutSet.setType ?? (workoutSet.isWarmup ? "warmup" : "effective")) === "effective",
-  ).length;
 }
 
 function formatSet(workoutSet) {
@@ -1224,7 +1179,6 @@ function renderSetForm(session, sessionExercise) {
     max: 1000,
     step: 1,
     inputMode: "numeric",
-    placeholder: "10",
   });
   reps.input.required = true;
   const load = makeSetField("Peso (kg)", "loadKg", {
@@ -1232,14 +1186,12 @@ function renderSetForm(session, sessionExercise) {
     max: 2000,
     step: 0.5,
     inputMode: "decimal",
-    placeholder: "60",
   });
   const rir = makeSetField("RIR opcional", "rir", {
     min: 0,
     max: 5,
     step: 1,
     inputMode: "numeric",
-    placeholder: "2",
   });
   const note = makeSetField("Nota opcional", "note", {
     type: "text",
@@ -1270,7 +1222,21 @@ function renderSetForm(session, sessionExercise) {
   });
   cancel.hidden = true;
   actions.append(submit, cancel);
-  form.append(reps.label, load.label, rir.label, setTypeLabel, note.label, actions);
+  const columnHeadings = createElement("div", "set-form-headings full");
+  columnHeadings.append(
+    createElement("span", "", "Peso (kg)"),
+    createElement("span", "", "Reps"),
+    createElement("span", "", "RIR"),
+    createElement("span", "", "Tipo"),
+  );
+  load.label.classList.add("set-field-load");
+  reps.label.classList.add("set-field-reps");
+  rir.label.classList.add("set-field-rir");
+  setTypeLabel.classList.add("set-field-type");
+  [load.label, reps.label, rir.label, setTypeLabel].forEach((label) => {
+    label.childNodes[0]?.remove();
+  });
+  form.append(columnHeadings, load.label, reps.label, rir.label, setTypeLabel, note.label, actions);
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -1325,7 +1291,9 @@ function renderSessionExercise(session, sessionExercise) {
       "",
       sessionExercise.isExtra
         ? "Extra solo hoy"
-        : `${sessionExercise.plannedSets ?? 3} × ${sessionExercise.repMin ?? 8}–${sessionExercise.repMax ?? 12} repeticiones`,
+        : sessionExercise.sets.length
+          ? `${countLabel(sessionExercise.sets.length, "serie")} registrada`
+          : "Pulsa para registrar la primera serie",
     ),
   );
   const summaryStatus = createElement(
@@ -1334,7 +1302,7 @@ function renderSessionExercise(session, sessionExercise) {
     sessionExercise.status === "skipped"
       ? "Omitido"
       : sessionExercise.sets.length
-        ? `✓ ${effectiveSetCount(sessionExercise)} / ${sessionExercise.plannedSets || sessionExercise.sets.length}`
+        ? `✓ ${sessionExercise.sets.length}`
         : "Abrir",
   );
   summary.append(summaryText, summaryStatus);
@@ -1355,16 +1323,14 @@ function renderSessionExercise(session, sessionExercise) {
     "span",
     "exercise-source",
     sessionExercise.isSubstitution
-      ? `Sustitución solo hoy · antes: ${sessionExercise.substitutedFrom?.exerciseName ?? "otro ejercicio"}`
+      ? `Alternativa solo hoy · antes: ${sessionExercise.substitutedFrom?.exerciseName ?? "otro ejercicio"}`
       : source?.type === "dataset" ? "Catálogo auditado · revisión pendiente" : "Ejercicio personal",
   ));
   titleBlock.appendChild(createElement("h3", "", sessionExercise.exerciseName));
   titleBlock.appendChild(createElement(
     "p",
     "exercise-plan",
-    sessionExercise.isExtra
-      ? "Ejercicio extra · solo hoy"
-      : `${sessionExercise.plannedSets ?? 3} × ${sessionExercise.repMin ?? 8}–${sessionExercise.repMax ?? 12} repeticiones`,
+    sessionExercise.isExtra ? "Ejercicio extra · solo hoy" : "Registra únicamente lo que hagas hoy",
   ));
   if (sessionExercise.planNote) titleBlock.appendChild(createElement("p", "muted", sessionExercise.planNote));
 
@@ -1375,41 +1341,54 @@ function renderSessionExercise(session, sessionExercise) {
   titleBlock.appendChild(createElement("p", "reference", referenceText));
   header.appendChild(titleBlock);
   const statusBlock = createElement("div", "exercise-status-actions");
-  const effective = effectiveSetCount(sessionExercise);
   statusBlock.appendChild(createElement(
     "span",
     "count-badge",
     sessionExercise.isExtra
       ? `${sessionExercise.sets.length} series`
-      : `${effective} / ${sessionExercise.plannedSets ?? 3} efectivas`,
+      : countLabel(sessionExercise.sets.length, "serie"),
   ));
   if (!sessionExercise.isExtra && !sessionExercise.sets.length) {
-    statusBlock.appendChild(createButton(
-      "Sustituir solo hoy",
-      "button-secondary",
-      () => {
+    if (sessionExercise.status === "skipped") {
+      statusBlock.appendChild(createButton(
+        "Volver a incluir hoy",
+        "button-secondary",
+        () => commit(
+          (next) => setSessionExerciseSkipped(next, session.id, sessionExercise.id, false),
+          "Ejercicio incluido de nuevo en el entrenamiento de hoy.",
+        ),
+      ));
+    } else {
+      const exceptionMenu = createElement("details", "exercise-exception-menu");
+      const exceptionSummary = createElement(
+        "summary",
+        "exercise-exception-summary",
+        "¿No puedes realizar este ejercicio hoy?",
+      );
+      const exceptionActions = createElement("div", "exercise-exception-actions");
+      const alternative = createButton("Elegir una alternativa para hoy", "button-secondary", () => {
         replacementTargetExerciseId = sessionExercise.id;
         $("catalogSearch").value = "";
+        const picker = document.querySelector(".exercise-picker");
+        picker.open = true;
         renderCatalogResults();
-        $("catalogSearch").focus();
+        window.requestAnimationFrame(() => $("catalogSearch").focus());
         showNotice(
-          `Busca el sustituto de ${sessionExercise.exerciseName}. La rutina original no cambiará.`,
+          `Busca una alternativa para ${sessionExercise.exerciseName}. La rutina original no cambiará.`,
         );
-      },
-    ));
-    statusBlock.appendChild(createButton(
-      sessionExercise.status === "skipped" ? "Recuperar" : "Omitir hoy",
-      "button-secondary",
-      () => commit(
-        (next) => setSessionExerciseSkipped(
-          next,
-          session.id,
-          sessionExercise.id,
-          sessionExercise.status !== "skipped",
-        ),
-        sessionExercise.status === "skipped" ? "Ejercicio recuperado." : "Ejercicio marcado como no realizado.",
-      ),
-    ));
+      });
+      const notPerformed = createButton("Marcar como no realizado", "button-quiet", () => commit(
+        (next) => setSessionExerciseSkipped(next, session.id, sessionExercise.id, true),
+        "Ejercicio marcado como no realizado hoy. La rutina original no ha cambiado.",
+      ));
+      exceptionActions.append(
+        createElement("p", "muted", "Estas opciones solo afectan al entrenamiento de hoy."),
+        alternative,
+        notPerformed,
+      );
+      exceptionMenu.append(exceptionSummary, exceptionActions);
+      statusBlock.appendChild(exceptionMenu);
+    }
   }
   header.appendChild(statusBlock);
 
@@ -1530,11 +1509,11 @@ function renderCatalogResults() {
   if (!queryTokens.length && !category && !equipment && !target) {
     $("catalogCount").textContent = `${catalog.length.toLocaleString("es-ES")} disponibles`;
     $("catalogStatus").textContent = replacementTargetExerciseId
-      ? "Modo sustitución: elige un ejercicio; la rutina original no cambiará."
+      ? "Modo alternativa: elige un ejercicio; la rutina original no cambiará."
       : "Busca por nombre, músculo o equipo para ver una selección breve.";
     renderEmpty(
       container,
-      replacementTargetExerciseId ? "Busca el sustituto" : "Busca tu ejercicio",
+      replacementTargetExerciseId ? "Busca una alternativa" : "Busca tu ejercicio",
       "No mostramos todo el catálogo de golpe para evitar una lista abrumadora.",
     );
     return;
@@ -1570,7 +1549,7 @@ function renderCatalogResults() {
       text.appendChild(createElement("small", "catalog-language", "Nombre original · instrucciones en español"));
     }
     const active = getActiveSession(state);
-    const add = createButton(replacementTargetExerciseId ? "Sustituir" : "Añadir", "button-secondary", () => {
+    const add = createButton(replacementTargetExerciseId ? "Elegir alternativa" : "Añadir", "button-secondary", () => {
       if (!active) return;
       const replacementId = replacementTargetExerciseId;
       const saved = runOnce(add, () => commit((next) => {
@@ -1590,7 +1569,7 @@ function renderCatalogResults() {
           );
         attachCatalogMetadata(next, sessionExercise.exerciseId, entry);
       }, replacementId
-        ? `${entry.nameEs} sustituye al ejercicio solo en esta sesión.`
+        ? `${entry.nameEs} será la alternativa solo en esta sesión.`
         : `${entry.nameEs} añadido a la sesión.`));
       if (saved && replacementId) {
         replacementTargetExerciseId = null;
@@ -1636,7 +1615,7 @@ function renderCatalogResults() {
 
 async function loadCatalog() {
   try {
-    const response = await fetch("./data/exercises.es.json?v=19", { cache: "no-cache" });
+    const response = await fetch("./data/exercises.es.json?v=26", { cache: "no-cache" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     if (!Array.isArray(payload.exercises)) throw new Error("Estructura no válida");
@@ -1775,11 +1754,34 @@ document.querySelectorAll("[data-food]").forEach((button) => {
 $("createRoutineForm").addEventListener("submit", (event) => {
   event.preventDefault();
   const name = $("routineName").value;
+  const weekdays = selectedWeekdays("newRoutineWeekdays");
   const saved = commit(
-    (next) => createRoutine(next, name),
-    `Rutina ${name.trim()} creada. Añade ahora su primer día.`,
+    (next) => createRoutineWithWeekdays(next, name, weekdays),
+    `Rutina ${name.trim()} creada con ${countLabel(weekdays.length, "día")}.`,
   );
-  if (saved) event.target.reset();
+  if (saved) {
+    event.target.reset();
+    $("createRoutineCard").open = false;
+  }
+});
+
+$("routineDetailBackBtn").addEventListener("click", () => {
+  selectedRoutineId = null;
+  renderRoutineManager();
+});
+
+$("addRoutineDayForm").addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (!selectedRoutineId) return;
+  const [weekday] = selectedWeekdays("addRoutineDayWeekdays");
+  if (weekday === undefined) {
+    showNotice("Selecciona un día libre para añadirlo a la rutina.", { error: true });
+    return;
+  }
+  commit((next) => {
+    const day = addRoutineDay(next, selectedRoutineId, weekdayName(weekday));
+    setRoutineDayWeekday(next, selectedRoutineId, day.id, weekday);
+  }, `${weekdayName(weekday)} añadido a la rutina.`);
 });
 
 $("startFreeSessionBtn").addEventListener("click", (event) => {
@@ -1803,16 +1805,34 @@ $("backToRoutinesBtn").addEventListener("click", () => {
   window.scrollTo({ top: 0, behavior: "smooth" });
 });
 
+function confirmDiscardActiveSession() {
+  const active = getActiveSession(state);
+  if (!active) return;
+  const savedSets = sessionSetCount(active);
+  const detail = savedSets
+    ? ` Se eliminarán ${countLabel(savedSets, "serie")} de esta sesión sin añadirlas al Diario.`
+    : " No se añadirá nada al Diario.";
+  if (!window.confirm(`¿Descartar “${active.source.label}”?${detail} Esta acción no se puede deshacer.`)) return;
+  const discarded = commit((next) => discardSession(next, active.id), "Sesión descartada. Ya puedes empezar otro entrenamiento.");
+  if (!discarded) return;
+  stopAllRestTimers({ clear: true });
+  expandedSessionExerciseId = null;
+  trainingView = "routines";
+  renderTraining();
+}
+
+$("discardSessionBtn").addEventListener("click", confirmDiscardActiveSession);
+$("discardSessionFromRoutinesBtn").addEventListener("click", confirmDiscardActiveSession);
+
 $("finishSessionBtn").addEventListener("click", () => {
   const active = getActiveSession(state);
   if (!active) return;
   const omittedExercises = active.exercises.filter((exercise) => exercise.status === "skipped").length;
-  const pendingSets = active.exercises.reduce((total, exercise) => {
-    if (exercise.isExtra || exercise.status === "skipped") return total;
-    return total + Math.max(0, (exercise.plannedSets ?? 3) - effectiveSetCount(exercise));
-  }, 0);
-  const warning = pendingSets || omittedExercises
-    ? `Quedan ${pendingSets} series efectivas previstas y ${omittedExercises} ejercicios omitidos. `
+  const untouchedExercises = active.exercises.filter((exercise) => (
+    exercise.status !== "skipped" && !exercise.sets.length
+  )).length;
+  const warning = untouchedExercises || omittedExercises
+    ? `Hay ${countLabel(untouchedExercises, "ejercicio")} sin registrar y ${countLabel(omittedExercises, "ejercicio")} omitido. `
     : "";
   if (!window.confirm(`${warning}¿Finalizar? Se guardará lo que realmente hiciste y ya no podrá editarse.`)) return;
   commit((next) => completeSession(next, active.id), "Entrenamiento finalizado.");
@@ -1832,7 +1852,7 @@ $("addExerciseForm").addEventListener("submit", (event) => {
     } else {
       addExerciseToSession(next, active.id, name);
     }
-  }, replacementId ? "Ejercicio sustituido solo para esta sesión." : "Ejercicio personal añadido.");
+  }, replacementId ? "Alternativa guardada solo para esta sesión." : "Ejercicio personal añadido.");
   if (saved) {
     replacementTargetExerciseId = null;
     event.target.reset();
@@ -1843,7 +1863,7 @@ $("addExerciseForm").addEventListener("submit", (event) => {
 $("cancelReplacementBtn").addEventListener("click", () => {
   replacementTargetExerciseId = null;
   renderCatalogResults();
-  showNotice("Sustitución cancelada.");
+  showNotice("Alternativa cancelada.");
 });
 
 $("undoSetBtn").addEventListener("click", () => {
@@ -1877,24 +1897,6 @@ $("settingsForm").addEventListener("submit", (event) => {
     };
   }, "Ajustes y objetivos guardados.");
   if (saved) showTab("diario");
-});
-
-$("loadDemoBtn").addEventListener("click", () => {
-  if (!window.confirm("Se añadirán datos ficticios claramente marcados. Tus datos reales no se modificarán. ¿Continuar?")) return;
-  const loaded = commit((next) => {
-    ensureUiState(next);
-    next.meta.demoDismissed = false;
-    seedDemoData(next);
-  }, "Demostración cargada. Ya puedes recorrer un mes de uso ficticio.");
-  if (loaded) showTab("diario");
-});
-
-$("removeDemoBtn").addEventListener("click", () => {
-  if (!window.confirm("Se quitarán solamente los datos marcados como ejemplo. Tus datos reales permanecerán.")) return;
-  commit((next) => {
-    removeDemoData(next);
-    next.meta.demoDismissed = true;
-  }, "Datos de ejemplo retirados; tus datos reales siguen intactos.");
 });
 
 let labelPreviewUrl = null;
@@ -1994,14 +1996,16 @@ $("importFile").addEventListener("change", async (event) => {
   if (!file) return;
   try {
     const imported = parseImportPayload(await file.text());
-    const sessionCount = imported.training.sessions.length;
-    const legacyDayCount = Object.keys(imported.legacy.days).length;
+    const cleanedImport = structuredClone(imported);
+    cleanupPublishedData(cleanedImport);
+    const sessionCount = cleanedImport.training.sessions.length;
+    const legacyDayCount = Object.keys(cleanedImport.legacy.days).length;
     const confirmed = window.confirm(
       `La copia contiene ${sessionCount} sesiones y ${legacyDayCount} días del prototipo. `
       + "Si continúas, el estado actual quedará en la copia de seguridad local. ¿Importar?",
     );
     if (!confirmed) return;
-    state = persistState(localStorage, imported);
+    state = persistState(localStorage, cleanedImport);
     setDailyForm($("entryDate").value);
     render();
     showNotice("Copia importada. El estado anterior se conserva como respaldo.", { area: "appNotice" });
@@ -2014,16 +2018,6 @@ $("importFile").addEventListener("change", async (event) => {
     event.target.value = "";
   }
 });
-
-if (!state.meta?.demoSeedVersion && !state.meta?.demoDismissed) {
-  try {
-    const next = structuredClone(state);
-    seedDemoData(next);
-    state = persistState(localStorage, next);
-  } catch (error) {
-    console.warn("No se pudo preparar la demostración inicial.", error);
-  }
-}
 
 setDailyForm(today);
 render();

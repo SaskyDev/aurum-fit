@@ -64,17 +64,16 @@ estado v2
 Cada entidad histórica lleva `userId` aunque solo exista el usuario local. Esto
 prepara la propiedad futura sin introducir cuentas, autenticación o backend.
 
-Una rutina es un plan mutable. Cada rutina contiene días ordenados, un día
-sugerido y ejercicios ordenados. Cada ejercicio del plan guarda `plannedSets`,
-`repMin`, `repMax` y una nota opcional; no guarda un peso fijo.
+Una rutina es un plan mutable. Cada rutina contiene días y ejercicios ordenados.
+El plan decide qué ejercicios corresponden al día, pero no prescribe series,
+repeticiones, peso ni RIR.
 
 Al iniciar desde un día, la sesión copia:
 
 - nombre de la rutina;
 - nombre del día;
 - identidad, nombre y orden de cada ejercicio.
-- series y rango de repeticiones previstos;
-- nota de planificación.
+- una sesión vacía para registrar únicamente lo que se haga ese día.
 
 Por eso añadir o reordenar ejercicios posteriormente en la rutina no puede
 reescribir el pasado.

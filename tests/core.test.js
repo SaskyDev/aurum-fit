@@ -11,9 +11,12 @@ import {
   addRoutineDay,
   addSetToExercise,
   completeSession,
+  cleanupPublishedData,
   createEmptyState,
   createRoutine,
+  createRoutineWithWeekdays,
   deleteSet,
+  discardSession,
   findLastComparableExercise,
   loadAppState,
   moveRoutineDay,
@@ -31,7 +34,6 @@ import {
   startFreeSession,
   startSessionFromRoutineDay,
   updateSet,
-  updateRoutineExercisePlan,
   validateState,
   validateSetInput,
 } from "../core.js";
@@ -376,7 +378,7 @@ test("inicia desde un día y conserva una copia histórica al editar la rutina",
   assert.deepEqual(torso.exercises.map((exercise) => exercise.exerciseName), ["Press banca"]);
 });
 
-test("copia series y rango previstos sin alterar una sesión ya iniciada", () => {
+test("la rutina solo copia ejercicios y la sesión empieza sin objetivos ficticios", () => {
   const state = createEmptyState({ now: "2026-07-24T08:00:00.000Z" });
   const routine = createRoutine(state, "Empuje", { id: "routine-1" });
   const day = addRoutineDay(state, routine.id, "Push", { id: "day-push" });
@@ -393,13 +395,6 @@ test("copia series y rango previstos sin alterar una sesión ya iniciada", () =>
     sessionExerciseIds: ["session-exercise-press"],
   });
 
-  updateRoutineExercisePlan(state, routine.id, day.id, exercise.id, {
-    plannedSets: 3,
-    repMin: 8,
-    repMax: 10,
-    note: "Cambio futuro",
-  });
-
   assert.deepEqual(
     session.exercises.map(({ plannedSets, repMin, repMax, planNote }) => ({
       plannedSets,
@@ -407,9 +402,22 @@ test("copia series y rango previstos sin alterar una sesión ya iniciada", () =>
       repMax,
       planNote,
     })),
-    [{ plannedSets: 4, repMin: 6, repMax: 8, planNote: "Pausa en el pecho" }],
+    [{ plannedSets: 0, repMin: null, repMax: null, planNote: "" }],
   );
-  assert.equal(exercise.plannedSets, 3);
+  assert.equal(exercise.exerciseName, "Press banca");
+});
+
+test("descarta únicamente la sesión activa y libera el siguiente entrenamiento", () => {
+  const { state, session } = stateWithActiveSession();
+  const totalBefore = state.training.sessions.length;
+
+  const discarded = discardSession(state, session.id);
+
+  assert.equal(discarded.id, session.id);
+  assert.equal(state.training.activeSessionId, null);
+  assert.equal(state.training.sessions.length, totalBefore - 1);
+  assert.equal(state.training.sessions.some((item) => item.id === session.id), false);
+  assert.throws(() => discardSession(state, session.id), /sesión activa/i);
 });
 
 test("distingue series efectivas, de aproximación y de calentamiento", () => {
@@ -530,6 +538,47 @@ test("crea y elimina una demostración completa sin tocar datos reales", () => {
   assert.equal(validateState(state), null);
 });
 
+test("la limpieza publicada retira demos y la rutina de prueba sin tocar datos reales", () => {
+  const state = createEmptyState({ now: "2026-08-12T08:00:00.000Z" });
+  const realRoutine = createRoutine(state, "Mi rutina real", { id: "routine-real" });
+  addRoutineDay(state, realRoutine.id, "Real", { id: "day-real" });
+  const testRoutine = createRoutine(state, "Rutina de prueba", { id: "routine-test" });
+  const testDay = addRoutineDay(state, testRoutine.id, "Test", { id: "day-test" });
+  addExerciseToRoutineDay(state, testRoutine.id, testDay.id, "Press banca");
+  const testSession = startSessionFromRoutineDay(state, testRoutine.id, testDay.id, {
+    id: "session-test",
+  });
+  seedDemoData(state, { now: "2026-08-12T08:00:00.000Z" });
+
+  cleanupPublishedData(state);
+
+  assert.equal(state.training.routines.some((routine) => routine.isDemo), false);
+  assert.equal(state.training.routines.some((routine) => routine.id === "routine-test"), false);
+  assert.equal(state.training.sessions.some((session) => session.id === testSession.id), false);
+  assert.equal(state.training.routines.some((routine) => routine.id === realRoutine.id), true);
+  assert.equal(state.meta.publicCleanupVersion, 2);
+  assert.equal(state.meta.demoDismissed, true);
+  assert.equal(validateState(state), null);
+});
+
+test("la limpieza retira una sesión manual iniciada desde una rutina demo", () => {
+  const state = createEmptyState({ now: "2026-08-12T08:00:00.000Z" });
+  seedDemoData(state, { now: "2026-08-12T08:00:00.000Z" });
+  const demoRoutine = state.training.routines.find((routine) => routine.isDemo);
+  const demoDay = demoRoutine.days[0];
+  const manualDemoSession = startSessionFromRoutineDay(state, demoRoutine.id, demoDay.id, {
+    id: "manual-demo-session",
+  });
+  assert.equal(manualDemoSession.isDemo, undefined);
+
+  cleanupPublishedData(state);
+
+  assert.equal(state.training.activeSessionId, null);
+  assert.equal(state.training.sessions.some((session) => session.id === manualDemoSession.id), false);
+  assert.equal(state.training.exercises.some((exercise) => exercise.isDemo), false);
+  assert.equal(validateState(state), null);
+});
+
 test("carga la demostración sin ocultar ni sustituir una sesión real activa", () => {
   const { state, session } = stateWithActiveSession();
 
@@ -571,4 +620,32 @@ test("asigna días de la semana sin permitir conflictos entre rutinas", () => {
   setRoutineDayWeekday(state, second.id, secondDay.id, 3);
   setRoutineDayWeekday(state, first.id, firstDay.id, null);
   assert.equal(firstDay.weekday, null);
+});
+
+test("crea una rutina desde un selector semanal sin repetir días reales", () => {
+  const state = createEmptyState();
+  const routine = createRoutineWithWeekdays(state, "Push", [1, 3, 5], {
+    id: "routine-weekly",
+    now: "2026-08-12T08:00:00.000Z",
+  });
+
+  assert.deepEqual(routine.days.map((day) => day.weekday), [1, 3, 5]);
+  assert.deepEqual(routine.days.map((day) => day.name), ["lunes", "miércoles", "viernes"]);
+  assert.throws(() => createRoutineWithWeekdays(state, "Pull", [3]), /miércoles.*Push/i);
+});
+
+test("una rutina real puede sustituir un día ocupado solo por la demostración", () => {
+  const state = createEmptyState({ now: "2026-08-12T08:00:00.000Z" });
+  seedDemoData(state, { now: "2026-08-12T08:00:00.000Z" });
+  const demoDay = state.training.routines
+    .filter((routine) => routine.isDemo)
+    .flatMap((routine) => routine.days)
+    .find((day) => day.weekday !== null);
+  const weekday = demoDay.weekday;
+
+  const realRoutine = createRoutineWithWeekdays(state, "Mi rutina", [weekday]);
+
+  assert.equal(realRoutine.days[0].weekday, weekday);
+  assert.equal(demoDay.weekday, null);
+  assert.equal(validateState(state), null);
 });

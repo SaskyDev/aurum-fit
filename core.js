@@ -2,6 +2,7 @@ export const STORE_KEY = "aurum-fit-v2";
 export const LEGACY_STORE_KEY = "fit-tracker-v1";
 export const BACKUP_STORE_KEY = "aurum-fit-v2-backup";
 export const SCHEMA_VERSION = 2;
+export const PUBLIC_CLEANUP_VERSION = 2;
 
 const MAX_EXERCISE_NAME_LENGTH = 80;
 const MAX_NOTE_LENGTH = 300;
@@ -483,6 +484,49 @@ export function createRoutine(
   return routine;
 }
 
+export function createRoutineWithWeekdays(
+  state,
+  name,
+  weekdays,
+  { now = new Date().toISOString(), id = createId("routine") } = {},
+) {
+  if (!Array.isArray(weekdays) || !weekdays.length) {
+    throw new Error("Selecciona al menos un día para la rutina.");
+  }
+  const normalizedWeekdays = [...new Set(weekdays.map(Number))];
+  if (normalizedWeekdays.some((weekday) => (
+    !Number.isInteger(weekday) || weekday < MIN_WEEKDAY || weekday > MAX_WEEKDAY
+  ))) {
+    throw new Error("Hay un día de la semana no válido.");
+  }
+  const occupied = new Map(
+    state.training.routines
+      .filter((routine) => routine.status === "active" && !routine.isDemo)
+      .flatMap((routine) => routine.days.map((day) => [day.weekday, routine.name]))
+      .filter(([weekday]) => weekday !== null && weekday !== undefined),
+  );
+  const conflict = normalizedWeekdays.find((weekday) => occupied.has(weekday));
+  if (conflict !== undefined) {
+    throw new Error(`El ${weekdayLabel(conflict)} ya está asignado a ${occupied.get(conflict)}.`);
+  }
+  state.training.routines
+    .filter((routine) => routine.status === "active" && routine.isDemo)
+    .forEach((routine) => routine.days.forEach((day) => {
+      if (normalizedWeekdays.includes(day.weekday)) day.weekday = null;
+    }));
+  const routine = createRoutine(state, name, { now, id });
+  normalizedWeekdays
+    .sort((left, right) => ((left + 6) % 7) - ((right + 6) % 7))
+    .forEach((weekday) => {
+      const day = addRoutineDay(state, routine.id, weekdayLabel(weekday), {
+        now,
+        id: createId("routine-day"),
+      });
+      setRoutineDayWeekday(state, routine.id, day.id, weekday, now);
+    });
+  return routine;
+}
+
 export function addRoutineDay(
   state,
   routineId,
@@ -543,9 +587,14 @@ export function setRoutineDayWeekday(
         && !(candidate.id === routine.id && candidateDay.id === routineDay.id)
       ));
     if (conflict) {
-      throw new Error(
-        `El ${weekdayLabel(value)} ya está asignado a ${conflict.candidate.name} · ${conflict.candidateDay.name}.`,
-      );
+      if (conflict.candidate.isDemo && !routine.isDemo) {
+        conflict.candidateDay.weekday = null;
+        conflict.candidate.updatedAt = now;
+      } else {
+        throw new Error(
+          `El ${weekdayLabel(value)} ya está asignado a ${conflict.candidate.name} · ${conflict.candidateDay.name}.`,
+        );
+      }
     }
   }
   routineDay.weekday = value;
@@ -601,10 +650,10 @@ export function addExerciseToRoutineDay(
     now = new Date().toISOString(),
     exerciseId,
     routineExerciseId = createId("routine-exercise"),
-    plannedSets = 3,
-    repMin = 8,
-    repMax = 12,
-    note = "",
+    plannedSets,
+    repMin,
+    repMax,
+    note,
   } = {},
 ) {
   const { routine, routineDay } = findRoutineDay(state, routineId, routineDayId);
@@ -617,8 +666,11 @@ export function addExerciseToRoutineDay(
     exerciseId: exercise.id,
     exerciseName: exercise.name,
     order: routineDay.exercises.length + 1,
-    ...validateRoutineExercisePlan({ plannedSets, repMin, repMax, note }),
   };
+  const hasLegacyPlan = [plannedSets, repMin, repMax].some((value) => value !== undefined);
+  if (hasLegacyPlan) {
+    Object.assign(routineExercise, validateRoutineExercisePlan({ plannedSets, repMin, repMax, note }));
+  }
   routineDay.exercises.push(routineExercise);
   routine.updatedAt = now;
   return routineExercise;
@@ -773,10 +825,10 @@ export function startSessionFromRoutineDay(
         order: index + 1,
         status: "active",
         isExtra: false,
-        plannedSets: routineExercise.plannedSets ?? 3,
-        repMin: routineExercise.repMin ?? 8,
-        repMax: routineExercise.repMax ?? 12,
-        planNote: routineExercise.note ?? "",
+        plannedSets: 0,
+        repMin: null,
+        repMax: null,
+        planNote: "",
         sets: [],
       })),
   };
@@ -1029,6 +1081,18 @@ export function completeSession(state, sessionId, now = new Date().toISOString()
   return session;
 }
 
+export function discardSession(state, sessionId) {
+  const index = state.training.sessions.findIndex((item) => item.id === sessionId);
+  const session = state.training.sessions[index];
+  if (!session || session.status !== "in_progress" || state.training.activeSessionId !== sessionId) {
+    throw new Error("No se encontró una sesión activa para descartar.");
+  }
+  state.training.sessions.splice(index, 1);
+  state.training.activeSessionId = null;
+  state.training.undo = null;
+  return session;
+}
+
 export function findLastComparableExercise(state, exerciseId, excludedSessionId = null) {
   const sessions = state.training.sessions
     .filter((session) => (
@@ -1087,6 +1151,44 @@ export function removeDemoData(state) {
     (exercise) => !exercise.isDemo || referencedExerciseIds.has(exercise.id),
   );
   state.meta.demoSeedVersion = null;
+  return state;
+}
+
+export function cleanupPublishedData(state) {
+  ensureExtendedState(state);
+  const removableRoutines = state.training.routines.filter(
+    (routine) => (
+      routine.isDemo
+      || normalizeExerciseName(routine.name) === "rutina de prueba"
+    ),
+  );
+  const removableRoutineIds = new Set(removableRoutines.map((routine) => routine.id));
+  const removableRoutineDayIds = new Set(
+    removableRoutines.flatMap((routine) => routine.days.map((day) => day.id)),
+  );
+  const removableSessionIds = new Set(
+    state.training.sessions
+      .filter((session) => (
+        session.isDemo
+        || removableRoutineIds.has(session.source?.routineId)
+        || removableRoutineDayIds.has(session.source?.routineDayId)
+        || normalizeExerciseName(session.source?.snapshot?.routineName) === "rutina de prueba"
+      ))
+      .map((session) => session.id),
+  );
+
+  if (removableSessionIds.has(state.training.activeSessionId)) {
+    state.training.activeSessionId = null;
+  }
+  state.training.sessions = state.training.sessions.filter(
+    (session) => !removableSessionIds.has(session.id),
+  );
+  state.training.routines = state.training.routines.filter(
+    (routine) => !removableRoutineIds.has(routine.id),
+  );
+  removeDemoData(state);
+  state.meta.demoDismissed = true;
+  state.meta.publicCleanupVersion = PUBLIC_CLEANUP_VERSION;
   return state;
 }
 
