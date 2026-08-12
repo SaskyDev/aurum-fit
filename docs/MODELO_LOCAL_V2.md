@@ -8,17 +8,20 @@ Este corte permite:
 
 - iniciar un entrenamiento libre;
 - crear rutinas con días y ejercicios ordenados;
-- iniciar desde el día sugerido o elegir otro día;
+- revisar una rutina y empezar uno de sus días;
 - registrar series independientes;
 - recuperar la sesión al recargar y finalizarla.
 - asignar cada día de rutina a un día de la semana sin conflictos entre rutinas;
 - registrar RIR opcional de 0 a 5, manteniendo lectura de datos antiguos con RPE;
-- usar un temporizador manual de descanso de 30 s, 1, 2 o 3 minutos;
-- consultar un resumen de Diario/Progreso con actividad, sesiones recientes y
-  edición de métricas legadas.
+- usar un temporizador manual por ejercicio de 30 s, 1, 2 o 3 minutos;
+- consultar Diario por periodo con actividad, nutrición, sesiones y progreso por
+  ejercicio;
+- distinguir series efectivas, de aproximación y de calentamiento;
+- omitir o sustituir un ejercicio previsto, o añadir uno extra solo a la sesión actual;
+- impedir cualquier edición después de finalizar la sesión.
 
-No incluye todavía omitir/sustituir/reordenar ejercicios durante una sesión ni
-nutrición por etiqueta.
+Incluye una base local de recetas y etiquetas por marca. Todavía no incluye OCR,
+cálculo automático de objetivos ni sincronización entre dispositivos.
 
 ## Claves de almacenamiento
 
@@ -37,7 +40,9 @@ nutrición por etiqueta.
 estado v2
 ├── schemaVersion
 ├── owner
-│   └── id = "local-user"
+│   ├── id = "local-user"
+│   ├── profile (fecha, altura y peso opcionales)
+│   └── targets (calorías, proteína y pasos manuales)
 ├── legacy
 │   └── days (copia compatible del prototipo)
 ├── training
@@ -50,20 +55,25 @@ estado v2
 │   │       └── sets
 │   ├── activeSessionId
 │   └── undo
+├── nutrition
+│   ├── recipes
+│   └── labels
 └── meta
 ```
 
 Cada entidad histórica lleva `userId` aunque solo exista el usuario local. Esto
 prepara la propiedad futura sin introducir cuentas, autenticación o backend.
 
-Una rutina es un plan mutable. Cada rutina contiene días ordenados, un día
-sugerido y ejercicios ordenados.
+Una rutina es un plan mutable. Cada rutina contiene días y ejercicios ordenados.
+El plan decide qué ejercicios corresponden al día, pero no prescribe series,
+repeticiones, peso ni RIR.
 
 Al iniciar desde un día, la sesión copia:
 
 - nombre de la rutina;
 - nombre del día;
 - identidad, nombre y orden de cada ejercicio.
+- una sesión vacía para registrar únicamente lo que se haga ese día.
 
 Por eso añadir o reordenar ejercicios posteriormente en la rutina no puede
 reescribir el pasado.
@@ -71,6 +81,9 @@ reescribir el pasado.
 ## Reglas de seguridad
 
 - La serie es la unidad guardada y tiene estado `completed`.
+- Cada serie tiene un único tipo: `effective`, `approach` o `warmup`.
+- Solo las efectivas completan las series previstas y alimentan la gráfica
+  principal de peso/repeticiones.
 - Repeticiones: entero entre 1 y 1000.
 - Peso opcional: entre 0 y 2000 kg.
 - RIR opcional: entero entre 0 y 5. Los datos importados con RPE antiguo se
@@ -78,11 +91,21 @@ reescribir el pasado.
 - Nota opcional: máximo 300 caracteres.
 - Todo texto del usuario se representa con `textContent`, no con `innerHTML`.
 - Una sesión vacía no puede finalizarse.
+- Una sesión finalizada no admite corregir, borrar ni añadir series.
+- Un ejercicio con series completadas no puede marcarse después como omitido.
+- Una sustitución conserva el ejercicio original en `substitutedFrom`, afecta solo
+  a la sesión activa y se bloquea en cuanto existe una serie completada.
 - Un día de rutina vacío no puede iniciarse.
 - No se permiten rutinas, días o ejercicios duplicados dentro del mismo contexto.
 - Dos rutinas activas no pueden compartir el mismo día de la semana.
 - La referencia anterior solo usa sesiones finalizadas del mismo ejercicio.
 - Importar exige una estructura v2 válida o una copia reconocible del prototipo.
+- Los registros de demostración llevan `isDemo` y pueden eliminarse sin tocar
+  entidades reales. `meta.demoSeedVersion` identifica la semilla cargada.
+- La foto de una etiqueta se reduce antes de guardarse y se rechaza si sigue
+  siendo demasiado grande para el almacenamiento local.
+- El estado del temporizador es efímero: no altera la rutina, las series ni el
+  historial, y se pausa al cambiar de ejercicio.
 
 ## Fundamento que Alex debe comprender
 
