@@ -16,6 +16,8 @@ Nutrición sobre un modelo local versionado, sin cuentas ni backend.
 - Anillo diario calculado con el avance de pasos, calorías y el entrenamiento
   planificado cuando corresponde.
 - Periodos desde el inicio, mes, semana y hoy, con tabla y gráfica por ejercicio.
+- Cada entrada del Diario reciente abre el resumen completo del día: métricas,
+  nutrición, plan y todas las series realizadas.
 - Portada de rutinas con días visibles y detalle separado para revisar o editar
   cada entrenamiento antes de empezarlo.
 - Entrenamiento centrado primero en rutinas; una sesión en curso se puede
@@ -33,8 +35,10 @@ Nutrición sobre un modelo local versionado, sin cuentas ni backend.
 - Guardado automático, recuperación tras recarga y copia local previa.
 - Opción explícita para descartar una sesión en curso y liberar otra rutina.
 - Edición, borrado confirmado y deshacer de series.
+- Duplicado de una serie como registro independiente con los mismos valores.
 - Sesiones finalizadas inmutables.
 - Referencia de la última sesión finalizada del mismo ejercicio.
+- Vistas `Historial`, `Actual` y `Progreso` dentro de cada ejercicio activo.
 - Catálogo de 1.317 ejercicios buscables por nombre, zona muscular y equipo,
   deduplicado y sin medios de Gym Visual; muestra cuatro resultados al inicio y
   permite ampliar la lista de forma voluntaria.
@@ -87,4 +91,5 @@ Documentación:
 - `docs/MODELO_LOCAL_V2.md`
 - `docs/IMPORTACION_CATALOGO.md`
 - `docs/SISTEMA_VISUAL.md`
+- `docs/REFERENCIAS_UX.md`
 - `docs/PRUEBAS_MANUALES.md`

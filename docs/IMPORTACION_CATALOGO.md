@@ -57,9 +57,10 @@ node scripts/import-exercise-catalog.mjs \
   cada descarte en `policy.duplicateExclusions`.
 - El ejercicio `lever chest press` conserva `0576`, ya utilizado por las rutinas
   del prototipo, y descarta `0577`.
-- Los 23 nombres españoles revisados se conservan como capa curada. Los otros
-  1.294 muestran de momento el nombre original inglés, identificado en la
-  interfaz, para no publicar traducciones automáticas dudosas.
+- Los 40 nombres españoles revisados se conservan como capa curada. Para los
+  otros 1.277, la interfaz genera un nombre español reproducible a partir del
+  nombre original y conserva ese original como alias visible y buscable en
+  inglés. Los casos técnicos o ambiguos quedan pendientes de revisión manual.
 - Categoría, equipo, objetivo y grupo muscular sí disponen de equivalencias
   españolas y forman parte de la búsqueda.
 

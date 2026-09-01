@@ -1,4 +1,4 @@
-const SHELL_VERSION = "26";
+const SHELL_VERSION = "32";
 const CACHE_NAME = `aurum-fit-shell-v${SHELL_VERSION}`;
 const ASSETS = [
   `./index.html?v=${SHELL_VERSION}`,
@@ -8,6 +8,7 @@ const ASSETS = [
   `./data/exercises.es.json?v=${SHELL_VERSION}`,
   `./manifest.json?v=${SHELL_VERSION}`,
   `./icon.svg?v=${SHELL_VERSION}`,
+  `./assets/icons.svg?v=${SHELL_VERSION}`,
 ];
 
 function isDocumentRequest(request) {

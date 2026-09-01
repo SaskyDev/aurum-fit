@@ -64,7 +64,12 @@ estado v2
 Cada entidad histórica lleva `userId` aunque solo exista el usuario local. Esto
 prepara la propiedad futura sin introducir cuentas, autenticación o backend.
 
-Una rutina es un plan mutable. Cada rutina contiene días y ejercicios ordenados.
+Una rutina es un plan mutable. Cada rutina contiene bloques/días con ejercicios
+ordenados. Un mismo bloque puede repetirse varios días de la semana mediante
+`weekdays` para evitar tres copias idénticas de una rutina full body. El campo
+antiguo `weekday` se conserva como compatibilidad y representa el primer día
+asignado cuando existe.
+
 El plan decide qué ejercicios corresponden al día, pero no prescribe series,
 repeticiones, peso ni RIR.
 

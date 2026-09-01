@@ -61,8 +61,8 @@ function loadServiceWorker({ oldCaches = [] } = {}) {
     const url = String(request.url ?? "");
     return {
       ok: true,
-      version: request.mode === "navigate" || request.destination === "document" || url === "./" || url.includes("?v=26")
-        ? "v26"
+      version: request.mode === "navigate" || request.destination === "document" || url === "./" || url.includes("?v=32")
+        ? "v32"
         : "v9",
       clone() { return this; },
     };
@@ -87,7 +87,7 @@ function loadServiceWorker({ oldCaches = [] } = {}) {
   return { listeners, opened, deleted, puts, fetched, legacyCacheHits, legacyWorker, navigations };
 }
 
-test("actualiza desde una caché v9 y precarga un shell coherente v26", async () => {
+test("actualiza desde una caché v9 y precarga un shell coherente v32", async () => {
   const worker = loadServiceWorker({ oldCaches: ["aurum-fit-shell-v1", "aurum-fit-shell-v9"] });
   let activation;
   worker.listeners.activate({ waitUntil: (promise) => { activation = promise; } });
@@ -98,13 +98,13 @@ test("actualiza desde una caché v9 y precarga un shell coherente v26", async ()
   let installation;
   worker.listeners.install({ waitUntil: (promise) => { installation = promise; } });
   await installation;
-  assert.equal(worker.fetched.length, 7);
-  assert.ok(worker.fetched.every((request) => request.url.includes("?v=26")));
+  assert.equal(worker.fetched.length, 8);
+  assert.ok(worker.fetched.every((request) => request.url.includes("?v=32")));
   assert.deepEqual(worker.legacyCacheHits, []);
-  assert.ok(worker.puts.every(({ response }) => response.version === "v26"));
+  assert.ok(worker.puts.every(({ response }) => response.version === "v32"));
 });
 
-test("la navegación antigua v9 converge a v26 tras reclamar el cliente", async () => {
+test("la navegación antigua v9 converge a v32 tras reclamar el cliente", async () => {
   const worker = loadServiceWorker({ oldCaches: ["aurum-fit-shell-v9"] });
   const oldResponse = worker.legacyWorker.intercept({ url: "./" });
   assert.equal(oldResponse.version, "v9");
@@ -119,7 +119,7 @@ test("la navegación antigua v9 converge a v26 tras reclamar el cliente", async 
     respondWith: (promise) => { responsePromise = promise; },
   });
   const response = await responsePromise;
-  assert.equal(response.version, "v26");
+  assert.equal(response.version, "v32");
   assert.deepEqual(worker.navigations, ["http://localhost:8000/"]);
 });
 test("prioriza la red para documentos y actualiza la caché activa", async () => {
@@ -171,13 +171,27 @@ test("el catálogo espera una búsqueda y la sesión distingue los tres tipos de
   assert.doesNotMatch(app, /placeholder: "(?:10|60|2)"/);
 });
 
+test("el catálogo reconoce variantes unilaterales en español", () => {
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const catalog = JSON.parse(fs.readFileSync(new URL("../data/exercises.es.json", import.meta.url), "utf8"));
+  assert.match(app, /catalogDerivedAliases/);
+  assert.match(app, /aliases\.push\("unilateral", "una mano", "un brazo"\)/);
+  assert.match(app, /function translatedCatalogName/);
+  assert.match(app, /entry\.nameOriginal/);
+  assert.ok(catalog.exercises.some((exercise) => exercise.nameEs === "Remo unilateral con mancuerna"));
+  assert.ok(catalog.exercises.some((exercise) => exercise.nameEs === "Jalón unilateral en polea"));
+});
+
 test("la interfaz limita el catálogo y coloca un temporizador dentro del ejercicio abierto", () => {
   const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
   const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const css = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
   assert.match(app, /let catalogResultLimit = 4/);
   assert.match(app, /Ver todos \(\$\{matches\.length\.toLocaleString/);
   assert.match(app, /createExerciseRestTimer\(sessionExercise\.id\)/);
   assert.match(app, /document\.querySelectorAll\("\.session-exercise\[open\]"\)/);
+  assert.match(app, /button-quiet timer-reset-button/);
+  assert.match(css, /\.timer-reset-button/);
   assert.doesNotMatch(html, /id="restTimerDisplay"/);
   assert.match(app, /¿No puedes realizar este ejercicio hoy\?/);
   assert.match(app, /Elegir una alternativa para hoy/);
@@ -223,7 +237,35 @@ test("el anillo calcula cumplimiento diario y calorías no reutiliza el texto de
   assert.match(html, /class="exercise-picker-summary"/);
   assert.ok(html.indexOf('id="sessionExerciseList"') < html.indexOf('class="exercise-picker surface"'));
   assert.match(app, /const dailyGoalRatios = \[/);
+  assert.match(app, /function sessionMatchesScheduledDay/);
+  assert.match(app, /suggested \? \(completedScheduledSession \? 1 : 0\) : null/);
   assert.match(app, /\$\("weeklyRingValue"\)\.textContent = `\$\{dailyProgress\}%`/);
   assert.match(app, /Quedan \$\{remainingCalories\.toLocaleString/);
   assert.doesNotMatch(app, /dashboardNutritionDetail"\)\.textContent = `\$\{selectedTotals\.protein/);
+});
+
+test("la nueva estructura separa Rutinas, Entrenamiento y el detalle completo del Diario", () => {
+  const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+
+  assert.doesNotMatch(html, /class="topbar"/);
+  assert.match(html, /data-tab="entreno"[\s\S]*Rutinas/);
+  assert.match(html, /id="routineDetailBackBtn"[\s\S]*aria-label="Volver a rutinas"/);
+  assert.match(html, /id="dailyDetailPanel"[\s\S]*Resumen completo/);
+  assert.match(app, /openDailyDetail\(date\)/);
+  assert.match(app, /startSessionFromRoutineDay\(next, selected\.routineId, selected\.routineDayId/);
+});
+
+test("los días son reversibles y cada ejercicio ofrece duplicado, historial, actual y progreso", () => {
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+
+  assert.match(app, /setRoutineDayWeekdays\(next, routine\.id, routineDay\.id, updated\)/);
+  assert.match(app, /duplicateSet\(next, session\.id, sessionExercise\.id, workoutSet\.id/);
+  assert.match(app, /\["history", "Historial"\]/);
+  assert.match(app, /\["current", "Actual"\]/);
+  assert.match(app, /\["progress", "Progreso"\]/);
+  assert.match(app, /Todas tus sesiones anteriores, sin modificar el histórico/);
+  assert.match(app, /Mejor serie efectiva de cada entrenamiento/);
+  assert.match(app, /button\.dataset\.action === "continue"/);
+  assert.match(app, /Ver entrenamiento completado/);
 });

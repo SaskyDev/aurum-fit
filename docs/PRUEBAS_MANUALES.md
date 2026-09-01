@@ -154,6 +154,8 @@ explícito `tests/*.test.js`.
    recargar, deben conservarse la tarjeta y una copia reducida de la imagen.
 6. Seleccionar una fotografía enorme: si la reducción aún supera el límite, la
    aplicación debe explicarlo sin perder los datos ya guardados.
+7. Seleccionar un archivo que no sea imagen o una imagen de más de 15 MB: debe
+   rechazarse antes de mostrar vista previa y conservar el formulario.
 
 ## Sesión en acordeón
 
@@ -167,13 +169,13 @@ explícito `tests/*.test.js`.
 
 ## Rutinas y descanso personalizable
 
-1. En Entrenamiento, comprobar que primero aparecen todas las rutinas, después
+1. En Rutinas, comprobar que primero aparecen todas las rutinas, después
    `Crear nueva rutina` y, como última opción, `Entrenamiento libre`.
 2. Abrir `Crear nueva rutina`: seleccionar varios días como en una alarma y
    comprobar que un día ocupado por otra rutina real está deshabilitado.
-3. Crear la rutina: cada día seleccionado aparece una sola vez en su tarjeta y
-   no vuelve a pedirse dentro del detalle.
-4. Entrar en una rutina y abrir un día: los ejercicios se editan antes de
+3. Crear la rutina: aparece un único bloque de entrenamiento con todos los días
+   seleccionados, sin duplicar la lista de ejercicios por lunes/miércoles/etc.
+4. Entrar en una rutina y abrir el bloque: los ejercicios se editan antes de
    empezar. Iniciar el día debe abrir la sesión activa, no otro editor.
    Al añadir un ejercicio solo se pide su nombre, sin series ni repeticiones.
 5. En la sesión, comprobar que `Añadir ejercicio solo hoy` aparece plegado al
@@ -198,9 +200,9 @@ explícito `tests/*.test.js`.
    `aurum-fit-shell-v9` con la copia antigua de `index.html`, estilos, scripts y
    catálogo.
 2. Recargar con conexión y comprobar que la interfaz actual se muestra tras la
-   activación del worker nuevo, sin mezclar recursos v9 y v26.
+   activación del worker nuevo, sin mezclar recursos v9 y v31.
 3. En `Application > Cache Storage`, verificar que queda
-   `aurum-fit-shell-v26` y que la caché v9 ha sido eliminada al activarse el
+   `aurum-fit-shell-v31` y que la caché v9 ha sido eliminada al activarse el
    worker nuevo.
 4. Cortar la conexión, recargar y comprobar que la interfaz actual sigue
    disponible desde la caché, sin mezclar los archivos versionados antiguos.
@@ -209,9 +211,9 @@ La nueva precarga usa URLs versionadas y se escribe en una caché nueva antes de
 activar el worker. Tras `clients.claim()`, el worker navega una vez las ventanas
 que ya estaban abiertas; así no depende de que el código antiguo capture
 `controllerchange`. El documento se solicita primero a la red para no mostrar
-una interfaz vieja; si no hay conexión se usa el `index.html?v=26` de la caché
+una interfaz vieja; si no hay conexión se usa el `index.html?v=31` de la caché
 activa. El catálogo también usa
-`exercises.es.json?v=26`, por lo que el catálogo deduplicado de 1.317 ejercicios
+`exercises.es.json?v=31`, por lo que el catálogo deduplicado de 1.317 ejercicios
 no puede reutilizar una respuesta antigua.
 
 ### Importación, validación, búsqueda y navegación
@@ -236,8 +238,26 @@ no puede reutilizar una respuesta antigua.
   debe sustituirse por un error que indique que las repeticiones deben ser al
   menos 1.
 - Buscar `jalon`: debe encontrar `Jalón al pecho en polea`.
-- Desde cualquier sección, pulsar `Aurum Fit, inicio`: la URL termina en
-  `#diario`, Diario queda activo y el resto de paneles deja de mostrarse.
+- Desde Rutinas o Nutrición, pulsar `Diario`: la URL termina en `#diario`,
+  Diario queda activo y el resto de paneles deja de mostrarse.
+
+### Diario, rutina del día e historial por ejercicio
+
+1. A 390 px de ancho, comprobar que la fecha, el anillo y las tarjetas de
+   calorías/pasos no generan desplazamiento horizontal.
+2. Asignar una rutina al día actual y comprobar que `Plan de hoy` muestra su
+   nombre y ejercicios. Pulsar `Empezar entrenamiento`: debe abrir exactamente
+   ese día de esa rutina.
+3. En `Diario reciente`, abrir un día con datos: el panel debe mostrar métricas,
+   nutrición, plan previsto y cada sesión con todas sus series, tipos y notas.
+4. En el detalle de una rutina, pulsar el mismo día de repetición dos veces:
+   la primera lo desasigna y la segunda lo vuelve a asignar, siempre que no lo
+   ocupe otra rutina.
+5. Guardar una serie y pulsar `Duplicar`: debe aparecer una copia independiente
+   con el mismo peso, repeticiones, RIR, tipo y nota.
+6. En un ejercicio abierto, cambiar entre `Historial`, `Actual` y `Progreso`:
+   Historial muestra todas las sesiones anteriores inmutables; Actual conserva
+   el formulario y las series de hoy; Progreso muestra el gráfico del ejercicio.
 
 ### Exportación (QA-EXPORT-001)
 

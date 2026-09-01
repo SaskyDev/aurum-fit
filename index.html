@@ -8,49 +8,21 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Aurum Fit" />
     <title>Aurum Fit</title>
-    <link rel="manifest" href="manifest.json?v=26" />
-    <link rel="apple-touch-icon" href="icon.svg?v=26" />
-    <link rel="stylesheet" href="styles.css?v=26" />
+    <link rel="manifest" href="manifest.json?v=32" />
+    <link rel="apple-touch-icon" href="icon.svg?v=32" />
+    <link rel="stylesheet" href="styles.css?v=32" />
   </head>
   <body>
-    <header class="topbar">
-      <a class="brand" href="#diario" aria-label="Aurum Fit, inicio">
-        <span class="brand-mark" aria-hidden="true">A</span>
-        <span>
-          <span class="eyebrow">Registro local</span>
-          <strong>Aurum Fit</strong>
-        </span>
-      </a>
-      <div class="top-actions">
-        <span class="local-badge"><span aria-hidden="true">●</span> Guardado local</span>
-        <button id="settingsBtn" class="button button-quiet icon-button" type="button" aria-label="Abrir configuración">⚙</button>
-        <button id="exportBtn" class="button button-quiet" type="button">Exportar</button>
-        <button id="importBtn" class="button button-quiet" type="button" aria-controls="importFile">
-          Importar
-        </button>
-        <input
-          id="importFile"
-          class="visually-hidden"
-          type="file"
-          accept="application/json"
-          aria-label="Seleccionar copia JSON de Aurum Fit"
-          tabindex="-1"
-          aria-hidden="true"
-          hidden
-        />
-      </div>
-    </header>
-
     <main>
       <nav class="tabs" aria-label="Secciones principales">
         <button class="tab" type="button" data-tab="entreno">
-          <span aria-hidden="true">◆</span> Entrenamiento
+          <svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#dumbbell"></use></svg> Rutinas
         </button>
         <button class="tab active" type="button" data-tab="diario">
-          <span aria-hidden="true">◫</span> Diario
+          <svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#diary"></use></svg> Diario
         </button>
         <button class="tab" type="button" data-tab="comida">
-          <span aria-hidden="true">◌</span> Nutrición
+          <svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#apple"></use></svg> Nutrición
         </button>
       </nav>
 
@@ -59,27 +31,34 @@
       <section id="diario" class="panel active">
         <header class="diary-header">
           <div>
-            <h2>Hoy</h2>
-            <p id="diaryDateTitle" class="diary-date-subtitle">Tu diario</p>
+            <p class="eyebrow">Hoy</p>
+            <h2 id="diaryDateTitle">Tu diario</h2>
           </div>
-          <label class="date-field">Fecha<input id="entryDate" type="date" /></label>
+          <div class="diary-header-actions">
+            <label class="date-picker-button" aria-label="Cambiar fecha">
+              <svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#calendar"></use></svg>
+              <input id="entryDate" type="date" />
+            </label>
+            <button id="settingsBtn" class="minimal-icon-button" type="button" aria-label="Abrir ajustes y datos"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#ellipsis"></use></svg></button>
+          </div>
         </header>
         <section class="daily-summary surface" aria-label="Resumen del día">
           <div class="weekly-ring" id="weeklyRing">
             <div>
               <strong id="weeklyRingValue">0 / 0</strong>
+              <small>del día</small>
               <span id="dailyGoalCount">0 de 0 objetivos</span>
             </div>
           </div>
           <div class="daily-metric-list">
             <article class="daily-metric daily-metric-calories">
-              <div><span class="metric-icon" aria-hidden="true">🔥</span><small>Calorías</small></div>
+              <div><svg class="ui-icon metric-icon" aria-hidden="true"><use href="assets/icons.svg#flame"></use></svg><small>Calorías</small></div>
               <strong id="dashboardNutritionValue">0 / 2.200 kcal</strong>
               <progress id="dashboardCaloriesProgress" max="2200" value="0"></progress>
               <p id="dashboardNutritionDetail" class="muted">Objetivo y consumo registrados manualmente.</p>
             </article>
             <article class="daily-metric daily-metric-steps">
-              <div><span class="metric-icon" aria-hidden="true">👟</span><small>Pasos</small></div>
+              <div><svg class="ui-icon metric-icon" aria-hidden="true"><use href="assets/icons.svg#footprints"></use></svg><small>Pasos</small></div>
               <strong id="dashboardActivityValue">0 / 10.000 pasos</strong>
               <progress id="dashboardStepsProgress" max="10000" value="0"></progress>
               <p id="dashboardActivityDetail" class="muted">Añade tus pasos en el registro diario.</p>
@@ -125,6 +104,15 @@
           <div class="section-heading compact"><h3>Diario reciente</h3><span class="muted">Últimos registros</span></div>
           <ul id="dailyTimeline" class="timeline-list"></ul>
         </div>
+        <aside id="dailyDetailPanel" class="day-detail-overlay" aria-labelledby="dailyDetailTitle" hidden>
+          <div class="day-detail-card surface">
+            <header class="day-detail-header">
+              <button id="dailyDetailCloseBtn" class="minimal-icon-button" type="button" aria-label="Cerrar resumen del día">←</button>
+              <div><p class="eyebrow">Resumen completo</p><h2 id="dailyDetailTitle">Día</h2></div>
+            </header>
+            <div id="dailyDetailContent" class="day-detail-content"></div>
+          </div>
+        </aside>
         <details class="daily-editor">
           <summary>Editar métricas del día</summary>
         <form id="dailyForm" class="form-grid surface">
@@ -215,20 +203,12 @@
       </section>
 
       <section id="entreno" class="panel">
-        <div class="training-header">
-          <div>
-            <p class="eyebrow eyebrow-light">Rutinas y sesiones</p>
-            <h2>Entrenamiento</h2>
-          </div>
-          <span id="sessionStatusBadge" class="status-badge">Sin sesión activa</span>
-        </div>
-
         <p id="trainingNotice" class="notice" role="status" aria-live="polite" hidden></p>
 
         <section id="routineManager" class="routine-manager">
           <div id="routineOverview">
             <div class="section-heading compact">
-              <div><p class="eyebrow">Mis planes</p><h2>Tus rutinas</h2></div>
+              <div><p class="eyebrow">Tus rutinas</p><h2>Rutinas</h2></div>
               <span id="routineCount" class="count-badge">0 rutinas</span>
             </div>
             <article id="activeSessionResume" class="active-session-resume surface" hidden>
@@ -244,7 +224,7 @@
             </article>
             <div id="routineList" class="routine-list"></div>
             <details id="createRoutineCard" class="create-routine-card surface">
-              <summary><span class="create-routine-plus" aria-hidden="true">+</span><span><strong>Crear nueva rutina</strong><small>Elige nombre y días de repetición</small></span></summary>
+              <summary><span class="create-routine-plus" aria-hidden="true"><svg class="ui-icon"><use href="assets/icons.svg#plus"></use></svg></span><span><strong>Crear nueva rutina</strong><small>Elige nombre y días de repetición</small></span></summary>
               <form id="createRoutineForm" class="create-routine-form">
                 <label>Nombre de la rutina<input id="routineName" type="text" minlength="2" maxlength="80" placeholder="Ej. Push Pull Legs" required /></label>
                 <fieldset class="weekday-fieldset">
@@ -256,17 +236,16 @@
               </form>
             </details>
             <button id="startFreeSessionBtn" class="free-routine-card surface" type="button">
-              <span class="routine-icon routine-icon-free" aria-hidden="true">＋</span>
+              <span class="routine-icon routine-icon-free" aria-hidden="true"><svg class="ui-icon"><use href="assets/icons.svg#plus"></use></svg></span>
               <span><strong>Entrenamiento libre</strong><small>Monta una sesión puntual sin cambiar tus rutinas</small></span>
               <span class="routine-card-chevron" aria-hidden="true">›</span>
             </button>
           </div>
 
           <section id="routineDetailPanel" class="routine-detail-panel" hidden>
-            <button id="routineDetailBackBtn" class="button button-quiet back-button" type="button">← Todas las rutinas</button>
-            <header class="routine-detail-header surface">
-              <span id="routineDetailIcon" class="routine-icon" aria-hidden="true">◆</span>
-              <div><p class="eyebrow">Detalle de rutina</p><h2 id="routineDetailTitle">Rutina</h2><p id="routineDetailMeta" class="muted"></p></div>
+            <header class="subpage-header">
+              <button id="routineDetailBackBtn" class="minimal-icon-button" type="button" aria-label="Volver a rutinas">←</button>
+              <div><p class="eyebrow">Entrenamiento</p><h2 id="routineDetailTitle">Rutina</h2><p id="routineDetailMeta" class="muted"></p></div>
             </header>
             <datalist id="routineExerciseOptions"></datalist>
             <div id="routineDetailDays" class="routine-day-list"></div>
@@ -280,13 +259,13 @@
 
         <section id="activeSessionPanel" hidden>
           <div class="session-toolbar surface">
+            <button id="backToRoutinesBtn" class="minimal-icon-button session-back-button" type="button" aria-label="Volver a rutinas">←</button>
             <div>
-              <p class="eyebrow">En curso · guardado automático</p>
+              <p class="eyebrow">Entrenamiento · guardado automático</p>
               <h3 id="activeSessionTitle">Entrenamiento libre</h3>
               <p id="activeSessionMeta" class="muted"></p>
             </div>
             <div class="session-toolbar-actions">
-              <button id="backToRoutinesBtn" class="button button-quiet" type="button">Ver rutinas</button>
               <button id="discardSessionBtn" class="button button-danger" type="button">Descartar sesión</button>
               <button id="finishSessionBtn" class="button button-primary" type="button">Finalizar</button>
             </div>
@@ -355,25 +334,140 @@
       </section>
 
       <section id="ajustes" class="panel settings-panel">
-        <div class="section-heading">
-          <div><p class="eyebrow">Cuenta y objetivos</p><h2>Ajustes</h2></div>
-          <button id="settingsCloseBtn" class="button button-quiet" type="button">Cerrar</button>
+        <header class="settings-header">
+          <button id="settingsCloseBtn" class="minimal-icon-button" type="button" aria-label="Volver al diario">
+            <svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#chevron-left"></use></svg>
+          </button>
+          <div><h2 id="settingsPageTitle">Ajustes</h2></div>
+        </header>
+
+        <div id="settingsMenuView" class="settings-view active" data-settings-view="menu">
+          <section class="settings-group" aria-labelledby="settingsAccountTitle">
+            <h3 id="settingsAccountTitle">Cuenta</h3>
+            <button class="settings-row" type="button" data-open-settings="profile">
+              <span class="settings-row-icon settings-icon-profile"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#diary"></use></svg></span>
+              <span><strong>Perfil</strong><small id="settingsProfileSummary">Usuario local</small></span>
+              <span class="settings-row-chevron" aria-hidden="true">›</span>
+            </button>
+          </section>
+
+          <section class="settings-group" aria-labelledby="settingsControlTitle">
+            <h3 id="settingsControlTitle">Control diario</h3>
+            <button class="settings-row" type="button" data-open-settings="goals">
+              <span class="settings-row-icon settings-icon-goals"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#chart"></use></svg></span>
+              <span><strong>Objetivos</strong><small id="settingsGoalsSummary">Kcal, proteína y pasos</small></span>
+              <span class="settings-row-chevron" aria-hidden="true">›</span>
+            </button>
+          </section>
+
+          <section class="settings-group" aria-labelledby="settingsAppTitle">
+            <h3 id="settingsAppTitle">App</h3>
+            <button class="settings-row" type="button" data-open-settings="appearance">
+              <span class="settings-row-icon settings-icon-appearance"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#ellipsis"></use></svg></span>
+              <span><strong>Apariencia</strong><small id="settingsAppearanceSummary">Lima</small></span>
+              <span class="settings-row-chevron" aria-hidden="true">›</span>
+            </button>
+            <button class="settings-row" type="button" data-open-settings="workout">
+              <span class="settings-row-icon settings-icon-workout"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#timer"></use></svg></span>
+              <span><strong>Entrenamiento</strong><small id="settingsWorkoutSummary">RIR · 60 s</small></span>
+              <span class="settings-row-chevron" aria-hidden="true">›</span>
+            </button>
+            <button class="settings-row" type="button" data-open-settings="data">
+              <span class="settings-row-icon settings-icon-data"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#copy"></use></svg></span>
+              <span><strong>Datos y copias</strong><small>Exportar o importar copia local</small></span>
+              <span class="settings-row-chevron" aria-hidden="true">›</span>
+            </button>
+          </section>
         </div>
-        <form id="settingsForm" class="form-grid surface settings-form">
-          <label class="wide">Nombre<input id="profileName" type="text" maxlength="80" placeholder="Tu nombre" /></label>
-          <label>Fecha de nacimiento<input id="profileBirthDate" type="date" /></label>
-          <label>Altura <span>cm</span><input id="profileHeight" type="number" min="50" max="300" step="1" /></label>
-          <label>Peso actual <span>kg</span><input id="profileWeight" type="number" min="20" max="500" step="0.1" /></label>
-          <label>Objetivo de calorías<input id="targetCalories" type="number" min="500" max="10000" step="1" required /></label>
-          <label>Objetivo de proteína <span>g</span><input id="targetProtein" type="number" min="0" max="1000" step="1" required /></label>
-          <label>Objetivo de pasos<input id="targetSteps" type="number" min="0" max="100000" step="1" required /></label>
-          <p class="health-boundary wide">Estos objetivos son manuales. Aurum Fit no diagnostica ni prescribe calorías, entrenamiento o tratamiento médico.</p>
-          <button class="button button-accent wide" type="submit">Guardar ajustes</button>
+
+        <form id="settingsForm" class="settings-form">
+          <section id="settingsProfileView" class="settings-view settings-subview" data-settings-view="profile" hidden aria-labelledby="settingsProfileTitle">
+            <button class="settings-back-row" type="button" data-open-settings="menu">
+              <svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#chevron-left"></use></svg> Ajustes
+            </button>
+            <div class="settings-section surface">
+              <div class="settings-section-heading"><div><p class="eyebrow">Perfil</p><h3 id="settingsProfileTitle">Datos personales</h3></div><span class="count-badge">Local</span></div>
+              <div class="form-grid compact-form-grid">
+                <label class="wide">Nombre<input id="profileName" type="text" maxlength="80" placeholder="Tu nombre" /></label>
+                <label>Fecha de nacimiento<input id="profileBirthDate" type="date" /></label>
+                <label>Altura <span>cm</span><input id="profileHeight" type="number" min="50" max="300" step="1" inputmode="numeric" /></label>
+                <label>Peso actual <span>kg</span><input id="profileWeight" type="number" min="20" max="500" step="0.1" inputmode="decimal" /></label>
+              </div>
+            </div>
+          </section>
+
+          <section id="settingsGoalsView" class="settings-view settings-subview" data-settings-view="goals" hidden aria-labelledby="settingsGoalsTitle">
+            <button class="settings-back-row" type="button" data-open-settings="menu">
+              <svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#chevron-left"></use></svg> Ajustes
+            </button>
+            <div class="settings-section surface">
+              <div class="settings-section-heading"><div><p class="eyebrow">Objetivos diarios</p><h3 id="settingsGoalsTitle">Control base</h3></div></div>
+              <div class="form-grid compact-form-grid">
+                <label>Calorías<input id="targetCalories" type="number" min="500" max="10000" step="1" required inputmode="numeric" /></label>
+                <label>Proteína <span>g</span><input id="targetProtein" type="number" min="0" max="1000" step="1" required inputmode="numeric" /></label>
+                <label>Pasos<input id="targetSteps" type="number" min="0" max="100000" step="1" required inputmode="numeric" /></label>
+              </div>
+              <p class="health-boundary">Estos objetivos son manuales. Aurum Fit no diagnostica ni prescribe calorías, entrenamiento o tratamiento médico.</p>
+            </div>
+          </section>
+
+          <section id="settingsAppearanceView" class="settings-view settings-subview" data-settings-view="appearance" hidden aria-labelledby="settingsAppearanceTitle">
+            <button class="settings-back-row" type="button" data-open-settings="menu">
+              <svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#chevron-left"></use></svg> Ajustes
+            </button>
+            <div class="settings-section surface">
+              <div class="settings-section-heading"><div><p class="eyebrow">Apariencia</p><h3 id="settingsAppearanceTitle">Color de acento</h3></div></div>
+              <fieldset class="accent-picker">
+                <legend class="visually-hidden">Color de acento</legend>
+                <label><input type="radio" name="accentColor" value="lime" /><span style="--swatch:#c7f464">Lima</span></label>
+                <label><input type="radio" name="accentColor" value="orange" /><span style="--swatch:#ff9f1c">Naranja</span></label>
+                <label><input type="radio" name="accentColor" value="blue" /><span style="--swatch:#38bdf8">Azul</span></label>
+                <label><input type="radio" name="accentColor" value="violet" /><span style="--swatch:#a78bfa">Violeta</span></label>
+                <label><input type="radio" name="accentColor" value="red" /><span style="--swatch:#fb7185">Rojo</span></label>
+                <label><input type="radio" name="accentColor" value="steel" /><span style="--swatch:#e5e7eb">Acero</span></label>
+              </fieldset>
+            </div>
+          </section>
+
+          <section id="settingsWorkoutView" class="settings-view settings-subview" data-settings-view="workout" hidden aria-labelledby="settingsWorkoutTitle">
+            <button class="settings-back-row" type="button" data-open-settings="menu">
+              <svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#chevron-left"></use></svg> Ajustes
+            </button>
+            <div class="settings-section surface">
+              <div class="settings-section-heading"><div><p class="eyebrow">Entrenamiento</p><h3 id="settingsWorkoutTitle">Preferencias de sesión</h3></div></div>
+              <div class="form-grid compact-form-grid">
+                <label>Descanso por defecto <span>seg</span><input id="defaultRestSeconds" type="number" min="15" max="900" step="15" inputmode="numeric" /></label>
+                <label>Escala de esfuerzo
+                  <select id="effortScale">
+                    <option value="rir">RIR</option>
+                    <option value="rpe">RPE</option>
+                    <option value="none">Sin escala</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+          </section>
+
+          <button id="settingsSaveBtn" class="button button-accent button-large settings-save-button" type="submit" hidden>Guardar ajustes</button>
         </form>
+
+        <section id="settingsDataView" class="settings-view settings-subview" data-settings-view="data" hidden>
+          <button class="settings-back-row" type="button" data-open-settings="menu">
+            <svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#chevron-left"></use></svg> Ajustes
+          </button>
+          <div class="settings-data surface">
+            <div><p class="eyebrow">Tus datos</p><h3>Copias de seguridad</h3><p class="muted">Exporta o recupera tus datos locales cuando lo necesites.</p></div>
+            <div class="settings-data-actions">
+              <button id="exportBtn" class="button button-secondary" type="button">Exportar copia</button>
+              <button id="importBtn" class="button button-quiet" type="button" aria-controls="importFile">Importar copia</button>
+              <input id="importFile" class="visually-hidden" type="file" accept="application/json" aria-label="Seleccionar copia JSON de Aurum Fit" tabindex="-1" aria-hidden="true" hidden />
+            </div>
+          </div>
+        </section>
       </section>
 
     </main>
 
-    <script type="module" src="app.js?v=26"></script>
+    <script type="module" src="app.js?v=32"></script>
   </body>
 </html>

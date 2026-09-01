@@ -16,6 +16,7 @@ import {
   createRoutine,
   createRoutineWithWeekdays,
   deleteSet,
+  duplicateSet,
   discardSession,
   findLastComparableExercise,
   loadAppState,
@@ -27,13 +28,16 @@ import {
   restoreLastDeletedSet,
   replaceSessionExerciseForToday,
   removeDemoData,
+  routineDayWeekdays,
   seedDemoData,
   setSessionExerciseSkipped,
   setRoutineDayWeekday,
+  setRoutineDayWeekdays,
   setSuggestedRoutineDay,
   startFreeSession,
   startSessionFromRoutineDay,
   updateSet,
+  validateLabelPhotoFile,
   validateState,
   validateSetInput,
 } from "../core.js";
@@ -90,6 +94,24 @@ test("guarda una copia previa antes de sustituir el estado v2", () => {
 
   assert.deepEqual(JSON.parse(storage.getItem(BACKUP_STORE_KEY)), first);
   assert.equal(JSON.parse(storage.getItem(STORE_KEY)).owner.displayName, "Alex");
+});
+
+test("crea y valida preferencias de apariencia y entrenamiento", () => {
+  const state = createEmptyState({ now: "2026-09-01T08:00:00.000Z" });
+
+  assert.deepEqual(state.owner.preferences, {
+    accentColor: "lime",
+    effortScale: "rir",
+    defaultRestSeconds: 60,
+  });
+
+  state.owner.preferences.accentColor = "violet";
+  state.owner.preferences.effortScale = "rpe";
+  state.owner.preferences.defaultRestSeconds = 90;
+  assert.equal(validateState(state), null);
+
+  state.owner.preferences.accentColor = "neon-random";
+  assert.match(validateState(state), /color de acento/i);
 });
 
 test("abre en memoria y conserva el legado si el almacenamiento está lleno", () => {
@@ -151,6 +173,13 @@ test("rechaza valores vacíos, extremos y contradictorios en una serie", () => {
   assert.match(validateSetInput({ reps: 8, note: "x".repeat(301) }).error, /nota/i);
 });
 
+test("valida la foto de etiqueta antes de previsualizarla o comprimirla", () => {
+  assert.deepEqual(validateLabelPhotoFile(null), { value: null });
+  assert.equal(validateLabelPhotoFile({ type: "image/jpeg", size: 2_000_000 }).error, undefined);
+  assert.match(validateLabelPhotoFile({ type: "text/html", size: 1200 }).error, /fotografía válida/i);
+  assert.match(validateLabelPhotoFile({ type: "image/png", size: 16 * 1024 * 1024 }).error, /demasiado grande/i);
+});
+
 test("guarda RIR de 0 a 5 y mantiene compatibilidad con RPE antiguo", () => {
   const { state, session, exercise } = stateWithActiveSession();
   const set = addSetToExercise(state, session.id, exercise.id, { reps: 8, loadKg: 80, rir: 2 });
@@ -187,6 +216,31 @@ test("crea, edita, borra y deshace series independientes", () => {
   restoreLastDeletedSet(state);
   assert.equal(exercise.sets[0].id, "set-1");
   assert.equal(state.training.undo, null);
+});
+
+test("duplica una serie completa como una nueva serie independiente", () => {
+  const { state, session, exercise } = stateWithActiveSession();
+  addSetToExercise(
+    state,
+    session.id,
+    exercise.id,
+    { reps: 8, loadKg: 82.5, rir: 1, setType: "effective", note: "Agarre neutro" },
+    { id: "set-source", now: "2026-08-21T08:15:00.000Z" },
+  );
+  const copy = duplicateSet(
+    state,
+    session.id,
+    exercise.id,
+    "set-source",
+    { id: "set-copy", now: "2026-08-21T08:18:00.000Z" },
+  );
+
+  assert.equal(copy.id, "set-copy");
+  assert.equal(copy.order, 2);
+  assert.deepEqual(
+    { reps: copy.reps, loadKg: copy.loadKg, rir: copy.rir, setType: copy.setType, note: copy.note },
+    { reps: 8, loadKg: 82.5, rir: 1, setType: "effective", note: "Agarre neutro" },
+  );
 });
 
 test("recupera la última referencia solo desde una sesión finalizada comparable", () => {
@@ -287,7 +341,7 @@ test("el catálogo completo conserva trazabilidad, deduplica y excluye multimedi
   assert.equal(catalog.audit.sourceRecords, 1324);
   assert.equal(catalog.audit.exactDuplicateGroups, 6);
   assert.match(catalog.source.commit, /^[a-f0-9]{40}$/);
-  assert.equal(catalog.exercises.filter((exercise) => exercise.nameLocale === "es").length, 23);
+  assert.equal(catalog.exercises.filter((exercise) => exercise.nameLocale === "es").length, 40);
   catalog.exercises.forEach((exercise) => {
     assert.ok(exercise.nameEs);
     assert.ok(exercise.instructionsEs);
@@ -622,16 +676,41 @@ test("asigna días de la semana sin permitir conflictos entre rutinas", () => {
   assert.equal(firstDay.weekday, null);
 });
 
-test("crea una rutina desde un selector semanal sin repetir días reales", () => {
+test("crea una rutina semanal como un bloque compartido sin duplicar ejercicios", () => {
   const state = createEmptyState();
   const routine = createRoutineWithWeekdays(state, "Push", [1, 3, 5], {
     id: "routine-weekly",
     now: "2026-08-12T08:00:00.000Z",
   });
 
-  assert.deepEqual(routine.days.map((day) => day.weekday), [1, 3, 5]);
-  assert.deepEqual(routine.days.map((day) => day.name), ["lunes", "miércoles", "viernes"]);
+  assert.equal(routine.days.length, 1);
+  assert.equal(routine.days[0].name, "Entrenamiento");
+  assert.deepEqual(routineDayWeekdays(routine.days[0]), [1, 3, 5]);
+
+  addExerciseToRoutineDay(state, routine.id, routine.days[0].id, "Press banca", {
+    exerciseId: "exercise-press",
+  });
+  assert.equal(routine.days.reduce((total, day) => total + day.exercises.length, 0), 1);
   assert.throws(() => createRoutineWithWeekdays(state, "Pull", [3]), /miércoles.*Push/i);
+});
+
+test("permite cambiar varios días de repetición en un mismo bloque", () => {
+  const state = createEmptyState();
+  const first = createRoutine(state, "Rutina A");
+  const firstDay = addRoutineDay(state, first.id, "Full body");
+  const second = createRoutine(state, "Rutina B");
+  const secondDay = addRoutineDay(state, second.id, "Torso");
+
+  setRoutineDayWeekdays(state, first.id, firstDay.id, [1, 3]);
+  assert.deepEqual(routineDayWeekdays(firstDay), [1, 3]);
+  assert.equal(firstDay.weekday, 1);
+  assert.throws(
+    () => setRoutineDayWeekday(state, second.id, secondDay.id, 3),
+    /miércoles.*Rutina A.*Full body/i,
+  );
+  setRoutineDayWeekdays(state, first.id, firstDay.id, [5]);
+  assert.deepEqual(routineDayWeekdays(firstDay), [5]);
+  assert.equal(validateState(state), null);
 });
 
 test("una rutina real puede sustituir un día ocupado solo por la demostración", () => {
@@ -646,6 +725,6 @@ test("una rutina real puede sustituir un día ocupado solo por la demostración"
   const realRoutine = createRoutineWithWeekdays(state, "Mi rutina", [weekday]);
 
   assert.equal(realRoutine.days[0].weekday, weekday);
-  assert.equal(demoDay.weekday, null);
+  assert.equal(routineDayWeekdays(demoDay).includes(weekday), false);
   assert.equal(validateState(state), null);
 });

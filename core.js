@@ -12,7 +12,10 @@ const MIN_PLANNED_SETS = 1;
 const MAX_PLANNED_SETS = 20;
 const MIN_WEEKDAY = 0;
 const MAX_WEEKDAY = 6;
+const MAX_LABEL_PHOTO_BYTES = 15 * 1024 * 1024;
 const SET_TYPES = new Set(["effective", "approach", "warmup"]);
+const ACCENT_COLORS = new Set(["lime", "orange", "blue", "violet", "red", "steel"]);
+const EFFORT_SCALES = new Set(["rir", "rpe", "none"]);
 const STORAGE_RECOVERY_MESSAGE =
   "No se pudo preparar el guardado local. Los datos existentes no se han borrado. "
   + "Exporta una copia y libera espacio del navegador antes de continuar.";
@@ -41,6 +44,18 @@ function sanitizeLegacyDays(legacyDays) {
   );
 }
 
+export function routineDayWeekdays(routineDay) {
+  if (!isObject(routineDay)) return [];
+  const values = Array.isArray(routineDay.weekdays)
+    ? routineDay.weekdays
+    : [routineDay.weekday];
+  return [...new Set(values.map(Number))]
+    .filter((weekday) => (
+      Number.isInteger(weekday) && weekday >= MIN_WEEKDAY && weekday <= MAX_WEEKDAY
+    ))
+    .sort((left, right) => ((left + 6) % 7) - ((right + 6) % 7));
+}
+
 export function createId(prefix = "id") {
   const randomPart = globalThis.crypto?.randomUUID?.()
     ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
@@ -57,6 +72,11 @@ export function createEmptyState({ now = new Date().toISOString(), legacyDays = 
         birthDate: null,
         heightCm: null,
         weightKg: null,
+      },
+      preferences: {
+        accentColor: "lime",
+        effortScale: "rir",
+        defaultRestSeconds: 60,
       },
       targets: {
         calories: 2200,
@@ -95,6 +115,31 @@ export function validateState(state) {
   }
   if (!isObject(state.owner) || typeof state.owner.id !== "string") {
     return "Falta el propietario local.";
+  }
+  if (state.owner.preferences !== undefined) {
+    if (!isObject(state.owner.preferences)) return "Las preferencias no son válidas.";
+    if (
+      state.owner.preferences.accentColor !== undefined
+      && !ACCENT_COLORS.has(state.owner.preferences.accentColor)
+    ) {
+      return "El color de acento no es válido.";
+    }
+    if (
+      state.owner.preferences.effortScale !== undefined
+      && !EFFORT_SCALES.has(state.owner.preferences.effortScale)
+    ) {
+      return "La escala de esfuerzo no es válida.";
+    }
+    if (
+      state.owner.preferences.defaultRestSeconds !== undefined
+      && (
+        !Number.isInteger(state.owner.preferences.defaultRestSeconds)
+        || state.owner.preferences.defaultRestSeconds < 15
+        || state.owner.preferences.defaultRestSeconds > 900
+      )
+    ) {
+      return "El descanso por defecto no es válido.";
+    }
   }
   if (!isObject(state.legacy) || !isObject(state.legacy.days)) {
     return "Falta el bloque de datos del prototipo.";
@@ -163,6 +208,15 @@ export function validateState(state) {
             || routineDay.weekday < MIN_WEEKDAY
             || routineDay.weekday > MAX_WEEKDAY)
         )
+        || (
+          routineDay.weekdays !== undefined
+          && (
+            !Array.isArray(routineDay.weekdays)
+            || routineDay.weekdays.some((weekday) => (
+              !Number.isInteger(weekday) || weekday < MIN_WEEKDAY || weekday > MAX_WEEKDAY
+            ))
+          )
+        )
       ) {
         return "Hay un día de rutina no válido.";
       }
@@ -209,11 +263,12 @@ export function validateState(state) {
   for (const routine of state.training.routines) {
     if (routine.status !== "active") continue;
     for (const routineDay of routine.days) {
-      if (routineDay.weekday === null || routineDay.weekday === undefined) continue;
-      if (assignedWeekdays.has(routineDay.weekday)) {
-        return "Dos rutinas activas no pueden compartir un día de la semana.";
+      for (const weekday of routineDayWeekdays(routineDay)) {
+        if (assignedWeekdays.has(weekday)) {
+          return "Dos rutinas activas no pueden compartir un día de la semana.";
+        }
+        assignedWeekdays.add(weekday);
       }
-      assignedWeekdays.add(routineDay.weekday);
     }
   }
 
@@ -502,8 +557,9 @@ export function createRoutineWithWeekdays(
   const occupied = new Map(
     state.training.routines
       .filter((routine) => routine.status === "active" && !routine.isDemo)
-      .flatMap((routine) => routine.days.map((day) => [day.weekday, routine.name]))
-      .filter(([weekday]) => weekday !== null && weekday !== undefined),
+      .flatMap((routine) => routine.days.flatMap(
+        (day) => routineDayWeekdays(day).map((weekday) => [weekday, routine.name]),
+      )),
   );
   const conflict = normalizedWeekdays.find((weekday) => occupied.has(weekday));
   if (conflict !== undefined) {
@@ -512,18 +568,20 @@ export function createRoutineWithWeekdays(
   state.training.routines
     .filter((routine) => routine.status === "active" && routine.isDemo)
     .forEach((routine) => routine.days.forEach((day) => {
-      if (normalizedWeekdays.includes(day.weekday)) day.weekday = null;
+      const remaining = routineDayWeekdays(day).filter((weekday) => !normalizedWeekdays.includes(weekday));
+      if (remaining.length !== routineDayWeekdays(day).length) {
+        day.weekdays = remaining;
+        day.weekday = remaining[0] ?? null;
+      }
     }));
   const routine = createRoutine(state, name, { now, id });
-  normalizedWeekdays
-    .sort((left, right) => ((left + 6) % 7) - ((right + 6) % 7))
-    .forEach((weekday) => {
-      const day = addRoutineDay(state, routine.id, weekdayLabel(weekday), {
-        now,
-        id: createId("routine-day"),
-      });
-      setRoutineDayWeekday(state, routine.id, day.id, weekday, now);
-    });
+  const sortedWeekdays = normalizedWeekdays
+    .sort((left, right) => ((left + 6) % 7) - ((right + 6) % 7));
+  const day = addRoutineDay(state, routine.id, sortedWeekdays.length === 1 ? weekdayLabel(sortedWeekdays[0]) : "Entrenamiento", {
+    now,
+    id: createId("routine-day"),
+  });
+  setRoutineDayWeekdays(state, routine.id, day.id, sortedWeekdays, now);
   return routine;
 }
 
@@ -564,6 +622,50 @@ export function addRoutineDay(
   return routineDay;
 }
 
+export function setRoutineDayWeekdays(
+  state,
+  routineId,
+  routineDayId,
+  weekdays,
+  now = new Date().toISOString(),
+) {
+  const { routine, routineDay } = findRoutineDay(state, routineId, routineDayId);
+  if (!Array.isArray(weekdays)) {
+    throw new Error("Los días de repetición no son válidos.");
+  }
+  const values = [...new Set(weekdays.map(Number))]
+    .sort((left, right) => ((left + 6) % 7) - ((right + 6) % 7));
+  if (values.some((value) => (
+    !Number.isInteger(value) || value < MIN_WEEKDAY || value > MAX_WEEKDAY
+  ))) {
+    throw new Error("Hay un día de la semana no válido.");
+  }
+  for (const value of values) {
+    const conflict = state.training.routines
+      .filter((candidate) => candidate.status === "active")
+      .flatMap((candidate) => candidate.days.map((candidateDay) => ({ candidate, candidateDay })))
+      .find(({ candidate, candidateDay }) => (
+        routineDayWeekdays(candidateDay).includes(value)
+        && !(candidate.id === routine.id && candidateDay.id === routineDay.id)
+      ));
+    if (!conflict) continue;
+    if (conflict.candidate.isDemo && !routine.isDemo) {
+      const remaining = routineDayWeekdays(conflict.candidateDay).filter((weekday) => weekday !== value);
+      conflict.candidateDay.weekdays = remaining;
+      conflict.candidateDay.weekday = remaining[0] ?? null;
+      conflict.candidate.updatedAt = now;
+    } else {
+      throw new Error(
+        `El ${weekdayLabel(value)} ya está asignado a ${conflict.candidate.name} · ${conflict.candidateDay.name}.`,
+      );
+    }
+  }
+  routineDay.weekdays = values;
+  routineDay.weekday = values[0] ?? null;
+  routine.updatedAt = now;
+  return routineDay;
+}
+
 export function setRoutineDayWeekday(
   state,
   routineId,
@@ -571,35 +673,10 @@ export function setRoutineDayWeekday(
   weekday,
   now = new Date().toISOString(),
 ) {
-  const { routine, routineDay } = findRoutineDay(state, routineId, routineDayId);
   const value = weekday === "" || weekday === null || weekday === undefined
     ? null
     : Number(weekday);
-  if (value !== null && (!Number.isInteger(value) || value < MIN_WEEKDAY || value > MAX_WEEKDAY)) {
-    throw new Error("El día de la semana no es válido.");
-  }
-  if (value !== null) {
-    const conflict = state.training.routines
-      .filter((candidate) => candidate.status === "active")
-      .flatMap((candidate) => candidate.days.map((candidateDay) => ({ candidate, candidateDay })))
-      .find(({ candidate, candidateDay }) => (
-        candidateDay.weekday === value
-        && !(candidate.id === routine.id && candidateDay.id === routineDay.id)
-      ));
-    if (conflict) {
-      if (conflict.candidate.isDemo && !routine.isDemo) {
-        conflict.candidateDay.weekday = null;
-        conflict.candidate.updatedAt = now;
-      } else {
-        throw new Error(
-          `El ${weekdayLabel(value)} ya está asignado a ${conflict.candidate.name} · ${conflict.candidateDay.name}.`,
-        );
-      }
-    }
-  }
-  routineDay.weekday = value;
-  routine.updatedAt = now;
-  return routineDay;
+  return setRoutineDayWeekdays(state, routineId, routineDayId, value === null ? [] : [value], now);
 }
 
 export function weekdayLabel(value) {
@@ -932,6 +1009,17 @@ export function validateSetInput(input) {
   };
 }
 
+export function validateLabelPhotoFile(file) {
+  if (!file) return { value: null };
+  if (!String(file.type ?? "").startsWith("image/")) {
+    return { error: "Selecciona una fotografía válida." };
+  }
+  if (Number.isFinite(file.size) && file.size > MAX_LABEL_PHOTO_BYTES) {
+    return { error: "La foto es demasiado grande. Recorta o reduce la imagen antes de guardarla." };
+  }
+  return { value: file };
+}
+
 export function setSessionExerciseSkipped(state, sessionId, sessionExerciseId, skipped = true) {
   const sessionExercise = findEditableSessionExercise(state, sessionId, sessionExerciseId);
   if (skipped && sessionExercise.sets.length) {
@@ -1008,6 +1096,25 @@ export function addSetToExercise(
   };
   sessionExercise.sets.push(workoutSet);
   return workoutSet;
+}
+
+export function duplicateSet(
+  state,
+  sessionId,
+  sessionExerciseId,
+  setId,
+  { now = new Date().toISOString(), id = createId("set") } = {},
+) {
+  const sessionExercise = findEditableSessionExercise(state, sessionId, sessionExerciseId);
+  const source = sessionExercise.sets.find((item) => item.id === setId);
+  if (!source) throw new Error("No se encontró la serie que quieres duplicar.");
+  return addSetToExercise(state, sessionId, sessionExerciseId, {
+    reps: source.reps,
+    loadKg: source.loadKg,
+    rir: source.rir,
+    setType: source.setType ?? (source.isWarmup ? "warmup" : "effective"),
+    note: source.note,
+  }, { now, id });
 }
 
 export function updateSet(
@@ -1122,6 +1229,10 @@ function demoDateKey(date) {
 
 function ensureExtendedState(state) {
   state.owner.profile ??= { birthDate: null, heightCm: null, weightKg: null };
+  state.owner.preferences ??= { accentColor: "lime", effortScale: "rir", defaultRestSeconds: 60 };
+  state.owner.preferences.accentColor ??= "lime";
+  state.owner.preferences.effortScale ??= "rir";
+  state.owner.preferences.defaultRestSeconds ??= 60;
   state.owner.targets ??= { calories: 2200, protein: 170, steps: 10000 };
   state.nutrition ??= { recipes: [], labels: [] };
 }
