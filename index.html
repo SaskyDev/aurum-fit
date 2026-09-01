@@ -8,9 +8,9 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Aurum Fit" />
     <title>Aurum Fit</title>
-    <link rel="manifest" href="manifest.json?v=32" />
-    <link rel="apple-touch-icon" href="icon.svg?v=32" />
-    <link rel="stylesheet" href="styles.css?v=32" />
+    <link rel="manifest" href="manifest.json?v=44" />
+    <link rel="apple-touch-icon" href="icon.svg?v=44" />
+    <link rel="stylesheet" href="styles.css?v=44" />
   </head>
   <body>
     <main>
@@ -42,7 +42,7 @@
             <button id="settingsBtn" class="minimal-icon-button" type="button" aria-label="Abrir ajustes y datos"><svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#ellipsis"></use></svg></button>
           </div>
         </header>
-        <section class="daily-summary surface" aria-label="Resumen del día">
+        <section class="daily-summary surface color-panel color-panel-lime" aria-label="Resumen del día">
           <div class="weekly-ring" id="weeklyRing">
             <div>
               <strong id="weeklyRingValue">0 / 0</strong>
@@ -65,7 +65,7 @@
             </article>
           </div>
         </section>
-        <article class="today-plan surface">
+        <article id="todayPlanCard" class="today-plan surface color-panel color-panel-blue">
           <div class="today-plan-heading">
             <div>
               <p class="eyebrow">Plan de hoy</p>
@@ -77,7 +77,7 @@
           <ol id="dashboardWorkoutExercises" class="today-exercise-list"></ol>
           <button id="dashboardStartWorkoutBtn" class="button button-accent button-large" type="button">Empezar entrenamiento</button>
         </article>
-        <section class="diary-progress surface" aria-labelledby="exerciseProgressTitle">
+        <section class="diary-progress surface color-panel color-panel-violet" aria-labelledby="exerciseProgressTitle">
           <div class="section-heading compact">
             <div>
               <p class="eyebrow">Historial inmutable</p>
@@ -100,14 +100,14 @@
             </table>
           </div>
         </section>
-        <div class="timeline-block surface">
-          <div class="section-heading compact"><h3>Diario reciente</h3><span class="muted">Últimos registros</span></div>
+        <div class="timeline-block surface color-panel color-panel-orange">
+          <div class="section-heading compact"><h3>Diario reciente</h3><span id="diaryPeriodSummary" class="muted">Desde el inicio</span></div>
           <ul id="dailyTimeline" class="timeline-list"></ul>
         </div>
         <aside id="dailyDetailPanel" class="day-detail-overlay" aria-labelledby="dailyDetailTitle" hidden>
           <div class="day-detail-card surface">
             <header class="day-detail-header">
-              <button id="dailyDetailCloseBtn" class="minimal-icon-button" type="button" aria-label="Cerrar resumen del día">←</button>
+              <button id="dailyDetailCloseBtn" class="minimal-icon-button bare-arrow-button" type="button" aria-label="Cerrar resumen del día">←</button>
               <div><p class="eyebrow">Resumen completo</p><h2 id="dailyDetailTitle">Día</h2></div>
             </header>
             <div id="dailyDetailContent" class="day-detail-content"></div>
@@ -115,7 +115,7 @@
         </aside>
         <details class="daily-editor">
           <summary>Editar métricas del día</summary>
-        <form id="dailyForm" class="form-grid surface">
+        <form id="dailyForm" class="form-grid surface color-panel color-panel-blue">
           <label>Peso <span>kg</span><input id="weight" type="number" min="0" max="500" step="0.1" inputmode="decimal" /></label>
           <label>Cintura <span>cm</span><input id="waist" type="number" min="0" max="400" step="0.1" inputmode="decimal" /></label>
           <label>Pasos<input id="steps" type="number" min="0" max="200000" step="1" inputmode="numeric" /></label>
@@ -138,7 +138,7 @@
           </div>
           <p class="section-note">Registro manual por etiqueta: cada marca conserva sus propios valores nutricionales.</p>
         </div>
-        <section class="nutrition-overview surface" aria-label="Resumen de calorías y macronutrientes">
+        <section class="nutrition-overview surface color-panel color-panel-lime" aria-label="Resumen de calorías y macronutrientes">
           <div class="nutrition-calories">
             <span>Consumidas</span>
             <strong id="nutritionCaloriesValue">0</strong>
@@ -155,7 +155,7 @@
           <button type="button" class="chip" data-food="Yogur + avena" data-calories="520" data-protein="45" data-carbs="62" data-fat="10">Yogur + avena</button>
           <button type="button" class="chip" data-food="Tortilla completa" data-calories="610" data-protein="48" data-carbs="45" data-fat="25">Tortilla</button>
         </div>
-        <form id="foodForm" class="form-grid surface">
+        <form id="foodForm" class="form-grid surface color-panel color-panel-blue">
           <label>Comida<input id="foodName" type="text" maxlength="100" required /></label>
           <label>Calorías<input id="foodCalories" type="number" min="0" max="20000" step="1" required /></label>
           <label>Proteína <span>g</span><input id="foodProtein" type="number" min="0" max="2000" step="0.1" /></label>
@@ -163,19 +163,19 @@
           <label>Grasa <span>g</span><input id="foodFat" type="number" min="0" max="2000" step="0.1" /></label>
           <button class="button button-primary" type="submit">Añadir comida</button>
         </form>
-        <div class="list-block surface">
+        <div class="list-block surface color-panel color-panel-violet">
           <h3>Comidas del día</h3>
           <ul id="foodList" class="log-list"></ul>
         </div>
         <div class="nutrition-library">
-          <section class="list-block surface">
+          <section class="list-block surface color-panel color-panel-orange">
             <div class="section-heading compact">
               <div><p class="eyebrow">Platos reutilizables</p><h3>Recetas</h3></div>
               <span id="recipeCount" class="count-badge">0 recetas</span>
             </div>
             <div id="recipeList" class="recipe-list"></div>
           </section>
-          <section class="list-block surface">
+          <section class="list-block surface color-panel color-panel-blue">
             <div class="section-heading compact">
               <div><p class="eyebrow">Cada marca es distinta</p><h3>Etiquetas guardadas</h3></div>
               <span id="labelCount" class="count-badge">0 etiquetas</span>
@@ -211,6 +211,10 @@
               <div><p class="eyebrow">Tus rutinas</p><h2>Rutinas</h2></div>
               <span id="routineCount" class="count-badge">0 rutinas</span>
             </div>
+            <div class="routine-planner-tabs" role="tablist" aria-label="Vista de rutinas">
+              <button class="routine-planner-tab active" type="button" data-routine-planner-view="calendar" role="tab" aria-selected="true">Calendario</button>
+              <button class="routine-planner-tab" type="button" data-routine-planner-view="library" role="tab" aria-selected="false">Biblioteca</button>
+            </div>
             <article id="activeSessionResume" class="active-session-resume surface" hidden>
               <div>
                 <p class="eyebrow">Entrenamiento en curso</p>
@@ -222,48 +226,123 @@
                 <button id="continueSessionBtn" class="button button-accent" type="button">Continuar entrenamiento</button>
               </div>
             </article>
-            <div id="routineList" class="routine-list"></div>
-            <details id="createRoutineCard" class="create-routine-card surface">
-              <summary><span class="create-routine-plus" aria-hidden="true"><svg class="ui-icon"><use href="assets/icons.svg#plus"></use></svg></span><span><strong>Crear nueva rutina</strong><small>Elige nombre y días de repetición</small></span></summary>
-              <form id="createRoutineForm" class="create-routine-form">
-                <label>Nombre de la rutina<input id="routineName" type="text" minlength="2" maxlength="80" placeholder="Ej. Push Pull Legs" required /></label>
-                <fieldset class="weekday-fieldset">
-                  <legend>¿Qué días se repite?</legend>
-                  <div id="newRoutineWeekdays" class="weekday-selector" aria-label="Días de la nueva rutina"></div>
-                  <small>Los días ocupados por una rutina real no se pueden repetir.</small>
-                </fieldset>
-                <button class="button button-accent button-large" type="submit">Crear rutina</button>
-              </form>
-            </details>
-            <button id="startFreeSessionBtn" class="free-routine-card surface" type="button">
-              <span class="routine-icon routine-icon-free" aria-hidden="true"><svg class="ui-icon"><use href="assets/icons.svg#plus"></use></svg></span>
-              <span><strong>Entrenamiento libre</strong><small>Monta una sesión puntual sin cambiar tus rutinas</small></span>
-              <span class="routine-card-chevron" aria-hidden="true">›</span>
-            </button>
+            <section id="routineCalendarView" class="routine-planner-view" data-routine-planner-panel="calendar">
+              <div class="routine-calendar surface">
+                <div class="routine-calendar-header">
+                  <button id="prevPlannerMonthBtn" class="minimal-icon-button bare-arrow-button" type="button" aria-label="Mes anterior">←</button>
+                  <div><small id="routineCalendarYear">2026</small><h3 id="routineCalendarMonth">Septiembre</h3></div>
+                  <button id="nextPlannerMonthBtn" class="minimal-icon-button bare-arrow-button" type="button" aria-label="Mes siguiente">→</button>
+                </div>
+                <button id="editPlanBtn" class="calendar-edit-button" type="button">Editar plan</button>
+                <div class="calendar-weekdays" aria-hidden="true"><span>L</span><span>M</span><span>X</span><span>J</span><span>V</span><span>S</span><span>D</span></div>
+                <div id="routineCalendarGrid" class="routine-calendar-grid" aria-label="Calendario de entrenamientos"></div>
+              </div>
+              <div class="routine-stats-row">
+                <article><span class="status-dot status-dot-completed"></span><strong id="plannedCompletedCount">0</strong><small>Completados</small></article>
+                <article><span class="status-dot status-dot-missed"></span><strong id="plannedMissedCount">0</strong><small>No realizados</small></article>
+                <article><span class="status-dot status-dot-planned"></span><strong id="plannedPendingCount">0</strong><small>Por hacer</small></article>
+              </div>
+              <section class="upcoming-workouts" aria-labelledby="upcomingWorkoutTitle">
+                <div class="section-heading compact"><h3 id="upcomingWorkoutTitle">Próximos entrenos</h3><span class="muted">Plan activo</span></div>
+                <div id="upcomingWorkoutList" class="upcoming-workout-list"></div>
+                <div class="routine-status-legend" aria-label="Leyenda del calendario">
+                  <span><i class="status-dot status-dot-completed"></i> Completado</span>
+                  <span><i class="status-dot status-dot-planned"></i> Programado</span>
+                  <span><i class="status-dot status-dot-missed"></i> No realizado</span>
+                  <span><i class="status-dot status-dot-discarded"></i> Descartado</span>
+                  <span><i class="status-dot status-dot-deload"></i> Deload</span>
+                </div>
+              </section>
+            </section>
+            <section id="routineLibraryView" class="routine-planner-view" data-routine-planner-panel="library" hidden>
+              <div id="routineList" class="routine-list"></div>
+              <details id="createRoutineCard" class="create-routine-card surface">
+                <summary><span class="create-routine-plus" aria-hidden="true"><svg class="ui-icon"><use href="assets/icons.svg#plus"></use></svg></span><span><strong>Crear nueva rutina</strong><small>Elige nombre y días de repetición</small></span></summary>
+                <form id="createRoutineForm" class="create-routine-form">
+                  <label>Nombre de la rutina<input id="routineName" type="text" minlength="2" maxlength="80" placeholder="Ej. Push Pull Legs" required /></label>
+                  <fieldset class="routine-color-fieldset">
+                    <legend>Color de la rutina</legend>
+                    <div class="routine-color-picker" aria-label="Color de la nueva rutina">
+                      <label><input type="radio" name="routineAccentColor" value="auto" checked /><span class="routine-color-auto">Auto</span></label>
+                      <label><input type="radio" name="routineAccentColor" value="lime" /><span style="--swatch:#c7f464">Lima</span></label>
+                      <label><input type="radio" name="routineAccentColor" value="orange" /><span style="--swatch:#ff9f1c">Naranja</span></label>
+                      <label><input type="radio" name="routineAccentColor" value="blue" /><span style="--swatch:#38bdf8">Azul</span></label>
+                      <label><input type="radio" name="routineAccentColor" value="violet" /><span style="--swatch:#a78bfa">Violeta</span></label>
+                      <label><input type="radio" name="routineAccentColor" value="red" /><span style="--swatch:#fb7185">Rojo</span></label>
+                      <label><input type="radio" name="routineAccentColor" value="steel" /><span style="--swatch:#e5e7eb">Acero</span></label>
+                    </div>
+                    <small>Auto distingue Empuje, Tirón, Pierna y otros tipos. El color elegido no cambiará al añadir ejercicios.</small>
+                  </fieldset>
+                  <fieldset class="weekday-fieldset">
+                    <legend>¿Qué días se repite?</legend>
+                    <div id="newRoutineWeekdays" class="weekday-selector" aria-label="Días de la nueva rutina"></div>
+                    <small>Los días ocupados por una rutina real no se pueden repetir.</small>
+                  </fieldset>
+                  <button class="button button-accent button-large" type="submit">Crear rutina</button>
+                </form>
+              </details>
+              <button id="startFreeSessionBtn" class="free-routine-card surface" type="button">
+                <span class="routine-icon routine-icon-free" aria-hidden="true"><svg class="ui-icon"><use href="assets/icons.svg#plus"></use></svg></span>
+                <span><strong>Entrenamiento libre</strong><small>Monta una sesión puntual sin cambiar tus rutinas</small></span>
+                <span class="routine-card-chevron" aria-hidden="true">›</span>
+              </button>
+            </section>
           </div>
+
+          <section id="plannedWorkoutPanel" class="planned-workout-panel" hidden>
+            <header class="subpage-header">
+              <button id="plannedWorkoutBackBtn" class="minimal-icon-button bare-arrow-button" type="button" aria-label="Volver al calendario">←</button>
+              <div><p id="plannedWorkoutDate" class="eyebrow">Próximo entreno</p><h2 id="plannedWorkoutTitle">Rutina</h2><p id="plannedWorkoutMeta" class="muted"></p></div>
+            </header>
+            <div id="plannedWorkoutSpotlight"></div>
+            <div class="planned-workout-actions">
+              <button id="plannedWorkoutOpenBtn" class="button button-accent planned-open-button" type="button">☰ Ver entrenamiento planificado</button>
+              <button class="button button-secondary planned-move-button" type="button" disabled><svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M3 10h18"></path></svg> Mover a otra fecha</button>
+              <button class="button button-secondary planned-shift-button" type="button" disabled>→ Correr siguientes</button>
+              <button class="button button-quiet planned-skip-button" type="button" disabled>No voy a poder entrenar</button>
+              <button id="plannedExtraWorkoutBtn" class="button planned-extra-button" type="button">+ Añadir entreno extra</button>
+            </div>
+          </section>
 
           <section id="routineDetailPanel" class="routine-detail-panel" hidden>
             <header class="subpage-header">
-              <button id="routineDetailBackBtn" class="minimal-icon-button" type="button" aria-label="Volver a rutinas">←</button>
+              <button id="routineDetailBackBtn" class="minimal-icon-button bare-arrow-button" type="button" aria-label="Volver a rutinas">←</button>
               <div><p class="eyebrow">Entrenamiento</p><h2 id="routineDetailTitle">Rutina</h2><p id="routineDetailMeta" class="muted"></p></div>
             </header>
+            <div id="routineSpotlight" aria-label="Resumen visual de la rutina"></div>
+            <details id="selectedRoutineColorEditor" class="routine-color-editor">
+              <summary>Editar color</summary>
+              <fieldset class="routine-color-fieldset routine-detail-color">
+                <legend class="sr-only">Color de esta rutina</legend>
+                <div class="routine-color-picker" aria-label="Cambiar color de la rutina">
+                <label><input type="radio" name="selectedRoutineAccentColor" value="auto" /><span class="routine-color-auto">Auto</span></label>
+                <label><input type="radio" name="selectedRoutineAccentColor" value="lime" /><span style="--swatch:#c7f464">Lima</span></label>
+                <label><input type="radio" name="selectedRoutineAccentColor" value="orange" /><span style="--swatch:#ff9f1c">Naranja</span></label>
+                <label><input type="radio" name="selectedRoutineAccentColor" value="blue" /><span style="--swatch:#38bdf8">Azul</span></label>
+                <label><input type="radio" name="selectedRoutineAccentColor" value="violet" /><span style="--swatch:#a78bfa">Violeta</span></label>
+                <label><input type="radio" name="selectedRoutineAccentColor" value="red" /><span style="--swatch:#fb7185">Rojo</span></label>
+                <label><input type="radio" name="selectedRoutineAccentColor" value="steel" /><span style="--swatch:#e5e7eb">Acero</span></label>
+                </div>
+              </fieldset>
+            </details>
             <datalist id="routineExerciseOptions"></datalist>
             <div id="routineDetailDays" class="routine-day-list"></div>
             <form id="addRoutineDayForm" class="add-routine-day surface">
-              <div><strong>+ Añadir día de entrenamiento</strong><small>Selecciona un día libre; el nombre se crea automáticamente.</small></div>
+              <div><strong>+ Crear entrenamiento diferente</strong><small>Solo si quieres una variante distinta dentro de esta rutina.</small></div>
               <div id="addRoutineDayWeekdays" class="weekday-selector compact-weekdays" aria-label="Nuevo día de entrenamiento"></div>
-              <button class="button button-secondary" type="submit">Añadir día</button>
+              <button class="button button-secondary" type="submit">Crear variante</button>
             </form>
           </section>
         </section>
 
         <section id="activeSessionPanel" hidden>
           <div class="session-toolbar surface">
-            <button id="backToRoutinesBtn" class="minimal-icon-button session-back-button" type="button" aria-label="Volver a rutinas">←</button>
+            <button id="backToRoutinesBtn" class="minimal-icon-button bare-arrow-button session-back-button" type="button" aria-label="Volver a rutinas">←</button>
             <div>
               <p class="eyebrow">Entrenamiento · guardado automático</p>
               <h3 id="activeSessionTitle">Entrenamiento libre</h3>
               <p id="activeSessionMeta" class="muted"></p>
+              <p id="activeSessionElapsed" class="session-elapsed" aria-live="polite">00:00</p>
             </div>
             <div class="session-toolbar-actions">
               <button id="discardSessionBtn" class="button button-danger" type="button">Descartar sesión</button>
@@ -335,7 +414,7 @@
 
       <section id="ajustes" class="panel settings-panel">
         <header class="settings-header">
-          <button id="settingsCloseBtn" class="minimal-icon-button" type="button" aria-label="Volver al diario">
+          <button id="settingsCloseBtn" class="minimal-icon-button bare-arrow-button" type="button" aria-label="Volver al diario">
             <svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#chevron-left"></use></svg>
           </button>
           <div><h2 id="settingsPageTitle">Ajustes</h2></div>
@@ -382,9 +461,6 @@
 
         <form id="settingsForm" class="settings-form">
           <section id="settingsProfileView" class="settings-view settings-subview" data-settings-view="profile" hidden aria-labelledby="settingsProfileTitle">
-            <button class="settings-back-row" type="button" data-open-settings="menu">
-              <svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#chevron-left"></use></svg> Ajustes
-            </button>
             <div class="settings-section surface">
               <div class="settings-section-heading"><div><p class="eyebrow">Perfil</p><h3 id="settingsProfileTitle">Datos personales</h3></div><span class="count-badge">Local</span></div>
               <div class="form-grid compact-form-grid">
@@ -397,9 +473,6 @@
           </section>
 
           <section id="settingsGoalsView" class="settings-view settings-subview" data-settings-view="goals" hidden aria-labelledby="settingsGoalsTitle">
-            <button class="settings-back-row" type="button" data-open-settings="menu">
-              <svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#chevron-left"></use></svg> Ajustes
-            </button>
             <div class="settings-section surface">
               <div class="settings-section-heading"><div><p class="eyebrow">Objetivos diarios</p><h3 id="settingsGoalsTitle">Control base</h3></div></div>
               <div class="form-grid compact-form-grid">
@@ -412,9 +485,6 @@
           </section>
 
           <section id="settingsAppearanceView" class="settings-view settings-subview" data-settings-view="appearance" hidden aria-labelledby="settingsAppearanceTitle">
-            <button class="settings-back-row" type="button" data-open-settings="menu">
-              <svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#chevron-left"></use></svg> Ajustes
-            </button>
             <div class="settings-section surface">
               <div class="settings-section-heading"><div><p class="eyebrow">Apariencia</p><h3 id="settingsAppearanceTitle">Color de acento</h3></div></div>
               <fieldset class="accent-picker">
@@ -430,9 +500,6 @@
           </section>
 
           <section id="settingsWorkoutView" class="settings-view settings-subview" data-settings-view="workout" hidden aria-labelledby="settingsWorkoutTitle">
-            <button class="settings-back-row" type="button" data-open-settings="menu">
-              <svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#chevron-left"></use></svg> Ajustes
-            </button>
             <div class="settings-section surface">
               <div class="settings-section-heading"><div><p class="eyebrow">Entrenamiento</p><h3 id="settingsWorkoutTitle">Preferencias de sesión</h3></div></div>
               <div class="form-grid compact-form-grid">
@@ -452,9 +519,6 @@
         </form>
 
         <section id="settingsDataView" class="settings-view settings-subview" data-settings-view="data" hidden>
-          <button class="settings-back-row" type="button" data-open-settings="menu">
-            <svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#chevron-left"></use></svg> Ajustes
-          </button>
           <div class="settings-data surface">
             <div><p class="eyebrow">Tus datos</p><h3>Copias de seguridad</h3><p class="muted">Exporta o recupera tus datos locales cuando lo necesites.</p></div>
             <div class="settings-data-actions">
@@ -463,11 +527,22 @@
               <input id="importFile" class="visually-hidden" type="file" accept="application/json" aria-label="Seleccionar copia JSON de Aurum Fit" tabindex="-1" aria-hidden="true" hidden />
             </div>
           </div>
+          <div class="settings-data surface demo-data-card">
+            <div>
+              <p class="eyebrow">Modo revisión</p>
+              <h3>Datos demo de 2 meses</h3>
+              <p id="demoDataSummary" class="muted">Carga una historia ficticia para revisar Diario, progreso, rutinas y nutrición sin esperar semanas.</p>
+            </div>
+            <div class="settings-data-actions">
+              <button id="loadDemoDataBtn" class="button button-secondary" type="button">Cargar demo</button>
+              <button id="removeDemoDataBtn" class="button button-quiet" type="button">Quitar demo</button>
+            </div>
+          </div>
         </section>
       </section>
 
     </main>
 
-    <script type="module" src="app.js?v=32"></script>
+    <script type="module" src="app.js?v=44"></script>
   </body>
 </html>

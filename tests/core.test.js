@@ -33,6 +33,7 @@ import {
   setSessionExerciseSkipped,
   setRoutineDayWeekday,
   setRoutineDayWeekdays,
+  setRoutineAccentColor,
   setSuggestedRoutineDay,
   startFreeSession,
   startSessionFromRoutineDay,
@@ -427,6 +428,7 @@ test("inicia desde un día y conserva una copia histórica al editar la rutina",
   assert.deepEqual(session.source.snapshot, {
     routineName: "Torso-pierna",
     routineDayName: "Torso",
+    routineAccentColor: null,
   });
   assert.deepEqual(session.exercises.map((exercise) => exercise.exerciseName), ["Press banca"]);
   assert.deepEqual(torso.exercises.map((exercise) => exercise.exerciseName), ["Press banca"]);
@@ -561,6 +563,16 @@ test("una sesión finalizada es inmutable", () => {
   );
 });
 
+test("al finalizar registra la duración total de la sesión", () => {
+  const { state, session, exercise } = stateWithActiveSession();
+  session.startedAt = "2026-07-24T08:10:00.000Z";
+  addSetToExercise(state, session.id, exercise.id, { reps: 8, loadKg: 80 });
+
+  completeSession(state, session.id, "2026-07-24T09:25:30.000Z");
+
+  assert.equal(session.durationSeconds, 4530);
+});
+
 test("crea y elimina una demostración completa sin tocar datos reales", () => {
   const state = createEmptyState({ now: "2026-08-11T09:00:00.000Z" });
   state.legacy.days["2026-08-01"] = {
@@ -574,13 +586,28 @@ test("crea y elimina una demostración completa sin tocar datos reales", () => {
   assert.equal(state.training.routines.filter((routine) => routine.isDemo).length, 3);
   assert.equal(
     state.training.routines.filter((routine) => routine.isDemo).flatMap((routine) => routine.days).length,
-    6,
+    3,
   );
-  assert.ok(state.training.sessions.filter((session) => session.isDemo).length >= 20);
+  state.training.routines.filter((routine) => routine.isDemo).forEach((routine) => {
+    assert.equal(routine.days.length, 1);
+    assert.equal(routine.days[0].name, "Entrenamiento");
+    assert.equal(routineDayWeekdays(routine.days[0]).length, 2);
+  });
+  assert.equal(
+    state.training.routines
+      .filter((routine) => routine.isDemo)
+      .flatMap((routine) => routine.days)
+      .some((day) => /push|pull|pierna .?b/i.test(day.name)),
+    false,
+  );
+  assert.ok(state.training.sessions.filter((session) => session.isDemo).length >= 45);
   assert.equal(state.training.sessions.every((session) => session.status === "completed"), true);
   assert.equal(state.nutrition.recipes.filter((recipe) => recipe.isDemo).length, 3);
   assert.equal(state.nutrition.labels.filter((label) => label.isDemo).length, 2);
+  assert.equal(Object.values(state.legacy.days).filter((day) => day.isDemo).length, 60);
   assert.equal(state.legacy.days["2026-08-11"].steps, 8432);
+  assert.ok(state.legacy.days["2026-06-12"]?.isDemo);
+  assert.equal(state.meta.publicCleanupVersion, 2);
   assert.equal(validateState(state), null);
 
   removeDemoData(state);
@@ -641,7 +668,7 @@ test("carga la demostración sin ocultar ni sustituir una sesión real activa", 
   assert.equal(state.training.activeSessionId, session.id);
   assert.equal(state.training.sessions.find((item) => item.id === session.id)?.status, "in_progress");
   assert.equal(state.training.routines.filter((routine) => routine.isDemo).length, 3);
-  assert.ok(state.training.sessions.filter((item) => item.isDemo).length >= 20);
+  assert.ok(state.training.sessions.filter((item) => item.isDemo).length >= 45);
   assert.equal(validateState(state), null);
 });
 
@@ -692,6 +719,27 @@ test("crea una rutina semanal como un bloque compartido sin duplicar ejercicios"
   });
   assert.equal(routine.days.reduce((total, day) => total + day.exercises.length, 0), 1);
   assert.throws(() => createRoutineWithWeekdays(state, "Pull", [3]), /miércoles.*Push/i);
+});
+
+test("guarda un color propio en la rutina y permite cambiarlo sin tocar el historial", () => {
+  const state = createEmptyState();
+  const routine = createRoutineWithWeekdays(state, "Empuje", [1], {
+    id: "routine-colored",
+    accentColor: "red",
+  });
+
+  assert.equal(routine.accentColor, "red");
+  addExerciseToRoutineDay(state, routine.id, routine.days[0].id, "Press banca", {
+    exerciseId: "exercise-colored",
+  });
+  const session = startSessionFromRoutineDay(state, routine.id, routine.days[0].id, {
+    id: "session-colored",
+  });
+  assert.equal(session.source.snapshot.routineAccentColor, "red");
+  setRoutineAccentColor(state, routine.id, "blue", "2026-09-01T10:00:00.000Z");
+  assert.equal(routine.accentColor, "blue");
+  assert.equal(validateState(state), null);
+  assert.throws(() => setRoutineAccentColor(state, routine.id, "inventado"), /color/i);
 });
 
 test("permite cambiar varios días de repetición en un mismo bloque", () => {

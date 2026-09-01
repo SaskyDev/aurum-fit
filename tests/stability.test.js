@@ -61,8 +61,8 @@ function loadServiceWorker({ oldCaches = [] } = {}) {
     const url = String(request.url ?? "");
     return {
       ok: true,
-      version: request.mode === "navigate" || request.destination === "document" || url === "./" || url.includes("?v=32")
-        ? "v32"
+      version: request.mode === "navigate" || request.destination === "document" || url === "./" || url.includes("?v=44")
+        ? "v44"
         : "v9",
       clone() { return this; },
     };
@@ -87,7 +87,7 @@ function loadServiceWorker({ oldCaches = [] } = {}) {
   return { listeners, opened, deleted, puts, fetched, legacyCacheHits, legacyWorker, navigations };
 }
 
-test("actualiza desde una caché v9 y precarga un shell coherente v32", async () => {
+test("actualiza desde una caché v9 y precarga un shell coherente v44", async () => {
   const worker = loadServiceWorker({ oldCaches: ["aurum-fit-shell-v1", "aurum-fit-shell-v9"] });
   let activation;
   worker.listeners.activate({ waitUntil: (promise) => { activation = promise; } });
@@ -99,12 +99,12 @@ test("actualiza desde una caché v9 y precarga un shell coherente v32", async ()
   worker.listeners.install({ waitUntil: (promise) => { installation = promise; } });
   await installation;
   assert.equal(worker.fetched.length, 8);
-  assert.ok(worker.fetched.every((request) => request.url.includes("?v=32")));
+  assert.ok(worker.fetched.every((request) => request.url.includes("?v=44")));
   assert.deepEqual(worker.legacyCacheHits, []);
-  assert.ok(worker.puts.every(({ response }) => response.version === "v32"));
+  assert.ok(worker.puts.every(({ response }) => response.version === "v44"));
 });
 
-test("la navegación antigua v9 converge a v32 tras reclamar el cliente", async () => {
+test("la navegación antigua v9 converge a v44 tras reclamar el cliente", async () => {
   const worker = loadServiceWorker({ oldCaches: ["aurum-fit-shell-v9"] });
   const oldResponse = worker.legacyWorker.intercept({ url: "./" });
   assert.equal(oldResponse.version, "v9");
@@ -119,7 +119,7 @@ test("la navegación antigua v9 converge a v32 tras reclamar el cliente", async 
     respondWith: (promise) => { responsePromise = promise; },
   });
   const response = await responsePromise;
-  assert.equal(response.version, "v32");
+  assert.equal(response.version, "v44");
   assert.deepEqual(worker.navigations, ["http://localhost:8000/"]);
 });
 test("prioriza la red para documentos y actualiza la caché activa", async () => {
@@ -165,9 +165,10 @@ test("la navegación principal tiene tres destinos y Diario es el inicio", () =>
 test("el catálogo espera una búsqueda y la sesión distingue los tres tipos de serie", () => {
   const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
   assert.match(app, /No mostramos todo el catálogo de golpe/);
-  assert.match(app, /new Option\("Efectiva", "effective"\)/);
-  assert.match(app, /new Option\("Aproximación", "approach"\)/);
-  assert.match(app, /new Option\("Calentamiento", "warmup"\)/);
+  assert.match(app, /\["effective", "Efectiva"\]/);
+  assert.match(app, /\["approach", "Aprox\."\]/);
+  assert.match(app, /\["warmup", "Calent\."\]/);
+  assert.match(app, /set-type-options/);
   assert.doesNotMatch(app, /placeholder: "(?:10|60|2)"/);
 });
 
@@ -207,6 +208,15 @@ test("Diario, limpieza de demostración, etiquetas y ajustes tienen una base vis
   assert.match(html, /id="dashboardWorkoutExercises"/);
   assert.match(html, /id="labelPhoto"[^>]*capture="environment"/);
   assert.match(html, /id="ajustes" class="panel settings-panel"/);
+  assert.match(html, /id="loadDemoDataBtn"/);
+  assert.match(html, /id="removeDemoDataBtn"/);
+  assert.match(html, /id="settingsPageTitle"/);
+  assert.match(html, /data-open-settings="profile"/);
+  assert.match(html, /data-open-settings="data"/);
+  assert.doesNotMatch(html, /class="settings-back-row"/);
+  assert.match(app, /seedDemoData\(next/);
+  assert.match(app, /removeDemoData\(next\)/);
+  assert.match(app, /settingsView === "menu"[\s\S]*showTab\("diario"\)/);
   assert.match(app, /cleanupPublishedData\(cleaned\)/);
   assert.doesNotMatch(html, /id="loadDemoBtn"|id="removeDemoBtn"|id="demoBadge"/);
 });
@@ -228,6 +238,8 @@ test("Entrenamiento prioriza rutinas y deja sesión libre e historial fuera del 
   assert.doesNotMatch(app, /setAttribute\("aria-label", "Series previstas"\)/);
   assert.match(app, /discardSession\(next, active\.id\)/);
   assert.match(app, /\$\("routineManager"\)\.hidden = trainingView !== "routines"/);
+  assert.match(html, /Crear entrenamiento diferente/);
+  assert.doesNotMatch(html, /Añadir día de entrenamiento/);
 });
 
 test("el anillo calcula cumplimiento diario y calorías no reutiliza el texto de proteína", () => {
@@ -258,14 +270,139 @@ test("la nueva estructura separa Rutinas, Entrenamiento y el detalle completo de
 
 test("los días son reversibles y cada ejercicio ofrece duplicado, historial, actual y progreso", () => {
   const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const css = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
 
   assert.match(app, /setRoutineDayWeekdays\(next, routine\.id, routineDay\.id, updated\)/);
   assert.match(app, /duplicateSet\(next, session\.id, sessionExercise\.id, workoutSet\.id/);
   assert.match(app, /\["history", "Historial"\]/);
   assert.match(app, /\["current", "Actual"\]/);
   assert.match(app, /\["progress", "Progreso"\]/);
+  assert.match(app, /createLastReferenceCard/);
+  assert.match(app, /reference-list/);
+  assert.match(app, /attachSetSwipe/);
+  assert.match(app, /set-swipe-duplicate/);
+  assert.match(app, /set-swipe-delete/);
+  assert.match(app, /RIR máximo permitido: 5/);
+  assert.match(app, /set-type-options/);
+  assert.match(app, /setInputHints/);
+  assert.match(app, /load-stepper/);
+  assert.match(app, /stepLoadValue/);
+  assert.match(app, /Última referencia usada como guía visual/);
+  assert.match(app, /chart-legend exercise-chart-legend/);
   assert.match(app, /Todas tus sesiones anteriores, sin modificar el histórico/);
   assert.match(app, /Mejor serie efectiva de cada entrenamiento/);
+  assert.doesNotMatch(app, /placeholder: "RIR|placeholder: "Reps|placeholder: "10"|placeholder: "2"/);
+  assert.match(css, /\.reference-card/);
+  assert.match(css, /\.set-row-content/);
+  assert.match(css, /\.load-stepper/);
+  assert.match(css, /\.set-form input::placeholder/);
+  assert.match(css, /\.set-type-option:has\(input:checked\)/);
+  assert.match(css, /\.set-form \{[\s\S]*grid-template-columns: 36px minmax\(70px, 1\.05fr\)/);
+  assert.match(css, /\.set-form input,[\s\S]*min-width: 0/);
   assert.match(app, /button\.dataset\.action === "continue"/);
   assert.match(app, /Ver entrenamiento completado/);
+});
+
+test("Rutinas adopta tarjetas tipo workout moderno con grupos musculares y menús compactos", () => {
+  const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const css = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+
+  assert.match(html, /id="routineSpotlight"/);
+  assert.match(app, /function routineTheme/);
+  assert.match(app, /createMuscleIcon/);
+  assert.match(app, /group: "lower"/);
+  assert.match(app, /group: "push"/);
+  assert.match(app, /group: "pull"/);
+  assert.match(app, /routineSpotlight/);
+  assert.match(css, /\.routine-spotlight/);
+  assert.match(css, /\.routine-theme-lower/);
+  assert.match(css, /\.muscle-icon/);
+  assert.match(css, /\.exercise-exception-menu[\s\S]*max-width: min\(230px, 100%\)/);
+  assert.match(css, /\.set-form-number[\s\S]*width: clamp/);
+});
+
+test("Rutinas separa calendario y biblioteca con próximos entrenos coloreados", () => {
+  const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const css = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+
+  assert.match(html, /data-routine-planner-view="calendar"/);
+  assert.match(html, /data-routine-planner-view="library"/);
+  assert.match(html, /id="routineCalendarView"/);
+  assert.match(html, /id="routineLibraryView"/);
+  assert.match(html, /id="routineCalendarGrid"/);
+  assert.match(html, /id="upcomingWorkoutList"/);
+  assert.match(html, /id="plannedWorkoutPanel"/);
+  assert.match(app, /let routinePlannerView = "calendar"/);
+  assert.match(app, /function renderRoutineCalendar/);
+  assert.match(app, /function upcomingScheduledWorkouts/);
+  assert.match(app, /function openPlannedWorkout/);
+  assert.match(app, /routinePlannerView = button\.dataset\.routinePlannerView/);
+  assert.match(css, /\.routine-planner-tabs/);
+  assert.match(css, /\.routine-calendar-grid/);
+  assert.match(css, /\.upcoming-workout-card/);
+  assert.match(css, /\.planned-workout-panel/);
+  assert.match(css, /\.status-dot-completed/);
+});
+
+test("Calendario y sesión activa tienen estados visuales temporales y duración total", () => {
+  const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const css = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+
+  assert.match(html, /id="activeSessionElapsed"/);
+  assert.match(html, /planned-open-button/);
+  assert.match(html, /assets\/icons\.svg#calendar/);
+  assert.match(app, /const noticeTimers = new Map\(\)/);
+  assert.match(app, /window\.setTimeout\(\(\) => \{/);
+  assert.match(app, /function formatWorkoutDuration/);
+  assert.match(app, /function sessionElapsedSeconds/);
+  assert.match(app, /session\.durationSeconds/);
+  assert.match(app, /routine-theme-\$\{theme\.group\}/);
+  assert.match(css, /\.routine-calendar[\s\S]*border-color: var\(--canvas\)/);
+  assert.match(css, /\.status-dot-planned[\s\S]*var\(--routine-accent, var\(--accent\)\)/);
+  assert.match(css, /\.planned-open-button[\s\S]*width: min\(100%, 360px\)/);
+  assert.match(css, /\.session-elapsed/);
+  assert.match(css, /@keyframes toast-in/);
+});
+
+test("rutinas, calendario y paneles usan color contextual sin sombras decorativas", () => {
+  const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const css = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+
+  assert.match(html, /name="routineAccentColor"/);
+  assert.match(html, /id="selectedRoutineColorEditor"/);
+  assert.match(html, /planned-extra-button/);
+  assert.match(app, /function routineAccentName/);
+  assert.match(app, /setRoutineAccentColor/);
+  assert.match(app, /sessionsInDiaryPeriod/);
+  assert.match(css, /\.status-dot \{[\s\S]*box-shadow: none/);
+  assert.match(css, /\.routine-accent-red/);
+  assert.match(css, /\.routine-accent-blue/);
+  assert.match(css, /\.color-panel-orange/);
+  assert.match(css, /\.color-panel-violet/);
+  assert.match(css, /\.planned-extra-button/);
+});
+
+test("la navegación y los colores se mantienen minimalistas y coherentes entre pantallas", () => {
+  const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const css = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+
+  assert.match(html, /minimal-icon-button bare-arrow-button/);
+  assert.match(html, /planned-move-button[\s\S]*<rect[\s\S]*<path/);
+  assert.match(html, /<details id="selectedRoutineColorEditor"/);
+  assert.doesNotMatch(html, /<fieldset id="selectedRoutineColorPicker"/);
+  assert.match(app, /function routineForSession/);
+  assert.match(app, /applyRoutineVisualClasses\(\$\("activeSessionPanel"\), activeRoutine\)/);
+  assert.match(app, /createElement\("strong", "", routine\.name\)/);
+  assert.doesNotMatch(app, /createElement\("strong", "", routineDay\.name \|\| routine\.name\)/);
+  assert.match(app, /createDayDetailSection\("Nutrición registrada", "nutrition"\)/);
+  assert.match(app, /createDayDetailSection\("Entrenamiento", "training"\)/);
+  assert.match(css, /\.bare-arrow-button/);
+  assert.match(css, /\.planned-skip-button[\s\S]*border-radius: 999px/);
+  assert.match(css, /\.day-detail-section-nutrition/);
+  assert.match(css, /\.day-detail-section-training/);
 });

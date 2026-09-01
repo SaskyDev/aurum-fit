@@ -17,18 +17,21 @@ import {
   normalizeExerciseName,
   parseImportPayload,
   persistState,
+  removeDemoData,
   removeExerciseFromRoutineDay,
   replaceSessionExerciseForToday,
   restoreLastDeletedSet,
   routineDayWeekdays,
+  seedDemoData,
   setSessionExerciseSkipped,
   setRoutineDayWeekday,
   setRoutineDayWeekdays,
+  setRoutineAccentColor,
   startFreeSession,
   startSessionFromRoutineDay,
   updateSet,
   validateLabelPhotoFile,
-} from "./core.js?v=32";
+} from "./core.js?v=44";
 
 const defaultTargets = { calories: 2200, protein: 170, steps: 10000 };
 const defaultPreferences = { accentColor: "lime", effortScale: "rir", defaultRestSeconds: 60 };
@@ -68,9 +71,14 @@ const exerciseViewStates = new Map();
 let catalogResultLimit = 4;
 let trainingView = "routines";
 let selectedRoutineId = null;
+let routinePlannerView = "calendar";
+let plannerMonthDate = new Date(today + "T12:00:00");
+let selectedPlannedWorkout = null;
 let settingsView = "menu";
 const pendingSetSubmissions = new Set();
 const restTimerStates = new Map();
+const noticeTimers = new Map();
+let sessionElapsedIntervalId = null;
 
 function getTargets(targetState = state) {
   return { ...defaultTargets, ...(targetState.owner?.targets ?? {}) };
@@ -129,6 +137,10 @@ function setSettingsView(view = "menu") {
   };
   $("settingsPageTitle").textContent = titles[settingsView] ?? "Ajustes";
   $("settingsSaveBtn").hidden = !["profile", "goals", "appearance", "workout"].includes(settingsView);
+  $("settingsCloseBtn").setAttribute(
+    "aria-label",
+    settingsView === "menu" ? "Volver al diario" : "Volver a ajustes",
+  );
 }
 
 if (state.meta.publicCleanupVersion !== PUBLIC_CLEANUP_VERSION) {
@@ -152,6 +164,12 @@ function showNotice(message, { error = false, area = "trainingNotice" } = {}) {
   notice.textContent = message;
   notice.classList.toggle("error", error);
   notice.hidden = false;
+  if (noticeTimers.has(area)) window.clearTimeout(noticeTimers.get(area));
+  const timerId = window.setTimeout(() => {
+    if (notice.textContent === message) notice.hidden = true;
+    noticeTimers.delete(area);
+  }, 4200);
+  noticeTimers.set(area, timerId);
 }
 
 function commit(change, successMessage = "Guardado automáticamente.") {
@@ -380,6 +398,21 @@ function dateKeyFromIso(value) {
   return localDateKey(new Date(value));
 }
 
+function addDays(dateKey, days) {
+  const date = new Date(`${dateKey}T12:00:00`);
+  date.setDate(date.getDate() + days);
+  return localDateKey(date);
+}
+
+function formatShortDate(dateKey) {
+  if (dateKey === today) return "Hoy";
+  return new Intl.DateTimeFormat("es-ES", {
+    weekday: "long",
+    day: "numeric",
+    month: "short",
+  }).format(new Date(`${dateKey}T12:00:00`));
+}
+
 function periodStart(period = diaryPeriod) {
   const date = new Date();
   date.setHours(0, 0, 0, 0);
@@ -416,6 +449,18 @@ function dateKeysForPeriod(period = diaryPeriod) {
   return dates;
 }
 
+function sessionsInDiaryPeriod(period = diaryPeriod) {
+  const start = periodStart(period);
+  const end = new Date();
+  end.setHours(23, 59, 59, 999);
+  return state.training.sessions.filter((session) => (
+    session.status === "completed"
+    && session.endedAt
+    && new Date(session.endedAt) >= start
+    && new Date(session.endedAt) <= end
+  ));
+}
+
 function scheduledDayForDate(dateKey) {
   const weekday = new Date(`${dateKey}T12:00:00`).getDay();
   for (const routine of activeRoutines()) {
@@ -425,9 +470,50 @@ function scheduledDayForDate(dateKey) {
   return null;
 }
 
+function plannedWorkoutStatus(dateKey, scheduled) {
+  if (!scheduled) return "rest";
+  const completed = state.training.sessions.some((session) => sessionMatchesScheduledDay(
+    session,
+    scheduled,
+    dateKey,
+    { completedOnly: true },
+  ));
+  if (completed) return "completed";
+  return dateKey < today ? "missed" : "planned";
+}
+
+function upcomingScheduledWorkouts(limit = 6, horizonDays = 45) {
+  const workouts = [];
+  for (let offset = 0; offset <= horizonDays && workouts.length < limit; offset += 1) {
+    const date = addDays(today, offset);
+    const scheduled = scheduledDayForDate(date);
+    if (!scheduled) continue;
+    workouts.push({
+      date,
+      ...scheduled,
+      status: plannedWorkoutStatus(date, scheduled),
+    });
+  }
+  return workouts;
+}
+
 function formatTimer(seconds) {
   const safeSeconds = Math.max(0, Math.round(seconds));
   return `${String(Math.floor(safeSeconds / 60)).padStart(2, "0")}:${String(safeSeconds % 60).padStart(2, "0")}`;
+}
+
+function formatWorkoutDuration(seconds) {
+  const safeSeconds = Math.max(0, Math.round(seconds));
+  const hours = Math.floor(safeSeconds / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
+  const remainingSeconds = safeSeconds % 60;
+  return hours
+    ? `${hours}:${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(2, "0")}`
+    : `${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(2, "0")}`;
+}
+
+function sessionElapsedSeconds(session, now = Date.now()) {
+  return Math.max(0, Math.round((now - new Date(session.startedAt).getTime()) / 1000));
 }
 
 function timerFor(exerciseId) {
@@ -595,6 +681,43 @@ function createIcon(name, className = "ui-icon") {
   return icon;
 }
 
+function createMuscleIcon(group) {
+  const namespace = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(namespace, "svg");
+  svg.setAttribute("class", `muscle-icon muscle-icon-${group}`);
+  svg.setAttribute("viewBox", "0 0 48 48");
+  svg.setAttribute("aria-hidden", "true");
+  const addPath = (d) => {
+    const path = document.createElementNS(namespace, "path");
+    path.setAttribute("d", d);
+    svg.appendChild(path);
+  };
+  const paths = {
+    lower: [
+      "M20 7c3 5 4 10 2 17l-5 17c-.4 1.5-2.2 2.1-3.5 1.2-1-.7-1.4-1.9-1.1-3.1l4.4-16.4c1.2-4.6.5-8.9-2.2-12.9z",
+      "M28 7c-3 5-4 10-2 17l5 17c.4 1.5 2.2 2.1 3.5 1.2 1-.7 1.4-1.9 1.1-3.1l-4.4-16.4c-1.2-4.6-.5-8.9 2.2-12.9z",
+    ],
+    push: [
+      "M9 20c2-8 7-12 15-12s13 4 15 12c-4-3-8-4-15-4S13 17 9 20z",
+      "M10 22c4-3 8-4 14-4s10 1 14 4c-1 8-5 13-14 13S11 30 10 22z",
+    ],
+    pull: [
+      "M24 7c9 0 15 5 17 14-5-4-10-6-17-6S12 17 7 21C9 12 15 7 24 7z",
+      "M12 24c4 2 8 3 12 3s8-1 12-3c-2 8-6 13-12 16-6-3-10-8-12-16z",
+    ],
+    arms: [
+      "M15 15c6-7 15-7 21-1-3 1-6 3-8 6-3 4-6 8-12 9-4 .7-7-3-5-7 1-2 2-4 4-7z",
+      "M21 30c5 0 9-3 12-7 3 5 1 12-6 15-5 2-10-.4-11-5z",
+    ],
+    full: [
+      "M24 6a7 7 0 0 1 7 7 7 7 0 0 1-14 0 7 7 0 0 1 7-7z",
+      "M12 40c1-13 5-21 12-21s11 8 12 21c-7-3-17-3-24 0z",
+    ],
+  };
+  (paths[group] ?? paths.full).forEach(addPath);
+  return svg;
+}
+
 function createButton(text, className, onClick) {
   const button = createElement("button", `button ${className}`, text);
   button.type = "button";
@@ -703,6 +826,9 @@ function renderDailyDashboard() {
   const detail = $("dashboardWorkoutDetail");
   const start = $("dashboardStartWorkoutBtn");
   const exerciseList = $("dashboardWorkoutExercises");
+  const todayPlanCard = $("todayPlanCard");
+  applyRoutineVisualClasses(todayPlanCard, suggested?.routine ?? null);
+  todayPlanCard.classList.toggle("color-panel-blue", !suggested);
   exerciseList.replaceChildren();
   if (suggested) {
     title.textContent = `${suggested.routine.name} · ${suggested.routineDay.name}`;
@@ -768,6 +894,12 @@ function renderDailyDashboard() {
 
   const timeline = $("dailyTimeline");
   timeline.replaceChildren();
+  $("diaryPeriodSummary").textContent = {
+    total: "Desde el inicio",
+    month: "Este mes",
+    week: "Esta semana",
+    day: "Hoy",
+  }[diaryPeriod] ?? "Periodo seleccionado";
   dateKeysForPeriod().forEach((date) => {
     const day = state.legacy.days[date] ?? { foods: [], workouts: [] };
     const totals = dayTotals(day);
@@ -815,8 +947,11 @@ function renderDailyDashboard() {
   }
 }
 
-function createDayDetailSection(title) {
-  const section = createElement("section", "day-detail-section");
+function createDayDetailSection(title, tone = null) {
+  const section = createElement(
+    "section",
+    `day-detail-section${tone ? ` day-detail-section-${tone}` : ""}`,
+  );
   section.appendChild(createElement("h3", "", title));
   return section;
 }
@@ -861,7 +996,7 @@ function openDailyDetail(date) {
   if (day.notes) metrics.appendChild(createElement("p", "day-detail-note", day.notes));
   content.appendChild(metrics);
 
-  const nutrition = createDayDetailSection("Nutrición registrada");
+  const nutrition = createDayDetailSection("Nutrición registrada", "nutrition");
   const macroSummary = createElement("p", "muted", `${totals.calories} kcal · ${totals.protein} g proteína · ${totals.carbs} g carbohidratos · ${totals.fat} g grasas`);
   nutrition.appendChild(macroSummary);
   const foods = createElement("ul", "day-detail-list");
@@ -873,7 +1008,7 @@ function openDailyDetail(date) {
   nutrition.appendChild(foods);
   content.appendChild(nutrition);
 
-  const training = createDayDetailSection("Entrenamiento");
+  const training = createDayDetailSection("Entrenamiento", "training");
   training.appendChild(createElement(
     "p",
     "muted",
@@ -886,9 +1021,12 @@ function openDailyDetail(date) {
   }
   sessions.forEach((session) => {
     const sessionCard = createElement("article", "day-session-card");
+    const durationText = session.durationSeconds
+      ? ` · ${formatWorkoutDuration(session.durationSeconds)} de entreno`
+      : "";
     sessionCard.append(
       createElement("h4", "", session.source.label),
-      createElement("small", "muted", `${formatDateTime(session.endedAt)} · ${sessionSetCount(session)} series`),
+      createElement("small", "muted", `${formatDateTime(session.endedAt)} · ${sessionSetCount(session)} series${durationText}`),
     );
     session.exercises.slice().sort((a, b) => a.order - b.order).forEach((exercise) => {
       const exerciseBlock = createElement("section", "day-session-exercise");
@@ -1050,6 +1188,11 @@ function renderSettings() {
   $("settingsAppearanceSummary").textContent = accentLabels[preferences.accentColor] ?? "Lima";
   $("settingsWorkoutSummary").textContent =
     `${preferences.effortScale === "none" ? "Sin escala" : preferences.effortScale.toUpperCase()} · ${preferences.defaultRestSeconds} s`;
+  const demoSessions = state.training.sessions.filter((session) => session.isDemo).length;
+  const demoDays = Object.values(state.legacy.days).filter((day) => day?.isDemo).length;
+  $("demoDataSummary").textContent = demoSessions || demoDays
+    ? `Demo activa: ${demoDays.toLocaleString("es-ES")} días y ${demoSessions.toLocaleString("es-ES")} entrenamientos ficticios.`
+    : "Carga una historia ficticia para revisar Diario, progreso, rutinas y nutrición sin esperar semanas.";
   setSettingsView(settingsView);
 }
 
@@ -1057,8 +1200,8 @@ function renderProgress() {
   const select = $("progressExerciseSelect");
   const previous = select.value;
   const completedExerciseIds = new Map();
-  state.training.sessions
-    .filter((session) => session.status === "completed")
+  const periodSessions = sessionsInDiaryPeriod();
+  periodSessions
     .forEach((session) => session.exercises.forEach((exercise) => {
       if (exercise.sets.some((workoutSet) => (workoutSet.setType ?? (workoutSet.isWarmup ? "warmup" : "effective")) === "effective")) {
         completedExerciseIds.set(exercise.exerciseId, exercise.exerciseName);
@@ -1071,10 +1214,8 @@ function renderProgress() {
   if (!select.children.length) select.appendChild(new Option("Sin ejercicios finalizados", ""));
   select.value = completedExerciseIds.has(previous) ? previous : select.options[0]?.value ?? "";
 
-  const start = periodStart();
   const points = [];
-  state.training.sessions
-    .filter((session) => session.status === "completed" && new Date(session.endedAt) >= start)
+  periodSessions
     .sort((a, b) => a.endedAt.localeCompare(b.endedAt))
     .forEach((session) => {
       const exercise = session.exercises.find((item) => item.exerciseId === select.value);
@@ -1293,6 +1434,228 @@ function routineExerciseCount(routine) {
   return routine.days.reduce((total, day) => total + day.exercises.length, 0);
 }
 
+function routineTheme(routine) {
+  const text = normalizeCatalogSearch([
+    routine.name,
+    ...routine.days.map((day) => day.name),
+    ...routine.days.flatMap((day) => day.exercises.map((exercise) => exercise.exerciseName)),
+  ].join(" "));
+  const matchers = [
+    {
+      group: "lower",
+      label: "Lower",
+      title: "Pierna",
+      words: ["pierna", "lower", "leg", "sentadilla", "prensa", "femoral", "gemelo", "peso muerto", "hip thrust"],
+    },
+    {
+      group: "push",
+      label: "Push",
+      title: "Pecho",
+      words: ["pecho", "chest", "push", "press banca", "press de banca", "hombro", "triceps", "apertura"],
+    },
+    {
+      group: "pull",
+      label: "Pull",
+      title: "Espalda",
+      words: ["espalda", "back", "pull", "remo", "jalon", "dominada", "biceps"],
+    },
+    {
+      group: "arms",
+      label: "Arms",
+      title: "Brazos",
+      words: ["brazo", "arms", "biceps", "triceps", "curl"],
+    },
+  ];
+  return matchers.find((matcher) => matcher.words.some((word) => text.includes(normalizeCatalogSearch(word)))) ?? {
+    group: "full",
+    label: "Full",
+    title: "Full Body",
+  };
+}
+
+function routineAccentName(routine) {
+  if (Object.hasOwn(accentPalettes, routine.accentColor)) return routine.accentColor;
+  const name = normalizeCatalogSearch(routine.name);
+  if (["empuje", "push", "pecho", "chest"].some((word) => name.includes(word))) return "red";
+  if (["tiron", "pull", "espalda", "back"].some((word) => name.includes(word))) return "blue";
+  if (["pierna", "legs", "lower"].some((word) => name.includes(word))) return "lime";
+  if (["brazo", "arms", "biceps", "triceps"].some((word) => name.includes(word))) return "violet";
+  if (["full", "cuerpo completo"].some((word) => name.includes(word))) return "orange";
+  const fallbackColors = ["orange", "violet", "blue", "lime", "red"];
+  const stableText = String(routine.id || routine.name || "rutina");
+  const hash = [...stableText].reduce((total, character) => total + character.charCodeAt(0), 0);
+  return fallbackColors[hash % fallbackColors.length];
+}
+
+function routineVisualClasses(routine) {
+  const theme = routineTheme(routine);
+  return `routine-theme-${theme.group} routine-accent-${routineAccentName(routine)}`;
+}
+
+function applyRoutineVisualClasses(element, routine) {
+  [...element.classList]
+    .filter((className) => className.startsWith("routine-theme-") || className.startsWith("routine-accent-"))
+    .forEach((className) => element.classList.remove(className));
+  if (routine) element.classList.add(...routineVisualClasses(routine).split(" "));
+}
+
+function routineForSession(session) {
+  if (!session || session.source?.type !== "routine_day") return null;
+  const current = state.training.routines.find((routine) => routine.id === session.source.routineId);
+  if (current) return current;
+  return {
+    id: session.source.routineId ?? session.id,
+    name: session.source.snapshot?.routineName ?? session.source.label,
+    accentColor: session.source.snapshot?.routineAccentColor ?? null,
+    days: [{
+      name: session.source.snapshot?.routineDayName ?? session.source.label,
+      exercises: session.exercises ?? [],
+    }],
+  };
+}
+
+function routineEstimatedSets(routine) {
+  return routine.days.reduce((total, day) => total + day.exercises.length * 3, 0);
+}
+
+function routineEstimatedMinutes(routine) {
+  return Math.max(30, routineExerciseCount(routine) * 9);
+}
+
+function createRoutineSpotlight(routine) {
+  const theme = routineTheme(routine);
+  const card = createElement("article", `routine-spotlight ${routineVisualClasses(routine)}`);
+  const tag = createElement("span", "routine-focus-tag", theme.label);
+  const title = createElement("h3", "", routine.name);
+  const stats = createElement("div", "routine-focus-stats");
+  [
+    [routineExerciseCount(routine), "Ejercicios"],
+    [routineEstimatedSets(routine), "Sets"],
+    [`${routineEstimatedMinutes(routine)}m`, "Duración"],
+  ].forEach(([value, label]) => {
+    const item = createElement("span", "");
+    item.append(createElement("strong", "", String(value)), createElement("small", "", label));
+    stats.appendChild(item);
+  });
+  card.append(tag, createMuscleIcon(theme.group), title, stats);
+  return card;
+}
+
+function renderRoutinePlannerTabs() {
+  document.querySelectorAll("[data-routine-planner-view]").forEach((button) => {
+    const active = button.dataset.routinePlannerView === routinePlannerView;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
+  });
+  document.querySelectorAll("[data-routine-planner-panel]").forEach((panel) => {
+    panel.hidden = panel.dataset.routinePlannerPanel !== routinePlannerView;
+  });
+}
+
+function renderRoutineCalendar() {
+  renderRoutinePlannerTabs();
+  const monthDate = new Date(plannerMonthDate);
+  monthDate.setDate(1);
+  $("routineCalendarYear").textContent = String(monthDate.getFullYear());
+  $("routineCalendarMonth").textContent = new Intl.DateTimeFormat("es-ES", { month: "long" }).format(monthDate);
+  const grid = $("routineCalendarGrid");
+  grid.replaceChildren();
+  const firstOffset = (monthDate.getDay() + 6) % 7;
+  const cursor = new Date(monthDate);
+  cursor.setDate(cursor.getDate() - firstOffset);
+  for (let index = 0; index < 42; index += 1) {
+    const key = localDateKey(cursor);
+    const scheduled = scheduledDayForDate(key);
+    const status = plannedWorkoutStatus(key, scheduled);
+    const routineClasses = scheduled ? routineVisualClasses(scheduled.routine) : "";
+    const button = createElement(
+      "button",
+      `calendar-day calendar-day-${status}${routineClasses ? ` ${routineClasses}` : ""}`,
+    );
+    button.type = "button";
+    button.classList.toggle("muted-month", cursor.getMonth() !== monthDate.getMonth());
+    button.classList.toggle("today", key === today);
+    button.disabled = !scheduled;
+    button.setAttribute("aria-label", scheduled
+      ? `${formatShortDate(key)}: ${scheduled.routine.name}`
+      : `${formatShortDate(key)}: sin entrenamiento`);
+    button.appendChild(createElement("strong", "", String(cursor.getDate())));
+    if (scheduled) button.appendChild(createElement("span", `status-dot status-dot-${status}`));
+    button.addEventListener("click", () => openPlannedWorkout(key));
+    grid.appendChild(button);
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  const monthEndDate = new Date(monthDate);
+  monthEndDate.setMonth(monthEndDate.getMonth() + 1, 0);
+  const monthEnd = localDateKey(monthEndDate);
+  const scheduledDates = [];
+  for (const scan = new Date(monthDate); localDateKey(scan) <= monthEnd; scan.setDate(scan.getDate() + 1)) {
+    const date = localDateKey(scan);
+    const scheduled = scheduledDayForDate(date);
+    if (scheduled) scheduledDates.push({ date, scheduled, status: plannedWorkoutStatus(date, scheduled) });
+  }
+  $("plannedCompletedCount").textContent = String(scheduledDates.filter((item) => item.status === "completed").length);
+  $("plannedMissedCount").textContent = String(scheduledDates.filter((item) => item.status === "missed").length);
+  $("plannedPendingCount").textContent = String(scheduledDates.filter((item) => item.status === "planned").length);
+
+  const upcomingList = $("upcomingWorkoutList");
+  upcomingList.replaceChildren();
+  upcomingScheduledWorkouts().forEach(({ date, routine, routineDay, status }) => {
+    const card = createElement("button", `upcoming-workout-card ${routineVisualClasses(routine)} upcoming-${status}`);
+    card.type = "button";
+    card.append(
+      createElement("span", `upcoming-accent status-dot-${status}`),
+      createElement("span", "upcoming-copy", ""),
+      createElement("span", "routine-card-chevron", "›"),
+    );
+    const copy = card.querySelector(".upcoming-copy");
+    copy.append(
+      createElement("small", "", formatShortDate(date)),
+      createElement("strong", "", routine.name),
+    );
+    card.addEventListener("click", () => openPlannedWorkout(date));
+    upcomingList.appendChild(card);
+  });
+  if (!upcomingList.children.length) {
+    renderEmpty(upcomingList, "Sin próximos entrenos", "Asigna días a una rutina desde Biblioteca.");
+  }
+}
+
+function openPlannedWorkout(dateKey) {
+  const scheduled = scheduledDayForDate(dateKey);
+  if (!scheduled) return;
+  selectedPlannedWorkout = { date: dateKey, ...scheduled };
+  selectedRoutineId = null;
+  renderRoutineManager();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function renderPlannedWorkoutPanel() {
+  const panel = $("plannedWorkoutPanel");
+  panel.hidden = !selectedPlannedWorkout;
+  if (!selectedPlannedWorkout) return;
+  const { date, routine, routineDay } = selectedPlannedWorkout;
+  const status = plannedWorkoutStatus(date, { routine, routineDay });
+  $("plannedWorkoutDate").textContent = formatShortDate(date);
+  $("plannedWorkoutTitle").textContent = routine.name;
+  $("plannedWorkoutMeta").textContent = `${countLabel(routineDay.exercises.length, "ejercicio")} planificado · ${routineTheme(routine).label}`;
+  const spotlight = createRoutineSpotlight({
+    ...routine,
+    name: routine.name,
+    days: [{ ...routineDay }],
+  });
+  spotlight.classList.add(`planned-status-${status}`);
+  $("plannedWorkoutSpotlight").replaceChildren(spotlight);
+  $("plannedWorkoutOpenBtn").onclick = () => {
+    selectedRoutineId = routine.id;
+    selectedPlannedWorkout = null;
+    routinePlannerView = "library";
+    renderRoutineManager();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+}
+
 function createRoutineExerciseRow(routine, routineDay, routineExercise, index) {
   const row = createElement("li", "routine-exercise-row");
   row.appendChild(createElement("span", "routine-order", String(routineExercise.order)));
@@ -1479,13 +1842,16 @@ function renderRoutineManager() {
   list.replaceChildren();
   const routines = activeRoutines();
   $("routineCount").textContent = countLabel(routines.length, "rutina");
+  renderRoutineCalendar();
   routines.forEach((routine, routineIndex) => {
-    const card = createElement("button", "routine-overview-card surface");
+    const theme = routineTheme(routine);
+    const card = createElement("button", `routine-overview-card surface ${routineVisualClasses(routine)}`);
     card.type = "button";
     card.classList.toggle("routine-card-demo", Boolean(routine.isDemo));
     const icon = createElement("span", `routine-icon routine-icon-tone-${(routineIndex % 3) + 1}`);
-    icon.appendChild(createIcon("dumbbell"));
+    icon.appendChild(createMuscleIcon(theme.group));
     const text = createElement("span", "routine-overview-copy");
+    text.appendChild(createElement("span", "routine-focus-tag", theme.label));
     text.append(
       createElement("strong", "", routine.name),
       createElement(
@@ -1518,11 +1884,17 @@ function renderRoutineManager() {
   renderNewRoutineWeekdays();
 
   const selectedRoutine = routines.find((routine) => routine.id === selectedRoutineId);
-  $("routineOverview").hidden = Boolean(selectedRoutine);
+  $("routineOverview").hidden = Boolean(selectedRoutine || selectedPlannedWorkout);
   $("routineDetailPanel").hidden = !selectedRoutine;
+  renderPlannedWorkoutPanel();
   if (!selectedRoutine) return;
+  $("plannedWorkoutPanel").hidden = true;
   $("routineDetailTitle").textContent = selectedRoutine.name;
   $("routineDetailMeta").textContent = `${countLabel(routineScheduledWeekdayCount(selectedRoutine), "día")} · ${countLabel(routineExerciseCount(selectedRoutine), "ejercicio")}`;
+  $("routineSpotlight").replaceChildren(createRoutineSpotlight(selectedRoutine));
+  document.querySelectorAll('input[name="selectedRoutineAccentColor"]').forEach((input) => {
+    input.checked = input.value === (selectedRoutine.accentColor ?? "auto");
+  });
   const detailDays = $("routineDetailDays");
   detailDays.replaceChildren();
   selectedRoutine.days
@@ -1580,6 +1952,22 @@ function formatSet(workoutSet) {
   return parts.join(" · ");
 }
 
+function setTypeText(workoutSetOrType) {
+  const type = typeof workoutSetOrType === "string"
+    ? workoutSetOrType
+    : workoutSetOrType?.setType ?? (workoutSetOrType?.isWarmup ? "warmup" : "effective");
+  if (type === "warmup") return "Calent.";
+  if (type === "approach") return "Aprox.";
+  return "Efectiva";
+}
+
+function setTypeClass(workoutSetOrType) {
+  const type = typeof workoutSetOrType === "string"
+    ? workoutSetOrType
+    : workoutSetOrType?.setType ?? (workoutSetOrType?.isWarmup ? "warmup" : "effective");
+  return `set-type-${type}`;
+}
+
 function exerciseSource(exerciseId) {
   return state.training.exercises.find((exercise) => exercise.id === exerciseId)?.source ?? null;
 }
@@ -1600,8 +1988,39 @@ function makeSetField(labelText, name, options = {}) {
   return { label, input };
 }
 
-function renderSetForm(session, sessionExercise) {
+function formatHintValue(value) {
+  return value === null || value === undefined || value === "" ? "" : String(value);
+}
+
+function setInputHints(reference, order) {
+  const referenceSets = reference?.sets?.slice().sort((a, b) => a.order - b.order) ?? [];
+  const fallback = referenceSets.at(-1);
+  const matched = referenceSets[Math.max(0, order - 1)] ?? fallback;
+  return {
+    load: formatHintValue(matched?.loadKg),
+    reps: formatHintValue(matched?.reps),
+    rir: formatHintValue(matched?.rir),
+  };
+}
+
+function applySetInputHints(reference, order, { load, reps, rir }) {
+  const hints = setInputHints(reference, order);
+  load.placeholder = hints.load;
+  reps.placeholder = hints.reps;
+  rir.placeholder = hints.rir;
+}
+
+function stepLoadValue(input, delta) {
+  const rawBase = input.value === "" ? input.placeholder : input.value;
+  const base = Number(rawBase);
+  const next = Math.max(0, (Number.isFinite(base) ? base : 0) + delta);
+  input.value = String(Math.round(next * 2) / 2);
+  input.focus();
+}
+
+function renderSetForm(session, sessionExercise, reference) {
   const form = createElement("form", "set-form");
+  form.setAttribute("aria-label", "Registrar serie. Última referencia usada como guía visual si existe.");
   form.noValidate = true;
   const reps = makeSetField("Repeticiones", "reps", {
     min: 1,
@@ -1629,16 +2048,25 @@ function renderSetForm(session, sessionExercise) {
     placeholder: "Técnica, agarre o contexto",
   });
 
-  const setTypeLabel = createElement("label", "set-type-field");
-  setTypeLabel.appendChild(document.createTextNode("Tipo de serie"));
-  const setType = document.createElement("select");
-  setType.name = "setType";
-  setType.append(
-    new Option("Efectiva", "effective"),
-    new Option("Aproximación", "approach"),
-    new Option("Calentamiento", "warmup"),
-  );
-  setTypeLabel.appendChild(setType);
+  const setTypeGroup = createElement("fieldset", "set-type-field set-type-options");
+  const setTypeLegend = createElement("legend", "", "Tipo");
+  setTypeGroup.appendChild(setTypeLegend);
+  const setTypeInputs = new Map();
+  [
+    ["effective", "Efectiva"],
+    ["approach", "Aprox."],
+    ["warmup", "Calent."],
+  ].forEach(([value, label], index) => {
+    const option = createElement("label", `set-type-option ${setTypeClass(value)}`);
+    const input = document.createElement("input");
+    input.type = "radio";
+    input.name = "setType";
+    input.value = value;
+    input.checked = index === 0;
+    option.append(input, createElement("span", "", label));
+    setTypeInputs.set(value, input);
+    setTypeGroup.appendChild(option);
+  });
 
   const actions = createElement("div", "form-actions full");
   const submit = createElement("button", "button button-accent set-check-button", "✓ Completar serie");
@@ -1651,30 +2079,64 @@ function renderSetForm(session, sessionExercise) {
   });
   cancel.hidden = true;
   actions.append(submit, cancel);
-  const columnHeadings = createElement("div", "set-form-headings full");
+  const loadStepper = createElement("div", "load-stepper");
+  const loadDown = createElement("button", "load-stepper-button", "−");
+  loadDown.type = "button";
+  loadDown.setAttribute("aria-label", "Bajar peso 0,5 kg");
+  loadDown.addEventListener("click", () => stepLoadValue(load.input, -0.5));
+  const loadUp = createElement("button", "load-stepper-button", "+");
+  loadUp.type = "button";
+  loadUp.setAttribute("aria-label", "Subir peso 0,5 kg");
+  loadUp.addEventListener("click", () => stepLoadValue(load.input, 0.5));
+  loadStepper.append(loadDown, load.input, loadUp);
+  const columnHeadings = createElement("div", "set-form-headings");
   columnHeadings.append(
+    createElement("span", "", "Set"),
     createElement("span", "", "Peso (kg)"),
     createElement("span", "", "Reps"),
     createElement("span", "", "RIR"),
     createElement("span", "", "Tipo"),
   );
+  const newSetNumber = createElement("span", "set-number set-form-number", String(sessionExercise.sets.length + 1));
   load.label.classList.add("set-field-load");
   reps.label.classList.add("set-field-reps");
   rir.label.classList.add("set-field-rir");
-  setTypeLabel.classList.add("set-field-type");
-  [load.label, reps.label, rir.label, setTypeLabel].forEach((label) => {
+  [load.label, reps.label, rir.label].forEach((label) => {
     label.childNodes[0]?.remove();
   });
-  form.append(columnHeadings, load.label, reps.label, rir.label, setTypeLabel, note.label, actions);
+  load.label.replaceChildren(loadStepper);
+  applySetInputHints(reference, sessionExercise.sets.length + 1, {
+    load: load.input,
+    reps: reps.input,
+    rir: rir.input,
+  });
+  const error = createElement("p", "set-form-error full");
+  error.hidden = true;
+  form.append(columnHeadings, newSetNumber, load.label, reps.label, rir.label, setTypeGroup, note.label, error, actions);
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();
+    error.hidden = true;
+    error.textContent = "";
+    rir.input.classList.remove("field-error");
+    if (rir.input.value !== "" && Number(rir.input.value) > 5) {
+      if (Number(rir.input.value) <= 10) {
+        rir.input.value = "5";
+        showNotice("RIR máximo permitido: 5. Lo he ajustado a 5.", { error: true });
+      } else {
+        rir.input.classList.add("field-error");
+        error.textContent = "El RIR debe estar entre 0 y 5. Si no lo sabes, déjalo vacío.";
+        error.hidden = false;
+        showNotice(error.textContent, { error: true });
+        return;
+      }
+    }
     const submissionKey = `${session.id}:${sessionExercise.id}`;
     const input = {
       reps: reps.input.value,
       loadKg: load.input.value,
       rir: rir.input.value,
-      setType: setType.value,
+      setType: form.elements.setType.value,
       note: note.input.value,
     };
     const editingSetId = form.dataset.editingSetId;
@@ -1689,10 +2151,16 @@ function renderSetForm(session, sessionExercise) {
   });
 
   form.startEditing = (workoutSet) => {
+    applySetInputHints(reference, workoutSet.order, {
+      load: load.input,
+      reps: reps.input,
+      rir: rir.input,
+    });
     reps.input.value = workoutSet.reps;
     load.input.value = workoutSet.loadKg ?? "";
     rir.input.value = workoutSet.rir ?? "";
-    setType.value = workoutSet.setType ?? (workoutSet.isWarmup ? "warmup" : "effective");
+    const selectedType = workoutSet.setType ?? (workoutSet.isWarmup ? "warmup" : "effective");
+    (setTypeInputs.get(selectedType) ?? setTypeInputs.get("effective")).checked = true;
     note.input.value = workoutSet.note ?? "";
     form.dataset.editingSetId = workoutSet.id;
     submit.textContent = "Guardar corrección";
@@ -1700,6 +2168,82 @@ function renderSetForm(session, sessionExercise) {
     reps.input.focus();
   };
   return form;
+}
+
+function attachSetSwipe(row, foreground, { onDuplicate, onDelete }) {
+  let startX = 0;
+  let startY = 0;
+  let currentX = 0;
+  let dragging = false;
+  let pointerId = null;
+  const reset = () => {
+    row.classList.remove("swiping-left", "swiping-right");
+    foreground.style.transform = "";
+  };
+  const finish = () => {
+    if (!dragging) return;
+    dragging = false;
+    if (pointerId !== null) foreground.releasePointerCapture?.(pointerId);
+    pointerId = null;
+    if (currentX > 86) onDuplicate();
+    if (currentX < -86) onDelete();
+    reset();
+  };
+  foreground.addEventListener("pointerdown", (event) => {
+    if (event.target.closest("button")) return;
+    startX = event.clientX;
+    startY = event.clientY;
+    currentX = 0;
+    dragging = true;
+    pointerId = event.pointerId;
+    foreground.setPointerCapture?.(event.pointerId);
+  });
+  foreground.addEventListener("pointermove", (event) => {
+    if (!dragging) return;
+    const deltaX = event.clientX - startX;
+    const deltaY = event.clientY - startY;
+    if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 12) {
+      reset();
+      dragging = false;
+      pointerId = null;
+      return;
+    }
+    currentX = Math.max(-112, Math.min(112, deltaX));
+    row.classList.toggle("swiping-right", currentX > 12);
+    row.classList.toggle("swiping-left", currentX < -12);
+    foreground.style.transform = `translateX(${currentX}px)`;
+  });
+  foreground.addEventListener("pointerup", finish);
+  foreground.addEventListener("pointercancel", () => {
+    dragging = false;
+    pointerId = null;
+    reset();
+  });
+}
+
+function createLastReferenceCard(reference) {
+  const card = createElement("aside", "reference-card");
+  card.setAttribute("aria-label", "Última referencia del ejercicio");
+  card.appendChild(createElement("span", "reference-card-label", "Última referencia"));
+  if (!reference) {
+    card.appendChild(createElement("p", "muted", "Sin una sesión finalizada comparable todavía."));
+    return card;
+  }
+  card.appendChild(createElement("strong", "", formatDateTime(reference.date)));
+  const list = createElement("ol", "reference-list");
+  reference.sets.slice().sort((a, b) => a.order - b.order).forEach((workoutSet) => {
+    const item = createElement("li", "reference-list-item");
+    item.append(
+      createElement("span", "set-number", String(workoutSet.order)),
+      createElement("span", "", formatSet(workoutSet)),
+    );
+    list.appendChild(item);
+  });
+  if (!list.children.length) {
+    list.appendChild(createElement("li", "muted", "La sesión anterior no tenía series completadas."));
+  }
+  card.appendChild(list);
+  return card;
 }
 
 function completedExerciseHistory(exerciseId) {
@@ -1770,9 +2314,16 @@ function createExerciseProgressPanel(sessionExercise) {
   const panel = createElement("section", "exercise-view-panel exercise-progress-panel");
   panel.dataset.exerciseView = "progress";
   panel.appendChild(createElement("p", "exercise-panel-intro", "Mejor serie efectiva de cada entrenamiento: peso y repeticiones."));
+  const legend = createElement("div", "chart-legend exercise-chart-legend");
+  legend.setAttribute("aria-hidden", "true");
+  legend.append(
+    createElement("span", "legend-load", "Peso levantado (kg)"),
+    createElement("span", "legend-reps", "Repeticiones"),
+  );
+  panel.appendChild(legend);
   const chart = createElement("div", "exercise-chart exercise-inline-chart");
   chart.setAttribute("role", "img");
-  chart.setAttribute("aria-label", `Progreso de ${sessionExercise.exerciseName}`);
+  chart.setAttribute("aria-label", `Progreso de ${sessionExercise.exerciseName}: línea verde peso en kilos, línea naranja repeticiones.`);
   panel.appendChild(chart);
   renderExerciseChart(exerciseProgressPoints(sessionExercise.exerciseId), chart);
   return panel;
@@ -1852,10 +2403,7 @@ function renderSessionExercise(session, sessionExercise) {
   if (sessionExercise.planNote) titleBlock.appendChild(createElement("p", "muted", sessionExercise.planNote));
 
   const reference = findLastComparableExercise(state, sessionExercise.exerciseId, session.id);
-  const referenceText = reference
-    ? `Última referencia (${formatDateTime(reference.date)}): ${reference.sets.map(formatSet).join(" · ")}`
-    : "Sin una sesión finalizada comparable todavía.";
-  titleBlock.appendChild(createElement("p", "reference", referenceText));
+  titleBlock.appendChild(createLastReferenceCard(reference));
   header.appendChild(titleBlock);
   const statusBlock = createElement("div", "exercise-status-actions");
   statusBlock.appendChild(createElement("span", "count-badge", countLabel(sessionExercise.sets.length, "serie")));
@@ -1905,31 +2453,40 @@ function renderSessionExercise(session, sessionExercise) {
 
   const content = createElement("div", "set-area");
   const list = createElement("ol", "set-list");
-  const form = renderSetForm(session, sessionExercise);
+  const form = renderSetForm(session, sessionExercise, reference);
 
   sessionExercise.sets.forEach((workoutSet) => {
-    const row = createElement("li", "set-row");
-    row.appendChild(createElement("span", "set-number set-complete", "✓"));
-    const detail = document.createElement("div");
-    detail.append(
-      createElement("strong", "", formatSet(workoutSet)),
-      createElement("small", "", workoutSet.note || "Sin nota"),
+    const duplicateCurrentSet = () => commit(
+      (next) => duplicateSet(next, session.id, sessionExercise.id, workoutSet.id),
+      `Serie ${workoutSet.order} duplicada con los mismos valores.`,
     );
-    const actions = createElement("div", "item-actions");
+    const deleteCurrentSet = () => {
+      if (!window.confirm(`¿Borrar la serie ${workoutSet.order}? Podrás deshacerla después.`)) return;
+      commit((next) => {
+        deleteSet(next, session.id, sessionExercise.id, workoutSet.id);
+      }, "Serie borrada. Puedes deshacerla.");
+    };
+    const row = createElement("li", "set-row swipe-set-row");
+    row.append(
+      createElement("span", "set-swipe-action set-swipe-duplicate", "Duplicar"),
+      createElement("span", "set-swipe-action set-swipe-delete", "Borrar"),
+    );
+    const foreground = createElement("div", "set-row-content");
+    foreground.appendChild(createElement("span", "set-number set-complete", String(workoutSet.order)));
+    foreground.appendChild(createElement("strong", "set-cell set-load", workoutSet.loadKg === null ? "—" : `${workoutSet.loadKg} kg`));
+    foreground.appendChild(createElement("span", "set-cell set-reps", `${workoutSet.reps}`));
+    foreground.appendChild(createElement("span", "set-cell set-rir", workoutSet.rir ?? "—"));
+    foreground.appendChild(createElement("span", `set-type-badge ${setTypeClass(workoutSet)}`, setTypeText(workoutSet)));
+    const actions = createElement("div", "item-actions set-row-actions");
     actions.append(
-      createButton("Duplicar", "button-quiet", () => commit(
-        (next) => duplicateSet(next, session.id, sessionExercise.id, workoutSet.id),
-        `Serie ${workoutSet.order} duplicada con los mismos valores.`,
-      )),
+      createButton("Duplicar", "button-quiet", duplicateCurrentSet),
       createButton("Editar", "button-secondary", () => form.startEditing(workoutSet)),
-      createButton("Borrar", "button-danger", () => {
-        if (!window.confirm(`¿Borrar la serie ${workoutSet.order}? Podrás deshacerla después.`)) return;
-        commit((next) => {
-          deleteSet(next, session.id, sessionExercise.id, workoutSet.id);
-        }, "Serie borrada. Puedes deshacerla.");
-      }),
+      createButton("Borrar", "button-danger", deleteCurrentSet),
     );
-    row.append(detail, actions);
+    foreground.appendChild(actions);
+    if (workoutSet.note) foreground.appendChild(createElement("small", "set-row-note", workoutSet.note));
+    row.appendChild(foreground);
+    attachSetSwipe(row, foreground, { onDuplicate: duplicateCurrentSet, onDelete: deleteCurrentSet });
     list.appendChild(row);
   });
 
@@ -1970,7 +2527,10 @@ function renderSessionExercise(session, sessionExercise) {
 
 function renderTraining() {
   const active = getActiveSession(state);
+  const activeRoutine = routineForSession(active);
   if (!active) trainingView = "routines";
+  applyRoutineVisualClasses($("activeSessionPanel"), activeRoutine);
+  applyRoutineVisualClasses($("activeSessionResume"), activeRoutine);
   $("routineManager").hidden = trainingView !== "routines";
   $("activeSessionPanel").hidden = !active || trainingView !== "session";
   $("activeSessionResume").hidden = !active;
@@ -1997,6 +2557,24 @@ function renderTraining() {
 
   $("undoBar").hidden = !state.training.undo;
   renderCatalogResults();
+  updateActiveSessionElapsed();
+}
+
+function updateActiveSessionElapsed() {
+  const active = getActiveSession(state);
+  const element = $("activeSessionElapsed");
+  if (!active || trainingView !== "session") {
+    element.textContent = "";
+    if (sessionElapsedIntervalId) {
+      window.clearInterval(sessionElapsedIntervalId);
+      sessionElapsedIntervalId = null;
+    }
+    return;
+  }
+  element.textContent = `Tiempo total · ${formatWorkoutDuration(sessionElapsedSeconds(active))}`;
+  if (!sessionElapsedIntervalId) {
+    sessionElapsedIntervalId = window.setInterval(updateActiveSessionElapsed, 1000);
+  }
 }
 
 function renderCatalogFilters() {
@@ -2148,7 +2726,7 @@ function renderCatalogResults() {
 
 async function loadCatalog() {
   try {
-    const response = await fetch("./data/exercises.es.json?v=32", { cache: "no-cache" });
+    const response = await fetch("./data/exercises.es.json?v=44", { cache: "no-cache" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     if (!Array.isArray(payload.exercises)) throw new Error("Estructura no válida");
@@ -2278,6 +2856,45 @@ $("dailyForm").addEventListener("submit", (event) => {
   }, "Registro diario guardado.");
 });
 
+document.querySelectorAll("[data-routine-planner-view]").forEach((button) => {
+  button.addEventListener("click", () => {
+    routinePlannerView = button.dataset.routinePlannerView;
+    selectedPlannedWorkout = null;
+    renderRoutineManager();
+  });
+});
+
+$("prevPlannerMonthBtn").addEventListener("click", () => {
+  plannerMonthDate.setMonth(plannerMonthDate.getMonth() - 1, 1);
+  renderRoutineManager();
+});
+
+$("nextPlannerMonthBtn").addEventListener("click", () => {
+  plannerMonthDate.setMonth(plannerMonthDate.getMonth() + 1, 1);
+  renderRoutineManager();
+});
+
+$("editPlanBtn").addEventListener("click", () => {
+  routinePlannerView = "library";
+  renderRoutineManager();
+});
+
+$("plannedWorkoutBackBtn").addEventListener("click", () => {
+  selectedPlannedWorkout = null;
+  routinePlannerView = "calendar";
+  renderRoutineManager();
+});
+
+$("plannedExtraWorkoutBtn").addEventListener("click", () => {
+  selectedPlannedWorkout = null;
+  selectedRoutineId = null;
+  routinePlannerView = "library";
+  renderRoutineManager();
+  $("startFreeSessionBtn").scrollIntoView({ behavior: "smooth", block: "center" });
+  $("startFreeSessionBtn").focus({ preventScroll: true });
+  showNotice("Entrenamiento libre listo: puedes empezar y añadir ejercicios solo para esta sesión.");
+});
+
 $("foodForm").addEventListener("submit", (event) => {
   event.preventDefault();
   const name = $("foodName").value.trim();
@@ -2308,18 +2925,35 @@ $("createRoutineForm").addEventListener("submit", (event) => {
   event.preventDefault();
   const name = $("routineName").value;
   const weekdays = selectedWeekdays("newRoutineWeekdays");
+  const selectedColor = document.querySelector('input[name="routineAccentColor"]:checked')?.value ?? "auto";
   const saved = commit(
-    (next) => createRoutineWithWeekdays(next, name, weekdays),
+    (next) => createRoutineWithWeekdays(next, name, weekdays, {
+      accentColor: selectedColor === "auto" ? null : selectedColor,
+    }),
     `Rutina ${name.trim()} creada con ${countLabel(weekdays.length, "día")}.`,
   );
   if (saved) {
+    routinePlannerView = "library";
     event.target.reset();
     $("createRoutineCard").open = false;
   }
 });
 
+document.querySelectorAll('input[name="selectedRoutineAccentColor"]').forEach((input) => {
+  input.addEventListener("change", () => {
+    if (!input.checked || !selectedRoutineId) return;
+    const color = input.value === "auto" ? null : input.value;
+    commit(
+      (next) => setRoutineAccentColor(next, selectedRoutineId, color),
+      color ? `Color de la rutina cambiado a ${accentLabels[color]}.` : "Color automático activado.",
+    );
+  });
+});
+
 $("routineDetailBackBtn").addEventListener("click", () => {
   selectedRoutineId = null;
+  selectedPlannedWorkout = null;
+  routinePlannerView = "library";
   renderRoutineManager();
 });
 
@@ -2328,13 +2962,13 @@ $("addRoutineDayForm").addEventListener("submit", (event) => {
   if (!selectedRoutineId) return;
   const [weekday] = selectedWeekdays("addRoutineDayWeekdays");
   if (weekday === undefined) {
-    showNotice("Selecciona un día libre para añadirlo a la rutina.", { error: true });
+    showNotice("Selecciona un día libre para crear una variante en esta rutina.", { error: true });
     return;
   }
   commit((next) => {
     const day = addRoutineDay(next, selectedRoutineId, weekdayName(weekday));
     setRoutineDayWeekday(next, selectedRoutineId, day.id, weekday);
-  }, `${weekdayName(weekday)} añadido a la rutina.`);
+  }, `Variante para ${weekdayName(weekday)} creada dentro de la rutina.`);
 });
 
 $("startFreeSessionBtn").addEventListener("click", (event) => {
@@ -2434,7 +3068,13 @@ $("settingsBtn").addEventListener("click", () => {
   setSettingsView("menu");
   showTab("ajustes");
 });
-$("settingsCloseBtn").addEventListener("click", () => showTab("diario"));
+$("settingsCloseBtn").addEventListener("click", () => {
+  if (settingsView === "menu") {
+    showTab("diario");
+    return;
+  }
+  setSettingsView("menu");
+});
 
 document.querySelectorAll("[data-open-settings]").forEach((button) => {
   button.addEventListener("click", () => {
@@ -2582,6 +3222,36 @@ $("exportBtn").addEventListener("click", () => {
 });
 
 $("importBtn").addEventListener("click", () => $("importFile").click());
+
+$("loadDemoDataBtn").addEventListener("click", () => {
+  const confirmed = window.confirm(
+    "Se añadirán rutinas, entrenamientos, días y comidas ficticias de los últimos 2 meses. "
+    + "Tus datos reales se conservan y podrás quitar la demo después. ¿Cargar demo?",
+  );
+  if (!confirmed) return;
+  const saved = commit((next) => {
+    seedDemoData(next, { now: new Date().toISOString() });
+  }, "");
+  if (saved) {
+    setSettingsView("menu");
+    showTab("diario");
+    showNotice("Demo de 2 meses cargada. Tus datos reales siguen separados.", { area: "appNotice" });
+  }
+});
+
+$("removeDemoDataBtn").addEventListener("click", () => {
+  const confirmed = window.confirm(
+    "Se quitarán solo las rutinas, sesiones, días y alimentos marcados como demo. "
+    + "Tus datos reales no se borrarán. ¿Quitar demo?",
+  );
+  if (!confirmed) return;
+  const saved = commit((next) => {
+    removeDemoData(next);
+  }, "");
+  if (saved) {
+    showNotice("Datos demo retirados. Los datos reales se han conservado.", { area: "appNotice" });
+  }
+});
 
 $("importFile").addEventListener("change", async (event) => {
   const file = event.target.files[0];

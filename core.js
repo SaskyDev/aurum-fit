@@ -183,6 +183,11 @@ export function validateState(state) {
       || typeof routine.id !== "string"
       || typeof routine.userId !== "string"
       || typeof routine.name !== "string"
+      || (
+        routine.accentColor !== undefined
+        && routine.accentColor !== null
+        && !ACCENT_COLORS.has(routine.accentColor)
+      )
       || !["active", "archived"].includes(routine.status)
       || typeof routine.createdAt !== "string"
       || typeof routine.updatedAt !== "string"
@@ -508,12 +513,19 @@ function recalculateOrder(items) {
 export function createRoutine(
   state,
   name,
-  { now = new Date().toISOString(), id = createId("routine") } = {},
+  {
+    now = new Date().toISOString(),
+    id = createId("routine"),
+    accentColor = null,
+  } = {},
 ) {
   const result = validateShortName(name, "El nombre de la rutina", {
     max: MAX_ROUTINE_NAME_LENGTH,
   });
   if (result.error) throw new Error(result.error);
+  if (accentColor !== null && !ACCENT_COLORS.has(accentColor)) {
+    throw new Error("El color de la rutina no es válido.");
+  }
   if (
     state.training.routines.some(
       (routine) => (
@@ -529,6 +541,7 @@ export function createRoutine(
     id,
     userId: state.owner.id,
     name: result.value,
+    accentColor,
     status: "active",
     suggestedDayId: null,
     days: [],
@@ -543,7 +556,11 @@ export function createRoutineWithWeekdays(
   state,
   name,
   weekdays,
-  { now = new Date().toISOString(), id = createId("routine") } = {},
+  {
+    now = new Date().toISOString(),
+    id = createId("routine"),
+    accentColor = null,
+  } = {},
 ) {
   if (!Array.isArray(weekdays) || !weekdays.length) {
     throw new Error("Selecciona al menos un día para la rutina.");
@@ -574,7 +591,7 @@ export function createRoutineWithWeekdays(
         day.weekday = remaining[0] ?? null;
       }
     }));
-  const routine = createRoutine(state, name, { now, id });
+  const routine = createRoutine(state, name, { now, id, accentColor });
   const sortedWeekdays = normalizedWeekdays
     .sort((left, right) => ((left + 6) % 7) - ((right + 6) % 7));
   const day = addRoutineDay(state, routine.id, sortedWeekdays.length === 1 ? weekdayLabel(sortedWeekdays[0]) : "Entrenamiento", {
@@ -582,6 +599,21 @@ export function createRoutineWithWeekdays(
     id: createId("routine-day"),
   });
   setRoutineDayWeekdays(state, routine.id, day.id, sortedWeekdays, now);
+  return routine;
+}
+
+export function setRoutineAccentColor(
+  state,
+  routineId,
+  accentColor,
+  now = new Date().toISOString(),
+) {
+  if (accentColor !== null && !ACCENT_COLORS.has(accentColor)) {
+    throw new Error("El color de la rutina no es válido.");
+  }
+  const routine = findRoutine(state, routineId);
+  routine.accentColor = accentColor;
+  routine.updatedAt = now;
   return routine;
 }
 
@@ -887,6 +919,7 @@ export function startSessionFromRoutineDay(
       snapshot: {
         routineName: routine.name,
         routineDayName: routineDay.name,
+        routineAccentColor: routine.accentColor ?? null,
       },
     },
     status: "in_progress",
@@ -1183,6 +1216,10 @@ export function completeSession(state, sessionId, now = new Date().toISOString()
   if (!completedSets) throw new Error("Añade al menos una serie antes de finalizar.");
   session.status = "completed";
   session.endedAt = now;
+  session.durationSeconds = Math.max(
+    0,
+    Math.round((new Date(now).getTime() - new Date(session.startedAt).getTime()) / 1000),
+  );
   state.training.activeSessionId = null;
   state.training.undo = null;
   return session;
@@ -1313,7 +1350,7 @@ export function seedDemoData(state, { now = new Date().toISOString() } = {}) {
   const assignedWeekdays = new Set(
     state.training.routines
       .filter((routine) => routine.status === "active")
-      .flatMap((routine) => routine.days.map((day) => day.weekday))
+      .flatMap((routine) => routine.days.flatMap((day) => routineDayWeekdays(day)))
       .filter((weekday) => weekday !== null && weekday !== undefined),
   );
   const routineSpecs = [
@@ -1322,21 +1359,12 @@ export function seedDemoData(state, { now = new Date().toISOString() } = {}) {
       name: "Demo · Empuje",
       days: [
         {
-          id: "demo-day-push-a", name: "Push A", weekday: 1,
+          id: "demo-day-push", name: "Entrenamiento", weekdays: [1, 4],
           exercises: [
             ["dataset-0025", "Press de banca con barra", 4, 6, 8, 70],
             ["dataset-0314", "Press inclinado con mancuernas", 3, 8, 10, 26],
             ["dataset-0426", "Press de hombro con mancuernas", 3, 8, 10, 20],
             ["dataset-0241", "Extensión de tríceps en polea", 3, 10, 12, 25],
-          ],
-        },
-        {
-          id: "demo-day-push-b", name: "Push B", weekday: 4,
-          exercises: [
-            ["dataset-0576", "Press de pecho en máquina", 4, 8, 10, 65],
-            ["dataset-0308", "Aperturas con mancuernas", 3, 10, 12, 14],
-            ["dataset-0334", "Elevaciones laterales con mancuernas", 4, 12, 15, 8],
-            ["dataset-0241", "Extensión de tríceps en polea", 3, 10, 12, 27.5],
           ],
         },
       ],
@@ -1346,21 +1374,12 @@ export function seedDemoData(state, { now = new Date().toISOString() } = {}) {
       name: "Demo · Tirón",
       days: [
         {
-          id: "demo-day-pull-a", name: "Pull A", weekday: 2,
+          id: "demo-day-pull", name: "Entrenamiento", weekdays: [2, 5],
           exercises: [
             ["dataset-2330", "Jalón al pecho en polea", 4, 8, 10, 55],
             ["dataset-0027", "Remo inclinado con barra", 4, 6, 8, 60],
             ["dataset-0180", "Remo sentado en polea baja", 3, 10, 12, 50],
             ["dataset-0294", "Curl de bíceps con mancuernas", 3, 8, 10, 12],
-          ],
-        },
-        {
-          id: "demo-day-pull-b", name: "Pull B", weekday: 5,
-          exercises: [
-            ["dataset-1326", "Dominadas supinas", 4, 6, 8, 0],
-            ["dataset-0180", "Remo sentado en polea baja", 4, 8, 10, 52.5],
-            ["dataset-0334", "Elevaciones laterales con mancuernas", 3, 12, 15, 8],
-            ["dataset-0313", "Curl martillo con mancuernas", 3, 10, 12, 14],
           ],
         },
       ],
@@ -1370,21 +1389,12 @@ export function seedDemoData(state, { now = new Date().toISOString() } = {}) {
       name: "Demo · Pierna",
       days: [
         {
-          id: "demo-day-legs-a", name: "Pierna A", weekday: 3,
+          id: "demo-day-legs", name: "Entrenamiento", weekdays: [3, 6],
           exercises: [
             ["dataset-0043", "Sentadilla con barra", 4, 6, 8, 80],
             ["dataset-0085", "Peso muerto rumano con barra", 3, 8, 10, 75],
             ["dataset-0585", "Extensión de piernas en máquina", 3, 10, 12, 45],
             ["dataset-1373", "Elevación de gemelos de pie", 4, 12, 15, 50],
-          ],
-        },
-        {
-          id: "demo-day-legs-b", name: "Pierna B", weekday: 6,
-          exercises: [
-            ["dataset-1463", "Prensa de piernas a 45°", 4, 8, 10, 140],
-            ["dataset-0599", "Curl femoral sentado", 3, 10, 12, 45],
-            ["dataset-1409", "Puente de glúteo con barra", 4, 8, 10, 90],
-            ["dataset-1460", "Zancadas caminando", 3, 10, 12, 20],
           ],
         },
       ],
@@ -1397,10 +1407,12 @@ export function seedDemoData(state, { now = new Date().toISOString() } = {}) {
     routineSpec.days.forEach((daySpec) => {
       const day = addRoutineDay(state, routine.id, daySpec.name, { id: daySpec.id, now });
       day.isDemo = true;
-      day.demoWeekday = daySpec.weekday;
-      if (!assignedWeekdays.has(daySpec.weekday)) {
-        setRoutineDayWeekday(state, routine.id, day.id, daySpec.weekday, now);
-        assignedWeekdays.add(daySpec.weekday);
+      const availableWeekdays = (daySpec.weekdays ?? [daySpec.weekday])
+        .filter((weekday) => !assignedWeekdays.has(weekday));
+      day.demoWeekday = availableWeekdays[0] ?? daySpec.weekday;
+      if (availableWeekdays.length) {
+        setRoutineDayWeekdays(state, routine.id, day.id, availableWeekdays, now);
+        availableWeekdays.forEach((weekday) => assignedWeekdays.add(weekday));
       }
       daySpec.exercises.forEach(([exerciseId, name, plannedSets, repMin, repMax, demoLoad]) => {
         const routineExercise = addExerciseToRoutineDay(state, routine.id, day.id, name, {
@@ -1416,11 +1428,13 @@ export function seedDemoData(state, { now = new Date().toISOString() } = {}) {
         const localExercise = state.training.exercises.find((exercise) => exercise.id === exerciseId);
         if (localExercise) localExercise.isDemo = true;
       });
-      demoDaysByWeekday.set(daySpec.weekday, { routine, day });
+      routineDayWeekdays(day).forEach((weekday) => {
+        demoDaysByWeekday.set(weekday, { routine, day });
+      });
     });
   });
 
-  for (let offset = 35; offset >= 1; offset -= 1) {
+  for (let offset = 60; offset >= 1; offset -= 1) {
     const date = new Date(createdAt);
     date.setHours(18, 0, 0, 0);
     date.setDate(date.getDate() - offset);
@@ -1429,8 +1443,8 @@ export function seedDemoData(state, { now = new Date().toISOString() } = {}) {
       const variation = offset % 7;
       state.legacy.days[dateKey] = {
         isDemo: true,
-        weight: Number((80.4 - (35 - offset) * 0.025).toFixed(1)),
-        waist: Number((87.2 - (35 - offset) * 0.02).toFixed(1)),
+        weight: Number((81.1 - (60 - offset) * 0.025).toFixed(1)),
+        waist: Number((88.1 - (60 - offset) * 0.02).toFixed(1)),
         steps: 7200 + ((offset * 683) % 6100),
         cardioMinutes: offset % 3 === 0 ? 25 : 0,
         sleep: 6 + (offset % 4),
@@ -1460,7 +1474,7 @@ export function seedDemoData(state, { now = new Date().toISOString() } = {}) {
       const planned = scheduled.day.exercises.find(
         (exercise) => exercise.exerciseId === sessionExercise.exerciseId,
       );
-      const load = Number(planned?.demoLoad ?? 20) + Math.floor((35 - offset) / 7) * 2.5;
+      const load = Number(planned?.demoLoad ?? 20) + Math.floor((60 - offset) / 7) * 2.5;
       if (exerciseIndex === 0 && load > 0) {
         addSetToExercise(state, session.id, sessionExercise.id, {
           reps: 5,
@@ -1529,6 +1543,7 @@ export function seedDemoData(state, { now = new Date().toISOString() } = {}) {
     { id: "demo-label-pasta", isDemo: true, name: "Pasta seca", brand: "Marca de ejemplo", calories100: 350, protein100: 12, carbs100: 70, fat100: 1.5, photoName: "paquete-ejemplo.jpg" },
   );
   state.meta.demoSeedVersion = 1;
+  state.meta.publicCleanupVersion = PUBLIC_CLEANUP_VERSION;
   return state;
   } finally {
     state.training.activeSessionId = preservedActiveSessionId;
