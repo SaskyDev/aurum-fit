@@ -852,6 +852,74 @@ function createButton(text, className, onClick) {
   return button;
 }
 
+function confirmDialog(message, {
+  title = "Confirmar acción",
+  confirmLabel = "Confirmar",
+  cancelLabel = "Cancelar",
+  danger = false,
+} = {}) {
+  return new Promise((resolve) => {
+    const previouslyFocused = document.activeElement;
+    let settled = false;
+
+    const overlay = createElement("div", "dialog-overlay");
+    const box = createElement("div", "dialog-box");
+    box.setAttribute("role", "alertdialog");
+    box.setAttribute("aria-modal", "true");
+    const titleId = `dialogTitle-${Date.now()}`;
+    const messageId = `dialogMessage-${Date.now()}`;
+    box.setAttribute("aria-labelledby", titleId);
+    box.setAttribute("aria-describedby", messageId);
+
+    const titleEl = createElement("h3", "dialog-title", title);
+    titleEl.id = titleId;
+    const messageEl = createElement("p", "dialog-message", message);
+    messageEl.id = messageId;
+
+    function settle(result) {
+      if (settled) return;
+      settled = true;
+      document.removeEventListener("keydown", handleKeydown, true);
+      overlay.remove();
+      document.body.classList.remove("overlay-open");
+      if (previouslyFocused instanceof HTMLElement) previouslyFocused.focus();
+      resolve(result);
+    }
+
+    const cancelBtn = createButton(cancelLabel, "button-secondary", () => settle(false));
+    const confirmBtn = createButton(confirmLabel, danger ? "button-danger" : "button-primary", () => settle(true));
+    const actions = createElement("div", "dialog-actions");
+    actions.append(cancelBtn, confirmBtn);
+
+    box.append(titleEl, messageEl, actions);
+    overlay.appendChild(box);
+
+    function handleKeydown(event) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        settle(false);
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = [cancelBtn, confirmBtn];
+      const currentIndex = focusable.indexOf(document.activeElement);
+      event.preventDefault();
+      const step = event.shiftKey ? -1 : 1;
+      const nextIndex = (currentIndex + step + focusable.length) % focusable.length;
+      focusable[nextIndex].focus();
+    }
+
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) settle(false);
+    });
+
+    document.addEventListener("keydown", handleKeydown, true);
+    document.body.appendChild(overlay);
+    document.body.classList.add("overlay-open");
+    confirmBtn.focus();
+  });
+}
+
 function runOnce(control, action, key = null) {
   if (control.disabled || control.dataset.pending === "true" || (key && pendingSetSubmissions.has(key))) {
     return false;
@@ -1231,8 +1299,8 @@ function renderFoods() {
   list.replaceChildren();
 
   (day.foods || []).forEach((food, index) => {
-    const removeButton = createButton("Borrar", "button-danger", () => {
-      if (!window.confirm(`¿Borrar “${food.name}”?`)) return;
+    const removeButton = createButton("Borrar", "button-danger", async () => {
+      if (!(await confirmDialog(`¿Borrar “${food.name}”?`, { title: "Borrar comida", confirmLabel: "Borrar", danger: true }))) return;
       commit((next) => {
         getLegacyDay(undefined, true, next).foods.splice(index, 1);
       }, "Comida borrada.");
@@ -1926,10 +1994,11 @@ function createRoutineExerciseRow(routine, routineDay, routineExercise, index) {
   moveDown.setAttribute("aria-label", `Bajar ${routineExercise.exerciseName}`);
   moveDown.disabled = index === routineDay.exercises.length - 1;
 
-  const remove = createButton("Quitar", "button-danger", () => {
-    if (!window.confirm(
+  const remove = createButton("Quitar", "button-danger", async () => {
+    if (!(await confirmDialog(
       `¿Quitar “${routineExercise.exerciseName}” de ${routineDay.name}? El historial no cambiará.`,
-    )) return;
+      { title: "Quitar ejercicio", confirmLabel: "Quitar", danger: true },
+    ))) return;
     commit(
       (next) => removeExerciseFromRoutineDay(
         next,
@@ -2165,10 +2234,11 @@ function renderRoutineManager() {
     const remove = createElement("button", "routine-swipe-delete", "Eliminar");
     remove.type = "button";
     remove.setAttribute("aria-label", `Eliminar rutina ${routine.name}`);
-    remove.addEventListener("click", () => {
-      if (!window.confirm(
+    remove.addEventListener("click", async () => {
+      if (!(await confirmDialog(
         `¿Eliminar “${routine.name}” del plan? La rutina dejará de aparecer en el plan, pero tu historial y diario se conservarán.`,
-      )) return;
+        { title: "Eliminar rutina", confirmLabel: "Eliminar", danger: true },
+      ))) return;
       commit(
         (next) => archiveRoutine(next, routine.id),
         `Rutina ${routine.name} eliminada del plan. Tu historial se conserva.`,
@@ -2793,8 +2863,8 @@ function renderSessionExercise(session, sessionExercise) {
       (next) => duplicateSet(next, session.id, sessionExercise.id, workoutSet.id),
       `Serie ${workoutSet.order} duplicada con los mismos valores.`,
     );
-    const deleteCurrentSet = () => {
-      if (!window.confirm(`¿Borrar la serie ${workoutSet.order}? Podrás deshacerla después.`)) return;
+    const deleteCurrentSet = async () => {
+      if (!(await confirmDialog(`¿Borrar la serie ${workoutSet.order}? Podrás deshacerla después.`, { title: "Borrar serie", confirmLabel: "Borrar", danger: true }))) return;
       commit((next) => {
         deleteSet(next, session.id, sessionExercise.id, workoutSet.id);
       }, "Serie borrada. Puedes deshacerla.");
@@ -3139,6 +3209,9 @@ function renderCatalogResults() {
     );
     if (entry.nameLocale !== "es") {
       text.appendChild(createElement("small", "catalog-language", `Nombre original: ${entry.nameOriginal}`));
+    }
+    if (entry.reviewStatus === "pending_professional_review") {
+      text.appendChild(createElement("small", "catalog-review-pending", "Sin revisión profesional todavía"));
     }
     const active = getActiveSession(state);
     const add = createButton(replacementTargetExerciseId ? "Elegir alternativa" : "Añadir", "button-secondary", () => {
@@ -3552,7 +3625,7 @@ $("backToRoutinesBtn").addEventListener("click", () => {
   window.scrollTo({ top: 0, behavior: "smooth" });
 });
 
-function confirmDiscardActiveSession() {
+async function confirmDiscardActiveSession() {
   const active = getActiveSession(state);
   if (!active) return;
   const savedSets = sessionSetCount(active);
@@ -3563,7 +3636,7 @@ function confirmDiscardActiveSession() {
     : savedSets
     ? ` Se eliminarán ${countLabel(savedSets, "serie")} de esta sesión sin añadirlas al Diario.`
     : " No se añadirá nada al Diario.";
-  if (!window.confirm(`¿Descartar “${active.source.label}”?${detail} Esta acción no se puede deshacer.`)) return;
+  if (!(await confirmDialog(`¿Descartar “${active.source.label}”?${detail} Esta acción no se puede deshacer.`, { title: "Descartar sesión", confirmLabel: "Descartar", danger: true }))) return;
   const discarded = commit((next) => discardSession(next, active.id), "Sesión descartada. Ya puedes empezar otro entrenamiento.");
   if (!discarded) return;
   stopAllRestTimers({ clear: true });
@@ -3575,7 +3648,7 @@ function confirmDiscardActiveSession() {
 $("discardSessionBtn").addEventListener("click", confirmDiscardActiveSession);
 $("discardSessionFromRoutinesBtn").addEventListener("click", confirmDiscardActiveSession);
 
-$("finishSessionBtn").addEventListener("click", () => {
+$("finishSessionBtn").addEventListener("click", async () => {
   const active = getActiveSession(state);
   if (!active) return;
   const omittedExercises = active.exercises.filter((exercise) => exercise.status === "skipped").length;
@@ -3585,7 +3658,7 @@ $("finishSessionBtn").addEventListener("click", () => {
   const warning = untouchedExercises || omittedExercises
     ? `Hay ${countLabel(untouchedExercises, "ejercicio")} sin registrar y ${countLabel(omittedExercises, "ejercicio")} omitido. `
     : "";
-  if (!window.confirm(`${warning}¿Finalizar? Se guardará lo que realmente hiciste y ya no podrá editarse.`)) return;
+  if (!(await confirmDialog(`${warning}¿Finalizar? Se guardará lo que realmente hiciste y ya no podrá editarse.`, { title: "Finalizar entrenamiento", confirmLabel: "Finalizar" }))) return;
   commit((next) => completeSession(next, active.id), "Entrenamiento finalizado.");
   stopAllRestTimers({ clear: true });
   expandedSessionExerciseId = null;
@@ -3802,10 +3875,11 @@ $("exportBtn").addEventListener("click", () => {
 
 $("importBtn").addEventListener("click", () => $("importFile").click());
 
-$("loadDemoDataBtn").addEventListener("click", () => {
-  const confirmed = window.confirm(
+$("loadDemoDataBtn").addEventListener("click", async () => {
+  const confirmed = await confirmDialog(
     "Se añadirán rutinas, entrenamientos, días y comidas ficticias de los últimos 2 meses. "
     + "Tus datos reales se conservan y podrás quitar la demo después. ¿Cargar demo?",
+    { title: "Cargar demo", confirmLabel: "Cargar demo" },
   );
   if (!confirmed) return;
   const saved = commit((next) => {
@@ -3818,10 +3892,11 @@ $("loadDemoDataBtn").addEventListener("click", () => {
   }
 });
 
-$("removeDemoDataBtn").addEventListener("click", () => {
-  const confirmed = window.confirm(
+$("removeDemoDataBtn").addEventListener("click", async () => {
+  const confirmed = await confirmDialog(
     "Se quitarán solo las rutinas, sesiones, días y alimentos marcados como demo. "
     + "Tus datos reales no se borrarán. ¿Quitar demo?",
+    { title: "Quitar demo", confirmLabel: "Quitar demo", danger: true },
   );
   if (!confirmed) return;
   const saved = commit((next) => {
@@ -3841,9 +3916,10 @@ $("importFile").addEventListener("change", async (event) => {
     cleanupPublishedData(cleanedImport);
     const sessionCount = cleanedImport.training.sessions.length;
     const legacyDayCount = Object.keys(cleanedImport.legacy.days).length;
-    const confirmed = window.confirm(
+    const confirmed = await confirmDialog(
       `La copia contiene ${sessionCount} sesiones y ${legacyDayCount} días del prototipo. `
       + "Si continúas, el estado actual quedará en la copia de seguridad local. ¿Importar?",
+      { title: "Importar copia", confirmLabel: "Importar" },
     );
     if (!confirmed) return;
     state = persistState(localStorage, cleanedImport);

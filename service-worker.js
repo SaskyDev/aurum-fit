@@ -1,14 +1,20 @@
 const SHELL_VERSION = "53";
 const CACHE_NAME = `aurum-fit-shell-v${SHELL_VERSION}`;
-const ASSETS = [
+// El shell (HTML/CSS/JS/iconos) es obligatorio: si falla, la instalación offline
+// debe fallar. El catálogo de ejercicios es pesado (varios MB) y no bloquea el
+// arranque de la app: se intenta cachear igualmente durante la instalación,
+// pero un fallo suyo no debe impedir que la PWA quede instalable offline.
+const SHELL_ASSETS = [
   `./index.html?v=${SHELL_VERSION}`,
   `./styles.css?v=${SHELL_VERSION}`,
   `./app.js?v=${SHELL_VERSION}`,
   `./core.js?v=${SHELL_VERSION}`,
-  `./data/exercises.es.json?v=${SHELL_VERSION}`,
   `./manifest.json?v=${SHELL_VERSION}`,
   `./icon.svg?v=${SHELL_VERSION}`,
   `./assets/icons.svg?v=${SHELL_VERSION}`,
+];
+const OPTIONAL_ASSETS = [
+  `./data/exercises.es.json?v=${SHELL_VERSION}`,
 ];
 
 function isDocumentRequest(request) {
@@ -29,12 +35,21 @@ function networkFirst(request) {
     )));
 }
 
-function precacheShell(cache) {
-  return Promise.all(ASSETS.map(async (asset) => {
+async function precacheAsset(cache, asset, { required }) {
+  try {
     const response = await fetch(new Request(asset, { cache: "reload" }));
     if (!response.ok) throw new Error(`No se pudo precargar ${asset}.`);
     await cache.put(asset, response.clone());
-  }));
+  } catch (error) {
+    if (required) throw error;
+  }
+}
+
+function precacheShell(cache) {
+  return Promise.all([
+    ...SHELL_ASSETS.map((asset) => precacheAsset(cache, asset, { required: true })),
+    ...OPTIONAL_ASSETS.map((asset) => precacheAsset(cache, asset, { required: false })),
+  ]);
 }
 
 async function claimAndNavigateClients() {

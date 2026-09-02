@@ -2135,6 +2135,11 @@ summary.routine-header::-webkit-details-marker { display: none; }
   font-size: .7rem;
 }
 
+.catalog-card .catalog-review-pending {
+  color: var(--danger);
+  font-size: .7rem;
+}
+
 .catalog-card small {
   margin-top: 4px;
   color: var(--ink-soft);
@@ -4147,4 +4152,48 @@ th {
   .tabs.is-switching .tab.active .tab-label {
     animation: none;
   }
+}
+
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+  background: rgba(0, 0, 0, .72);
+  backdrop-filter: blur(12px);
+}
+
+.dialog-box {
+  width: min(420px, 100%);
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--line);
+  background: var(--surface-raised);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .35);
+}
+
+.dialog-title {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.dialog-message {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: 1.5;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+.dialog-actions .button {
+  min-height: 44px;
 }
