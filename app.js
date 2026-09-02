@@ -1,10 +1,12 @@
 import {
+  CARDIO_ACTIVITY_TYPES,
   addExerciseToRoutineDay,
   addExerciseToSession,
   addCardioToSession,
   addRoutineDay,
   archiveRoutine,
   addSetToExercise,
+  cardioDerivedMetrics,
   completeSession,
   cleanupPublishedData,
   createRoutineWithWeekdays,
@@ -34,7 +36,7 @@ import {
   startSessionFromRoutineDay,
   updateSet,
   validateLabelPhotoFile,
-} from "./core.js?v=50";
+} from "./core.js?v=53";
 
 const defaultTargets = { calories: 2200, protein: 170, steps: 10000 };
 const defaultPreferences = {
@@ -68,6 +70,21 @@ const lightAccentPalettes = {
   red: { accent: "#bd3551", accentStrong: "#9f2942", success: "#ac304a", rgb: "189, 53, 81" },
   steel: { accent: "#475569", accentStrong: "#334155", success: "#3f4d60", rgb: "71, 85, 105" },
 };
+const cardioActivityCatalog = [
+  { type: "run", label: "Correr", family: "A pie", icon: "cardio-run", metric: "pace", fields: ["distance", "steps", "elevation", "heartRate", "calories"], help: "Distancia y tiempo; calculamos tu ritmo medio." },
+  { type: "treadmill_run", label: "Correr en cinta", family: "A pie", icon: "cardio-treadmill", metric: "pace", fields: ["distance", "steps", "incline", "heartRate", "calories"], help: "Añade la inclinación media si la conoces." },
+  { type: "trail_run", label: "Carrera de montaña", family: "Montaña", icon: "cardio-trail", metric: "pace", fields: ["distance", "steps", "elevation", "heartRate", "calories"], help: "El desnivel positivo queda separado del ritmo." },
+  { type: "walk", label: "Andar", family: "A pie", icon: "cardio-walk", metric: "pace", fields: ["distance", "steps", "elevation", "heartRate", "calories"], help: "Registra únicamente los pasos de esta actividad." },
+  { type: "hike", label: "Senderismo", family: "Montaña", icon: "cardio-hike", metric: "pace", fields: ["distance", "steps", "elevation", "heartRate", "calories"], help: "Distancia, tiempo y desnivel para comparar rutas." },
+  { type: "cycling", label: "Bici exterior", family: "Bici", icon: "cardio-bike", metric: "speed", fields: ["distance", "elevation", "cadence", "power", "heartRate", "calories"], help: "Calculamos velocidad media, no ritmo por kilómetro." },
+  { type: "indoor_cycling", label: "Bici estática", family: "Bici", icon: "cardio-spin", metric: "speed", distanceOptional: true, fields: ["distance", "resistance", "cadence", "power", "heartRate", "calories"], help: "Solo el tiempo es obligatorio; distancia y resistencia son opcionales." },
+  { type: "pool_swim", label: "Piscina", family: "Agua", icon: "cardio-pool", metric: "swim", distanceUnit: "m", fields: ["distance", "pool", "heartRate", "calories"], help: "Calculamos ritmo por 100 m y largos según la piscina." },
+  { type: "open_water_swim", label: "Aguas abiertas", family: "Agua", icon: "cardio-open-water", metric: "swim", distanceUnit: "m", fields: ["distance", "heartRate", "calories"], help: "Distancia y tiempo; el GPS llegará con la app móvil." },
+  { type: "elliptical", label: "Elíptica", family: "Máquinas", icon: "cardio-elliptical", metric: "time", distanceOptional: true, fields: ["distance", "resistance", "heartRate", "calories"], help: "El tiempo manda; añade distancia o nivel solo si la máquina los muestra." },
+  { type: "rowing", label: "Remo", family: "Máquinas", icon: "cardio-row", metric: "rowing", fields: ["distance", "resistance", "cadence", "power", "heartRate", "calories"], help: "Calculamos el ritmo estándar por 500 m." },
+  { type: "stair_climber", label: "Escaladora", family: "Máquinas", icon: "cardio-stairs", metric: "time", distanceOptional: true, fields: ["resistance", "elevation", "heartRate", "calories"], help: "Tiempo, nivel y metros ascendidos si la máquina los ofrece." },
+].filter((activity) => CARDIO_ACTIVITY_TYPES.includes(activity.type));
+const cardioActivityByType = new Map(cardioActivityCatalog.map((activity) => [activity.type, activity]));
 const $ = (id) => document.getElementById(id);
 
 function localDateKey(date = new Date()) {
@@ -571,9 +588,50 @@ function formatPace(secondsPerKm) {
   return `${minutes}:${String(seconds).padStart(2, "0")} / km`;
 }
 
+function formatPaceForUnit(seconds, unit) {
+  if (!Number.isFinite(seconds) || seconds <= 0) return `--:-- / ${unit}`;
+  const rounded = Math.round(seconds);
+  const minutes = Math.floor(rounded / 60);
+  const remainingSeconds = rounded % 60;
+  return `${minutes}:${String(remainingSeconds).padStart(2, "0")} / ${unit}`;
+}
+
+function cardioActivityDefinition(activityType) {
+  return cardioActivityByType.get(activityType) ?? cardioActivityByType.get("run");
+}
+
+function cardioPrimaryResult(cardio) {
+  const definition = cardioActivityDefinition(cardio?.activityType);
+  if (!cardio?.durationSeconds) return { label: "Tiempo", value: "Sin registrar" };
+  if (definition.metric === "speed") {
+    return {
+      label: "Velocidad media",
+      value: cardio.averageSpeedKmh ? `${cardio.averageSpeedKmh.toLocaleString("es-ES")} km/h` : "Sin distancia",
+    };
+  }
+  if (definition.metric === "swim") {
+    return { label: "Ritmo medio", value: formatPaceForUnit(cardio.paceSecondsPer100m, "100 m") };
+  }
+  if (definition.metric === "rowing") {
+    return { label: "Ritmo medio", value: formatPaceForUnit(cardio.paceSecondsPer500m, "500 m") };
+  }
+  if (definition.metric === "time") {
+    return { label: "Tiempo activo", value: formatWorkoutDuration(cardio.durationSeconds) };
+  }
+  return { label: "Ritmo medio", value: formatPace(cardio.paceSecondsPerKm) };
+}
+
 function cardioSummary(cardio) {
-  if (!cardio?.completedAt) return "Sin distancia registrada";
-  return `${cardio.distanceKm} km · ${formatWorkoutDuration(cardio.durationSeconds)} · ${formatPace(cardio.paceSecondsPerKm)}`;
+  const definition = cardioActivityDefinition(cardio?.activityType);
+  if (!cardio?.completedAt) return `${definition.label} · sin datos registrados`;
+  const distance = cardio.distanceKm
+    ? definition.distanceUnit === "m"
+      ? `${Math.round(cardio.distanceKm * 1000).toLocaleString("es-ES")} m`
+      : `${cardio.distanceKm.toLocaleString("es-ES")} km`
+    : null;
+  return [definition.label, distance, formatWorkoutDuration(cardio.durationSeconds), cardioPrimaryResult(cardio).value]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 function sessionElapsedSeconds(session, now = Date.now()) {
@@ -903,10 +961,11 @@ function renderDailyDashboard() {
     title.textContent = `${suggested.routine.name} · ${suggested.routineDay.name}`;
     const isCardioPlan = routineDayType(suggested.routineDay) === "cardio";
     detail.textContent = isCardioPlan
-      ? `Cardio · ${weekdayName(new Date(`${selectedDate}T12:00:00`).getDay())}`
+      ? `${cardioActivityDefinition(suggested.routineDay.cardioType).label} · ${weekdayName(new Date(`${selectedDate}T12:00:00`).getDay())}`
       : `${countLabel(suggested.routineDay.exercises.length, "ejercicio")} · ${weekdayName(new Date(`${selectedDate}T12:00:00`).getDay())}`;
     if (isCardioPlan) {
-      exerciseList.appendChild(createElement("li", "today-rest-message", "Correr/caminar · distancia + tiempo · ritmo automático"));
+      const cardioDefinition = cardioActivityDefinition(suggested.routineDay.cardioType);
+      exerciseList.appendChild(createElement("li", "today-rest-message", cardioDefinition.help));
     } else {
       suggested.routineDay.exercises.slice().sort((a, b) => a.order - b.order).forEach((exercise) => {
         const item = createElement("li");
@@ -1499,6 +1558,58 @@ function selectedWeekdays(containerId) {
   return [...$(containerId).querySelectorAll("input:checked")].map((input) => Number(input.value));
 }
 
+function renderCardioActivityPicker() {
+  const options = $("cardioActivityOptions");
+  options.replaceChildren();
+  cardioActivityCatalog.forEach((activity, index) => {
+    const label = createElement("label", "cardio-activity-choice");
+    const input = document.createElement("input");
+    input.type = "radio";
+    input.name = "cardioActivityType";
+    input.value = activity.type;
+    input.checked = index === 0;
+    const card = createElement("span", "cardio-activity-choice-card");
+    const icon = createElement("i", "cardio-activity-glyph");
+    icon.appendChild(createIcon(activity.icon));
+    card.append(icon, createElement("span", "cardio-activity-choice-copy"));
+    card.querySelector(".cardio-activity-choice-copy").append(
+      createElement("strong", "", activity.label),
+      createElement("small", "", activity.family),
+    );
+    input.addEventListener("change", () => {
+      if (!input.checked) return;
+      $("cardioActivityHelp").textContent = activity.help;
+      if (!$("routineName").value.trim() || $("routineName").dataset.cardioSuggestion === "true") {
+        $("routineName").value = activity.label;
+        $("routineName").dataset.cardioSuggestion = "true";
+      }
+    });
+    label.append(input, card);
+    options.appendChild(label);
+  });
+
+  const select = $("addRoutineCardioType");
+  select.replaceChildren(...cardioActivityCatalog.map((activity) => {
+    const option = document.createElement("option");
+    option.value = activity.type;
+    option.textContent = activity.label;
+    return option;
+  }));
+}
+
+function syncNewRoutineCardioVisibility() {
+  const isCardio = document.querySelector('input[name="routineDayType"]:checked')?.value === "cardio";
+  $("cardioActivityPicker").hidden = !isCardio;
+  if (isCardio) {
+    const selected = document.querySelector('input[name="cardioActivityType"]:checked');
+    selected?.dispatchEvent(new Event("change"));
+  }
+}
+
+function syncAddRoutineCardioVisibility() {
+  $("addRoutineCardioTypeLabel").hidden = $("addRoutineDayType").value !== "cardio";
+}
+
 function renderNewRoutineWeekdays() {
   const occupied = [...weekdayAssignments({ includeDemo: false }).keys()];
   $("newRoutineWeekdays").replaceChildren(createWeekdaySelector({
@@ -1534,6 +1645,9 @@ function routineActivityCount(routine) {
 }
 
 function routineTheme(routine) {
+  if (routine.days.some((day) => routineDayType(day) === "cardio")) {
+    return { group: "cardio", label: "Cardio", title: "Resistencia" };
+  }
   const text = normalizeCatalogSearch([
     routine.name,
     ...routine.days.map((day) => day.name),
@@ -1580,6 +1694,7 @@ function routineTheme(routine) {
 
 function routineAccentName(routine) {
   if (Object.hasOwn(accentPalettes, routine.accentColor)) return routine.accentColor;
+  if (routine.days.some((day) => routineDayType(day) === "cardio")) return "orange";
   const name = normalizeCatalogSearch(routine.name);
   if (["empuje", "push", "pecho", "chest"].some((word) => name.includes(word))) return "red";
   if (["tiron", "pull", "espalda", "back"].some((word) => name.includes(word))) return "blue";
@@ -1630,15 +1745,23 @@ function routineEstimatedMinutes(routine) {
 
 function createRoutineSpotlight(routine) {
   const theme = routineTheme(routine);
+  const cardioDay = routine.days.find((day) => routineDayType(day) === "cardio");
   const card = createElement("article", `routine-spotlight ${routineVisualClasses(routine)}`);
   const tag = createElement("span", "routine-focus-tag", theme.label);
   const title = createElement("h3", "", routine.name);
   const stats = createElement("div", "routine-focus-stats");
-  [
-    [routineExerciseCount(routine), "Ejercicios"],
-    [routineEstimatedSets(routine), "Sets"],
-    [`${routineEstimatedMinutes(routine)}m`, "Duración"],
-  ].forEach(([value, label]) => {
+  const spotlightStats = cardioDay
+    ? [
+      [cardioActivityDefinition(cardioDay.cardioType).label, "Actividad"],
+      ["Manual", "Origen"],
+      ["En sesión", "Duración"],
+    ]
+    : [
+      [routineExerciseCount(routine), "Ejercicios"],
+      [routineEstimatedSets(routine), "Sets"],
+      [`${routineEstimatedMinutes(routine)}m`, "Duración"],
+    ];
+  spotlightStats.forEach(([value, label]) => {
     const item = createElement("span", "");
     item.append(createElement("strong", "", String(value)), createElement("small", "", label));
     stats.appendChild(item);
@@ -1745,7 +1868,9 @@ function renderPlannedWorkoutPanel() {
   const status = plannedWorkoutStatus(date, { routine, routineDay });
   $("plannedWorkoutDate").textContent = formatShortDate(date);
   $("plannedWorkoutTitle").textContent = routine.name;
-  $("plannedWorkoutMeta").textContent = `${countLabel(routineDay.exercises.length, "ejercicio")} planificado · ${routineTheme(routine).label}`;
+  $("plannedWorkoutMeta").textContent = routineDayType(routineDay) === "cardio"
+    ? `${cardioActivityDefinition(routineDay.cardioType).label} planificado · registro manual`
+    : `${countLabel(routineDay.exercises.length, "ejercicio")} planificado · ${routineTheme(routine).label}`;
   const spotlight = createRoutineSpotlight({
     ...routine,
     name: routine.name,
@@ -1860,12 +1985,15 @@ function createRoutineDayWeekdayEditor(routine, routineDay) {
 function createRoutineDayCard(routine, routineDay, index) {
   const card = createElement("article", "routine-day");
   const isCardioDay = routineDayType(routineDay) === "cardio";
+  const cardioDefinition = isCardioDay ? cardioActivityDefinition(routineDay.cardioType) : null;
   const header = createElement("div", "routine-day-header");
   const title = createElement("div", "routine-day-title");
+  const dayIcon = createElement("span", "routine-day-icon", isCardioDay ? "" : "◆");
+  if (isCardioDay) dayIcon.appendChild(createIcon(cardioDefinition.icon));
   title.append(
-    createElement("span", "routine-day-icon", isCardioDay ? "●" : "◆"),
+    dayIcon,
     createElement("h4", "", routineDay.name),
-    createElement("span", "weekday-badge", isCardioDay ? "Cardio" : "Fuerza"),
+    createElement("span", "weekday-badge", isCardioDay ? cardioDefinition.label : "Fuerza"),
     createElement(
       "span",
       "weekday-badge",
@@ -1892,8 +2020,8 @@ function createRoutineDayCard(routine, routineDay, index) {
   if (isCardioDay) {
     const item = createElement("li", "routine-cardio-summary");
     item.append(
-      createElement("strong", "", "Correr o caminar"),
-      createElement("small", "muted", "Durante la sesión registrarás distancia y tiempo; el ritmo se calculará solo."),
+      createElement("strong", "", cardioDefinition.label),
+      createElement("small", "muted", cardioDefinition.help),
     );
     list.appendChild(item);
   } else {
@@ -2787,19 +2915,130 @@ function renderTraining() {
 
 function setCardioForm(session) {
   const cardio = session.cardio ?? {};
-  $("cardioDistanceKm").value = cardio.distanceKm ?? "";
+  const definition = cardioActivityDefinition(cardio.activityType);
+  syncCardioMetricFields(definition);
+  $("cardioDistanceKm").value = cardio.distanceKm === null || cardio.distanceKm === undefined
+    ? ""
+    : definition.distanceUnit === "m"
+      ? Math.round(cardio.distanceKm * 1000)
+      : cardio.distanceKm;
   $("cardioDuration").value = cardio.durationSeconds ? formatWorkoutDuration(cardio.durationSeconds) : "";
   $("cardioSteps").value = cardio.steps ?? "";
+  $("cardioElevationGainM").value = cardio.elevationGainM ?? "";
+  $("cardioInclinePercent").value = cardio.inclinePercent ?? "";
+  $("cardioPoolLengthM").value = cardio.poolLengthM ?? "";
+  $("cardioResistanceLevel").value = cardio.resistanceLevel ?? "";
+  $("cardioCadencePerMinute").value = cardio.cadencePerMinute ?? "";
+  $("cardioAveragePowerWatts").value = cardio.averagePowerWatts ?? "";
+  $("cardioAverageHeartRateBpm").value = cardio.averageHeartRateBpm ?? "";
+  $("cardioCaloriesKcal").value = cardio.caloriesKcal ?? "";
   $("cardioNote").value = cardio.note ?? "";
+  renderCardioHistory(definition.type);
+}
+
+function syncCardioMetricFields(definition) {
+  $("cardioSessionFamily").textContent = `${definition.family} · registro manual`;
+  $("cardioSessionType").textContent = definition.label;
+  $("cardioSessionHint").textContent = definition.help;
+  $("cardioDistanceLabel").textContent = definition.distanceOptional ? "Distancia opcional" : "Distancia";
+  $("cardioDistanceUnit").textContent = definition.distanceUnit ?? "km";
+  $("cardioDistanceKm").placeholder = definition.distanceUnit === "m" ? "1000" : "5.00";
+  $("cardioDistanceKm").required = !definition.distanceOptional;
+  $("cardioCadenceUnit").textContent = definition.type === "rowing" ? "paladas/min" : "rpm";
+  document.querySelectorAll("[data-cardio-field]").forEach((field) => {
+    field.hidden = !definition.fields.includes(field.dataset.cardioField);
+  });
+}
+
+function cardioDistanceFromForm(definition) {
+  const enteredDistance = numberValue("cardioDistanceKm");
+  if (enteredDistance === null) return null;
+  return definition.distanceUnit === "m" ? enteredDistance / 1000 : enteredDistance;
 }
 
 function updateCardioPacePreview() {
-  const distance = numberValue("cardioDistanceKm");
+  const active = getActiveSession(state);
+  const definition = cardioActivityDefinition(active?.cardio?.activityType);
+  const distance = cardioDistanceFromForm(definition);
   const duration = parseDurationInput($("cardioDuration").value);
-  const pace = Number(distance) > 0 && Number(duration) > 0
-    ? Math.round(duration / distance)
-    : null;
-  $("cardioPacePreview").textContent = `Ritmo ${formatPace(pace)}`;
+  const derived = cardioDerivedMetrics(definition.type, distance, duration, {
+    poolLengthM: numberValue("cardioPoolLengthM"),
+  });
+  const primary = $("cardioPacePreview");
+  const primaryLabel = primary.querySelector("small");
+  const primaryValue = primary.querySelector("strong");
+  const secondary = $("cardioSecondaryPreview");
+  const secondaryLabel = secondary.querySelector("small");
+  const secondaryValue = secondary.querySelector("strong");
+  secondary.hidden = true;
+
+  if (!Number.isFinite(duration) || duration <= 0 || (!definition.distanceOptional && !(distance > 0))) {
+    primaryLabel.textContent = definition.distanceOptional ? "Tiempo" : "Resultado automático";
+    primaryValue.textContent = definition.distanceOptional ? "Introduce el tiempo" : "Completa distancia y tiempo";
+    return;
+  }
+  if (definition.metric === "speed") {
+    primaryLabel.textContent = "Velocidad media";
+    primaryValue.textContent = derived.averageSpeedKmh ? `${derived.averageSpeedKmh.toLocaleString("es-ES")} km/h` : "Añade distancia si la conoces";
+  } else if (definition.metric === "swim") {
+    primaryLabel.textContent = "Ritmo medio";
+    primaryValue.textContent = formatPaceForUnit(derived.paceSecondsPer100m, "100 m");
+  } else if (definition.metric === "rowing") {
+    primaryLabel.textContent = "Ritmo medio";
+    primaryValue.textContent = formatPaceForUnit(derived.paceSecondsPer500m, "500 m");
+  } else if (definition.metric === "time") {
+    primaryLabel.textContent = "Tiempo activo";
+    primaryValue.textContent = formatWorkoutDuration(duration);
+  } else {
+    primaryLabel.textContent = "Ritmo medio";
+    primaryValue.textContent = formatPace(derived.paceSecondsPerKm);
+  }
+  if (derived.poolLengths) {
+    secondary.hidden = false;
+    secondaryLabel.textContent = "Largos calculados";
+    secondaryValue.textContent = `${derived.poolLengths.toLocaleString("es-ES")} largos`;
+  }
+}
+
+function renderCardioHistory(activityType) {
+  const definition = cardioActivityDefinition(activityType);
+  const sessions = state.training.sessions
+    .filter((session) => (
+      session.status === "completed"
+      && session.sessionType === "cardio"
+      && session.cardio?.activityType === definition.type
+    ))
+    .sort((left, right) => new Date(right.endedAt) - new Date(left.endedAt));
+  const stats = $("cardioProgressStats");
+  const history = $("cardioRecentHistory");
+  stats.replaceChildren();
+  history.replaceChildren();
+  const totalDistanceKm = sessions.reduce((total, session) => total + (Number(session.cardio.distanceKm) || 0), 0);
+  const totalSeconds = sessions.reduce((total, session) => total + (Number(session.cardio.durationSeconds) || 0), 0);
+  const distanceText = definition.distanceUnit === "m"
+    ? `${Math.round(totalDistanceKm * 1000).toLocaleString("es-ES")} m`
+    : `${Number(totalDistanceKm.toFixed(2)).toLocaleString("es-ES")} km`;
+  [
+    [sessions.length, "Sesiones"],
+    [distanceText, "Distancia"],
+    [formatWorkoutDuration(totalSeconds), "Tiempo"],
+  ].forEach(([value, label]) => {
+    const item = createElement("span", "");
+    item.append(createElement("strong", "", String(value)), createElement("small", "", label));
+    stats.appendChild(item);
+  });
+  sessions.slice(0, 5).forEach((session) => {
+    const item = createElement("li", "");
+    item.append(
+      createElement("time", "", formatDateTime(session.endedAt)),
+      createElement("strong", "", cardioSummary(session.cardio)),
+    );
+    history.appendChild(item);
+  });
+  if (!sessions.length) {
+    const empty = createElement("li", "empty-state", "Tu primera actividad aparecerá aquí cuando la finalices.");
+    history.appendChild(empty);
+  }
 }
 
 function updateActiveSessionElapsed() {
@@ -2968,7 +3207,7 @@ function renderCatalogResults() {
 
 async function loadCatalog() {
   try {
-    const response = await fetch("./data/exercises.es.json?v=50", { cache: "no-cache" });
+    const response = await fetch("./data/exercises.es.json?v=53", { cache: "no-cache" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     if (!Array.isArray(payload.exercises)) throw new Error("Estructura no válida");
@@ -3199,19 +3438,30 @@ $("createRoutineForm").addEventListener("submit", (event) => {
   const weekdays = selectedWeekdays("newRoutineWeekdays");
   const selectedColor = document.querySelector('input[name="routineAccentColor"]:checked')?.value ?? "auto";
   const selectedType = document.querySelector('input[name="routineDayType"]:checked')?.value ?? "strength";
+  const selectedCardioType = document.querySelector('input[name="cardioActivityType"]:checked')?.value ?? "run";
   const saved = commit(
     (next) => createRoutineWithWeekdays(next, name, weekdays, {
       accentColor: selectedColor === "auto" ? null : selectedColor,
       dayType: selectedType,
-      cardioType: selectedType === "cardio" ? "run" : "run",
+      cardioType: selectedType === "cardio" ? selectedCardioType : "run",
     }),
     `Rutina ${name.trim()} creada con ${countLabel(weekdays.length, "día")}.`,
   );
   if (saved) {
     routinePlannerView = "library";
     event.target.reset();
+    delete $("routineName").dataset.cardioSuggestion;
+    syncNewRoutineCardioVisibility();
     $("createRoutineCard").open = false;
   }
+});
+
+document.querySelectorAll('input[name="routineDayType"]').forEach((input) => {
+  input.addEventListener("change", syncNewRoutineCardioVisibility);
+});
+
+$("routineName").addEventListener("input", () => {
+  delete $("routineName").dataset.cardioSuggestion;
 });
 
 document.querySelectorAll('input[name="selectedRoutineAccentColor"]').forEach((input) => {
@@ -3242,10 +3492,13 @@ $("addRoutineDayForm").addEventListener("submit", (event) => {
   }
   commit((next) => {
     const type = $("addRoutineDayType").value === "cardio" ? "cardio" : "strength";
-    const day = addRoutineDay(next, selectedRoutineId, weekdayName(weekday), { type, cardioType: "run" });
+    const cardioType = type === "cardio" ? $("addRoutineCardioType").value : "run";
+    const day = addRoutineDay(next, selectedRoutineId, weekdayName(weekday), { type, cardioType });
     setRoutineDayWeekday(next, selectedRoutineId, day.id, weekday);
   }, `Variante para ${weekdayName(weekday)} creada dentro de la rutina.`);
 });
+
+$("addRoutineDayType").addEventListener("change", syncAddRoutineCardioVisibility);
 
 $("startFreeSessionBtn").addEventListener("click", (event) => {
   trainingView = "session";
@@ -3262,7 +3515,7 @@ $("continueSessionBtn").addEventListener("click", () => {
   window.scrollTo({ top: 0, behavior: "smooth" });
 });
 
-["cardioDistanceKm", "cardioDuration"].forEach((id) => {
+["cardioDistanceKm", "cardioDuration", "cardioPoolLengthM"].forEach((id) => {
   $(id).addEventListener("input", updateCardioPacePreview);
 });
 
@@ -3270,17 +3523,27 @@ $("cardioSessionForm").addEventListener("submit", (event) => {
   event.preventDefault();
   const active = getActiveSession(state);
   if (!active) return;
+  const definition = cardioActivityDefinition(active.cardio?.activityType);
   const durationSeconds = parseDurationInput($("cardioDuration").value);
   if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
     showNotice("Introduce el tiempo como mm:ss, por ejemplo 25:00.", { error: true });
     return;
   }
   commit((next) => addCardioToSession(next, active.id, {
-    distanceKm: numberValue("cardioDistanceKm"),
+    activityType: definition.type,
+    distanceKm: cardioDistanceFromForm(definition),
     durationSeconds,
     steps: numberValue("cardioSteps"),
+    elevationGainM: numberValue("cardioElevationGainM"),
+    inclinePercent: numberValue("cardioInclinePercent"),
+    poolLengthM: numberValue("cardioPoolLengthM"),
+    resistanceLevel: numberValue("cardioResistanceLevel"),
+    cadencePerMinute: numberValue("cardioCadencePerMinute"),
+    averagePowerWatts: numberValue("cardioAveragePowerWatts"),
+    averageHeartRateBpm: numberValue("cardioAverageHeartRateBpm"),
+    caloriesKcal: numberValue("cardioCaloriesKcal"),
     note: $("cardioNote").value,
-  }), "Cardio guardado. El ritmo se calculó automáticamente.");
+  }), `Actividad de ${definition.label.toLowerCase()} guardada. Las métricas derivadas se calcularon automáticamente.`);
 });
 
 $("backToRoutinesBtn").addEventListener("click", () => {
@@ -3597,6 +3860,9 @@ $("importFile").addEventListener("change", async (event) => {
   }
 });
 
+renderCardioActivityPicker();
+syncNewRoutineCardioVisibility();
+syncAddRoutineCardioVisibility();
 setDailyForm(today);
 render();
 loadCatalog();

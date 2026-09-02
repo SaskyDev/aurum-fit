@@ -12,6 +12,14 @@ Nutrición sobre un modelo local versionado, sin cuentas ni backend.
 
 - Sesión de entrenamiento libre con estado en curso/finalizada.
 - Rutinas con días y ejercicios ordenados.
+- Zona de cardio integrada en Rutinas con carrera, cinta, carrera de montaña,
+  andar, senderismo, bici exterior y estática, piscina, aguas abiertas, elíptica,
+  remo y escaladora.
+- Formularios específicos por actividad: ritmo por km, velocidad media, ritmo por
+  100 m o 500 m, largos, desnivel, inclinación, resistencia, cadencia y potencia
+  aparecen solo cuando corresponden.
+- Historial cardio comparable por actividad y suma de pasos al Diario únicamente
+  cuando el usuario los registra de forma manual.
 - Diario como pantalla inicial con resumen real de pasos, nutrición y entrenamiento.
 - Anillo diario calculado con el avance de pasos, calorías y el entrenamiento
   planificado cuando corresponde.
@@ -60,6 +68,9 @@ Nutrición sobre un modelo local versionado, sin cuentas ni backend.
 - Lectura asistida de etiquetas mediante foto, solo cuando pueda validarse antes
   de guardar los valores.
 - Ampliación progresiva y revisada del catálogo.
+- Normalizar músculos principal/secundarios antes de construir el mapa muscular.
+- Definir licencias y presupuesto de rendimiento antes de añadir imágenes o
+  animaciones de ejercicios.
 - Sincronización solo si la validación futura la necesita.
 
 ## Uso en iPhone

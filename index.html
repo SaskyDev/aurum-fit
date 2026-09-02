@@ -21,9 +21,9 @@
         } catch {}
       })();
     </script>
-    <link rel="manifest" href="manifest.json?v=50" />
-    <link rel="apple-touch-icon" href="icon.svg?v=50" />
-    <link rel="stylesheet" href="styles.css?v=50" />
+    <link rel="manifest" href="manifest.json?v=53" />
+    <link rel="apple-touch-icon" href="icon.svg?v=53" />
+    <link rel="stylesheet" href="styles.css?v=53" />
   </head>
   <body>
     <main>
@@ -281,6 +281,11 @@
                       <label><input type="radio" name="routineDayType" value="cardio" /><span><strong>Cardio</strong><small>Distancia, tiempo y ritmo</small></span></label>
                     </div>
                   </fieldset>
+                  <fieldset id="cardioActivityPicker" class="cardio-activity-fieldset" hidden>
+                    <legend>¿Qué actividad quieres hacer?</legend>
+                    <div id="cardioActivityOptions" class="cardio-activity-picker" aria-label="Actividad cardio"></div>
+                    <small id="cardioActivityHelp">Mostraremos solo las métricas que necesita esa actividad.</small>
+                  </fieldset>
                   <fieldset class="routine-color-fieldset">
                     <legend>Color de la rutina</legend>
                     <div class="routine-color-picker" aria-label="Color de la nueva rutina">
@@ -351,6 +356,7 @@
             <form id="addRoutineDayForm" class="add-routine-day surface">
               <div><strong>+ Crear entrenamiento diferente</strong><small>Solo si quieres una variante distinta dentro de esta rutina.</small></div>
               <label class="routine-day-type-select">Tipo<select id="addRoutineDayType"><option value="strength">Fuerza</option><option value="cardio">Cardio</option></select></label>
+              <label id="addRoutineCardioTypeLabel" class="routine-day-type-select" hidden>Actividad<select id="addRoutineCardioType"></select></label>
               <div id="addRoutineDayWeekdays" class="weekday-selector compact-weekdays" aria-label="Nuevo día de entrenamiento"></div>
               <button class="button button-secondary" type="submit">Crear variante</button>
             </form>
@@ -382,18 +388,36 @@
           <form id="cardioSessionForm" class="cardio-session-card surface color-panel color-panel-orange" hidden>
             <div class="section-heading compact">
               <div>
-                <p class="eyebrow">Cardio</p>
-                <h3>Registrar carrera</h3>
+                <p id="cardioSessionFamily" class="eyebrow">Cardio manual</p>
+                <h3 id="cardioSessionType">Actividad</h3>
+                <p id="cardioSessionHint" class="muted">Introduce únicamente datos que conozcas.</p>
               </div>
-              <span id="cardioPacePreview" class="count-badge">Ritmo --:-- / km</span>
             </div>
-            <div class="cardio-form-grid">
-              <label>Distancia <span>km</span><input id="cardioDistanceKm" type="number" min="0.01" max="1000" step="0.01" inputmode="decimal" placeholder="5.00" /></label>
+            <div id="cardioDerivedPreview" class="cardio-derived-grid" aria-live="polite">
+              <span id="cardioPacePreview"><small>Resultado</small><strong>Completa los datos principales</strong></span>
+              <span id="cardioSecondaryPreview" hidden><small>Dato calculado</small><strong>—</strong></span>
+            </div>
+            <div id="cardioMetricFields" class="cardio-form-grid">
+              <label data-cardio-field="distance"><span id="cardioDistanceLabel">Distancia</span> <span id="cardioDistanceUnit">km</span><input id="cardioDistanceKm" type="number" min="0.001" max="1000" step="0.001" inputmode="decimal" placeholder="5.00" /></label>
               <label>Tiempo <span>mm:ss o hh:mm:ss</span><input id="cardioDuration" type="text" inputmode="numeric" placeholder="25:00" /></label>
-              <label>Pasos <span>opcional</span><input id="cardioSteps" type="number" min="0" max="200000" step="1" inputmode="numeric" placeholder="6200" /></label>
+              <label data-cardio-field="steps">Pasos <span>de esta actividad</span><input id="cardioSteps" type="number" min="0" max="200000" step="1" inputmode="numeric" placeholder="6200" /></label>
+              <label data-cardio-field="elevation">Desnivel positivo <span>m</span><input id="cardioElevationGainM" type="number" min="0" max="30000" step="1" inputmode="numeric" placeholder="320" /></label>
+              <label data-cardio-field="incline">Inclinación media <span>%</span><input id="cardioInclinePercent" type="number" min="0" max="40" step="0.1" inputmode="decimal" placeholder="2.5" /></label>
+              <label data-cardio-field="pool">Longitud de piscina <span>m</span><input id="cardioPoolLengthM" type="number" min="10" max="100" step="0.1" inputmode="decimal" placeholder="25" /></label>
+              <label data-cardio-field="resistance">Nivel / resistencia <span>opcional</span><input id="cardioResistanceLevel" type="number" min="0" max="100" step="0.1" inputmode="decimal" placeholder="12" /></label>
+              <label data-cardio-field="cadence">Cadencia media <span id="cardioCadenceUnit">rpm</span><input id="cardioCadencePerMinute" type="number" min="0" max="300" step="1" inputmode="numeric" placeholder="85" /></label>
+              <label data-cardio-field="power">Potencia media <span>W</span><input id="cardioAveragePowerWatts" type="number" min="0" max="3000" step="1" inputmode="numeric" placeholder="180" /></label>
+              <label data-cardio-field="heartRate">Frecuencia cardiaca media <span>ppm</span><input id="cardioAverageHeartRateBpm" type="number" min="20" max="250" step="1" inputmode="numeric" placeholder="145" /></label>
+              <label data-cardio-field="calories">Calorías <span>solo si las conoces</span><input id="cardioCaloriesKcal" type="number" min="0" max="20000" step="1" inputmode="numeric" placeholder="420" /></label>
               <label class="wide">Notas <span>opcional</span><textarea id="cardioNote" rows="3" maxlength="300" placeholder="Terreno, sensaciones, molestias..."></textarea></label>
             </div>
-            <button class="button button-accent button-large" type="submit">Guardar cardio</button>
+            <p class="cardio-source-note">Origen: introducido manualmente. No estimamos calorías ni pasos que no conozcas.</p>
+            <section class="cardio-history-card" aria-labelledby="cardioHistoryTitle">
+              <div class="section-heading compact"><div><p class="eyebrow">Historial comparable</p><h4 id="cardioHistoryTitle">Tu progreso</h4></div></div>
+              <div id="cardioProgressStats" class="cardio-progress-stats"></div>
+              <ol id="cardioRecentHistory" class="cardio-recent-history"></ol>
+            </section>
+            <button class="button button-accent button-large" type="submit">Guardar actividad</button>
           </form>
 
           <details class="exercise-picker surface">
@@ -589,6 +613,6 @@
 
     </main>
 
-    <script type="module" src="app.js?v=50"></script>
+    <script type="module" src="app.js?v=53"></script>
   </body>
 </html>

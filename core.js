@@ -18,7 +18,28 @@ const ACCENT_COLORS = new Set(["lime", "orange", "blue", "violet", "red", "steel
 const APPEARANCE_MODES = new Set(["system", "dark", "light"]);
 const EFFORT_SCALES = new Set(["rir", "rpe", "none"]);
 const ROUTINE_DAY_TYPES = new Set(["strength", "cardio"]);
-const CARDIO_TYPES = new Set(["run", "walk"]);
+export const CARDIO_ACTIVITY_TYPES = Object.freeze([
+  "run",
+  "treadmill_run",
+  "trail_run",
+  "walk",
+  "hike",
+  "cycling",
+  "indoor_cycling",
+  "pool_swim",
+  "open_water_swim",
+  "elliptical",
+  "rowing",
+  "stair_climber",
+]);
+const CARDIO_TYPES = new Set(CARDIO_ACTIVITY_TYPES);
+const CARDIO_DISTANCE_OPTIONAL = new Set(["indoor_cycling", "elliptical", "stair_climber"]);
+const CARDIO_PACE_PER_KM_TYPES = new Set(["run", "treadmill_run", "trail_run", "walk", "hike"]);
+const CARDIO_SWIM_TYPES = new Set(["pool_swim", "open_water_swim"]);
+const CARDIO_SPEED_TYPES = new Set(["cycling", "indoor_cycling"]);
+const CARDIO_ELEVATION_TYPES = new Set(["run", "trail_run", "walk", "hike", "cycling", "stair_climber"]);
+const CARDIO_RESISTANCE_TYPES = new Set(["indoor_cycling", "elliptical", "rowing", "stair_climber"]);
+const CARDIO_STEP_TYPES = new Set(["run", "treadmill_run", "trail_run", "walk", "hike"]);
 const STORAGE_RECOVERY_MESSAGE =
   "No se pudo preparar el guardado local. Los datos existentes no se han borrado. "
   + "Exporta una copia y libera espacio del navegador antes de continuar.";
@@ -81,6 +102,45 @@ export function cardioPaceSecondsPerKm(distanceKm, durationSeconds) {
     return null;
   }
   return Math.round(duration / distance);
+}
+
+export function cardioDerivedMetrics(
+  activityType,
+  distanceKm,
+  durationSeconds,
+  { poolLengthM = null } = {},
+) {
+  const distance = Number(distanceKm);
+  const duration = Number(durationSeconds);
+  const hasDistance = Number.isFinite(distance) && distance > 0;
+  const hasDuration = Number.isFinite(duration) && duration > 0;
+  const distanceMeters = hasDistance ? distance * 1000 : null;
+  const paceSecondsPerKm = CARDIO_PACE_PER_KM_TYPES.has(activityType) && hasDistance && hasDuration
+    ? Math.round(duration / distance)
+    : null;
+  const paceSecondsPer100m = CARDIO_SWIM_TYPES.has(activityType) && hasDistance && hasDuration
+    ? Math.round((duration / distanceMeters) * 100)
+    : null;
+  const paceSecondsPer500m = activityType === "rowing" && hasDistance && hasDuration
+    ? Math.round((duration / distanceMeters) * 500)
+    : null;
+  const averageSpeedKmh = CARDIO_SPEED_TYPES.has(activityType) && hasDistance && hasDuration
+    ? Number((distance / (duration / 3600)).toFixed(2))
+    : null;
+  const normalizedPoolLength = Number(poolLengthM);
+  const poolLengths = activityType === "pool_swim"
+    && hasDistance
+    && Number.isFinite(normalizedPoolLength)
+    && normalizedPoolLength > 0
+    ? Number((distanceMeters / normalizedPoolLength).toFixed(1))
+    : null;
+  return {
+    paceSecondsPerKm,
+    paceSecondsPer100m,
+    paceSecondsPer500m,
+    averageSpeedKmh,
+    poolLengths,
+  };
 }
 
 export function createId(prefix = "id") {
@@ -1020,10 +1080,25 @@ export function startSessionFromRoutineDay(
       ? {
         id: null,
         activityType: routineDay.cardioType ?? "run",
+        locationType: ["treadmill_run", "indoor_cycling", "pool_swim", "elliptical", "rowing", "stair_climber"]
+          .includes(routineDay.cardioType) ? "indoor" : "outdoor",
+        source: "manual",
         distanceKm: null,
         durationSeconds: null,
         paceSecondsPerKm: null,
+        paceSecondsPer100m: null,
+        paceSecondsPer500m: null,
+        averageSpeedKmh: null,
+        poolLengths: null,
         steps: null,
+        elevationGainM: null,
+        inclinePercent: null,
+        poolLengthM: null,
+        resistanceLevel: null,
+        averageHeartRateBpm: null,
+        caloriesKcal: null,
+        cadencePerMinute: null,
+        averagePowerWatts: null,
         note: "",
         completedAt: null,
         updatedAt: null,
@@ -1149,11 +1224,18 @@ export function validateSetInput(input) {
 }
 
 export function validateCardioInput(input) {
-  const distance = optionalNumber(input.distanceKm, "La distancia", { min: 0.01, max: 1000, step: 0.01 });
-  if (distance.error) return { error: distance.error };
-  if (distance.value === null) return { error: "La distancia es obligatoria." };
+  const activityType = input.activityType ?? "run";
+  if (!CARDIO_TYPES.has(activityType)) {
+    return { error: "El tipo de cardio no es válido." };
+  }
 
-  const duration = optionalNumber(input.durationSeconds, "El tiempo", { min: 1, max: 24 * 60 * 60, step: 1 });
+  const distance = optionalNumber(input.distanceKm, "La distancia", { min: 0.001, max: 1000, step: 0.001 });
+  if (distance.error) return { error: distance.error };
+  if (distance.value === null && !CARDIO_DISTANCE_OPTIONAL.has(activityType)) {
+    return { error: "La distancia es obligatoria para esta actividad." };
+  }
+
+  const duration = optionalNumber(input.durationSeconds, "El tiempo", { min: 1, max: 7 * 24 * 60 * 60, step: 1 });
   if (duration.error) return { error: duration.error };
   if (duration.value === null) return { error: "El tiempo es obligatorio." };
 
@@ -1163,23 +1245,52 @@ export function validateCardioInput(input) {
     return { error: "Los pasos deben ser un número entero." };
   }
 
-  const activityType = input.activityType ?? "run";
-  if (!CARDIO_TYPES.has(activityType)) {
-    return { error: "El tipo de cardio no es válido." };
-  }
+  const elevationGain = optionalNumber(input.elevationGainM, "El desnivel positivo", { min: 0, max: 30000, step: 1 });
+  if (elevationGain.error) return { error: elevationGain.error };
+  const incline = optionalNumber(input.inclinePercent, "La inclinación", { min: 0, max: 40, step: 0.1 });
+  if (incline.error) return { error: incline.error };
+  const poolLength = optionalNumber(input.poolLengthM, "La longitud de piscina", { min: 10, max: 100, step: 0.1 });
+  if (poolLength.error) return { error: poolLength.error };
+  const resistance = optionalNumber(input.resistanceLevel, "La resistencia", { min: 0, max: 100, step: 0.1 });
+  if (resistance.error) return { error: resistance.error };
+  const averageHeartRate = optionalNumber(input.averageHeartRateBpm, "La frecuencia cardiaca media", { min: 20, max: 250, step: 1 });
+  if (averageHeartRate.error) return { error: averageHeartRate.error };
+  const calories = optionalNumber(input.caloriesKcal, "Las calorías", { min: 0, max: 20000, step: 1 });
+  if (calories.error) return { error: calories.error };
+  const cadence = optionalNumber(input.cadencePerMinute, "La cadencia", { min: 0, max: 300, step: 1 });
+  if (cadence.error) return { error: cadence.error };
+  const power = optionalNumber(input.averagePowerWatts, "La potencia media", { min: 0, max: 3000, step: 1 });
+  if (power.error) return { error: power.error };
 
   const note = String(input.note ?? "").trim();
   if (note.length > MAX_NOTE_LENGTH) {
     return { error: `La nota no puede superar ${MAX_NOTE_LENGTH} caracteres.` };
   }
 
+  const normalizedDistance = distance.value === null ? null : Number(distance.value.toFixed(3));
+  const normalizedPoolLength = activityType === "pool_swim" ? poolLength.value : null;
+  const derived = cardioDerivedMetrics(activityType, normalizedDistance, duration.value, {
+    poolLengthM: normalizedPoolLength,
+  });
+  const isCyclingOrRowing = ["cycling", "indoor_cycling", "rowing"].includes(activityType);
   return {
     value: {
       activityType,
-      distanceKm: Number(distance.value.toFixed(2)),
+      locationType: ["treadmill_run", "indoor_cycling", "pool_swim", "elliptical", "rowing", "stair_climber"]
+        .includes(activityType) ? "indoor" : "outdoor",
+      source: "manual",
+      distanceKm: normalizedDistance,
       durationSeconds: duration.value,
-      paceSecondsPerKm: cardioPaceSecondsPerKm(distance.value, duration.value),
-      steps: steps.value,
+      ...derived,
+      steps: CARDIO_STEP_TYPES.has(activityType) ? steps.value : null,
+      elevationGainM: CARDIO_ELEVATION_TYPES.has(activityType) ? elevationGain.value : null,
+      inclinePercent: activityType === "treadmill_run" ? incline.value : null,
+      poolLengthM: normalizedPoolLength,
+      resistanceLevel: CARDIO_RESISTANCE_TYPES.has(activityType) ? resistance.value : null,
+      averageHeartRateBpm: averageHeartRate.value,
+      caloriesKcal: calories.value,
+      cadencePerMinute: isCyclingOrRowing ? cadence.value : null,
+      averagePowerWatts: isCyclingOrRowing ? power.value : null,
       note,
     },
   };
@@ -1288,12 +1399,12 @@ export function addCardioToSession(
     throw new Error("Esta sesión no es de cardio.");
   }
   const result = validateCardioInput({
-    activityType: session.cardio?.activityType ?? input.activityType ?? "run",
     ...input,
+    activityType: session.cardio?.activityType ?? input.activityType ?? "run",
   });
   if (result.error) throw new Error(result.error);
   session.cardio = {
-    id,
+    id: session.cardio?.id ?? id,
     ...result.value,
     completedAt: now,
     updatedAt: now,
@@ -1404,10 +1515,24 @@ export function completeSession(state, sessionId, now = new Date().toISOString()
     day.workouts.push({
       type: "cardio",
       activityType: session.cardio.activityType,
+      locationType: session.cardio.locationType,
+      source: session.cardio.source,
       distanceKm: session.cardio.distanceKm,
       durationSeconds: session.cardio.durationSeconds,
       paceSecondsPerKm: session.cardio.paceSecondsPerKm,
+      paceSecondsPer100m: session.cardio.paceSecondsPer100m,
+      paceSecondsPer500m: session.cardio.paceSecondsPer500m,
+      averageSpeedKmh: session.cardio.averageSpeedKmh,
+      poolLengths: session.cardio.poolLengths,
       steps: session.cardio.steps,
+      elevationGainM: session.cardio.elevationGainM,
+      inclinePercent: session.cardio.inclinePercent,
+      poolLengthM: session.cardio.poolLengthM,
+      resistanceLevel: session.cardio.resistanceLevel,
+      averageHeartRateBpm: session.cardio.averageHeartRateBpm,
+      caloriesKcal: session.cardio.caloriesKcal,
+      cadencePerMinute: session.cardio.cadencePerMinute,
+      averagePowerWatts: session.cardio.averagePowerWatts,
       note: session.cardio.note,
       sessionId: session.id,
       completedAt: now,

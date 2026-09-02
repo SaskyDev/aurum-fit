@@ -4,6 +4,7 @@ import test from "node:test";
 
 import {
   BACKUP_STORE_KEY,
+  CARDIO_ACTIVITY_TYPES,
   LEGACY_STORE_KEY,
   STORE_KEY,
   addExerciseToRoutineDay,
@@ -13,6 +14,7 @@ import {
   archiveRoutine,
   addSetToExercise,
   cardioPaceSecondsPerKm,
+  cardioDerivedMetrics,
   completeSession,
   cleanupPublishedData,
   createEmptyState,
@@ -803,10 +805,17 @@ test("crea una rutina de correr y calcula ritmo desde distancia y tiempo", () =>
     note: "Ritmo cómodo",
   }, { id: "cardio-run-1", now: "2026-09-02T18:25:00.000Z" });
   assert.equal(activity.paceSecondsPerKm, 300);
+  const updatedActivity = addCardioToSession(state, session.id, {
+    distanceKm: 5.2,
+    durationSeconds: 1530,
+    steps: 6400,
+    note: "Últimos metros rápidos",
+  }, { id: "cardio-should-not-replace-id", now: "2026-09-02T18:26:00.000Z" });
+  assert.equal(updatedActivity.id, "cardio-run-1");
 
-  completeSession(state, session.id, "2026-09-02T18:26:00.000Z");
-  assert.equal(state.legacy.days["2026-09-02"].cardioMinutes, 25);
-  assert.equal(state.legacy.days["2026-09-02"].steps, 6200);
+  completeSession(state, session.id, "2026-09-02T18:27:00.000Z");
+  assert.equal(state.legacy.days["2026-09-02"].cardioMinutes, 26);
+  assert.equal(state.legacy.days["2026-09-02"].steps, 6400);
   assert.equal(state.legacy.days["2026-09-02"].workouts[0].type, "cardio");
 });
 
@@ -835,6 +844,83 @@ test("valida cardio con distancia y tiempo obligatorios", () => {
   assert.match(validateCardioInput({ distanceKm: "", durationSeconds: 1500 }).error, /distancia/i);
   assert.match(validateCardioInput({ distanceKm: 5, durationSeconds: "" }).error, /tiempo/i);
   assert.match(validateCardioInput({ distanceKm: 5, durationSeconds: 1500, steps: 1.5 }).error, /pasos/i);
+});
+
+test("admite una zona cardio con actividades y métricas específicas", () => {
+  assert.deepEqual(CARDIO_ACTIVITY_TYPES, [
+    "run",
+    "treadmill_run",
+    "trail_run",
+    "walk",
+    "hike",
+    "cycling",
+    "indoor_cycling",
+    "pool_swim",
+    "open_water_swim",
+    "elliptical",
+    "rowing",
+    "stair_climber",
+  ]);
+
+  assert.deepEqual(cardioDerivedMetrics("cycling", 20, 3600), {
+    paceSecondsPerKm: null,
+    paceSecondsPer100m: null,
+    paceSecondsPer500m: null,
+    averageSpeedKmh: 20,
+    poolLengths: null,
+  });
+  assert.deepEqual(cardioDerivedMetrics("pool_swim", 1, 1800, { poolLengthM: 25 }), {
+    paceSecondsPerKm: null,
+    paceSecondsPer100m: 180,
+    paceSecondsPer500m: null,
+    averageSpeedKmh: null,
+    poolLengths: 40,
+  });
+});
+
+test("valida solo los campos relevantes de cada actividad cardio", () => {
+  const trail = validateCardioInput({
+    activityType: "trail_run",
+    distanceKm: 12.5,
+    durationSeconds: 4500,
+    elevationGainM: 620,
+    averageHeartRateBpm: 154,
+    steps: 14200,
+  });
+  assert.equal(trail.value.elevationGainM, 620);
+  assert.equal(trail.value.paceSecondsPerKm, 360);
+  assert.equal(trail.value.averageHeartRateBpm, 154);
+
+  const treadmill = validateCardioInput({
+    activityType: "treadmill_run",
+    distanceKm: 5,
+    durationSeconds: 1500,
+    inclinePercent: 3.5,
+  });
+  assert.equal(treadmill.value.inclinePercent, 3.5);
+
+  const indoorBike = validateCardioInput({
+    activityType: "indoor_cycling",
+    distanceKm: "",
+    durationSeconds: 2700,
+    resistanceLevel: 12,
+  });
+  assert.equal(indoorBike.value.distanceKm, null);
+  assert.equal(indoorBike.value.resistanceLevel, 12);
+  assert.equal(indoorBike.value.averageSpeedKmh, null);
+
+  const swim = validateCardioInput({
+    activityType: "pool_swim",
+    distanceKm: 1.5,
+    durationSeconds: 2400,
+    poolLengthM: 25,
+  });
+  assert.equal(swim.value.paceSecondsPer100m, 160);
+  assert.equal(swim.value.poolLengths, 60);
+
+  assert.match(validateCardioInput({ activityType: "cycling", distanceKm: "", durationSeconds: 1200 }).error, /distancia/i);
+  assert.match(validateCardioInput({ activityType: "treadmill_run", distanceKm: 5, durationSeconds: 1500, inclinePercent: 80 }).error, /inclinación/i);
+  assert.match(validateCardioInput({ activityType: "pool_swim", distanceKm: 1, durationSeconds: 1800, poolLengthM: 2 }).error, /piscina/i);
 });
 
 test("una rutina real puede sustituir un día ocupado solo por la demostración", () => {

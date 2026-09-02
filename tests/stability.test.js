@@ -61,8 +61,8 @@ function loadServiceWorker({ oldCaches = [] } = {}) {
     const url = String(request.url ?? "");
     return {
       ok: true,
-      version: request.mode === "navigate" || request.destination === "document" || url === "./" || url.includes("?v=50")
-        ? "v50"
+      version: request.mode === "navigate" || request.destination === "document" || url === "./" || url.includes("?v=53")
+        ? "v53"
         : "v9",
       clone() { return this; },
     };
@@ -87,7 +87,7 @@ function loadServiceWorker({ oldCaches = [] } = {}) {
   return { listeners, opened, deleted, puts, fetched, legacyCacheHits, legacyWorker, navigations };
 }
 
-test("actualiza desde una caché v9 y precarga un shell coherente v50", async () => {
+test("actualiza desde una caché v9 y precarga un shell coherente v53", async () => {
   const worker = loadServiceWorker({ oldCaches: ["aurum-fit-shell-v1", "aurum-fit-shell-v9"] });
   let activation;
   worker.listeners.activate({ waitUntil: (promise) => { activation = promise; } });
@@ -99,12 +99,12 @@ test("actualiza desde una caché v9 y precarga un shell coherente v50", async ()
   worker.listeners.install({ waitUntil: (promise) => { installation = promise; } });
   await installation;
   assert.equal(worker.fetched.length, 8);
-  assert.ok(worker.fetched.every((request) => request.url.includes("?v=50")));
+  assert.ok(worker.fetched.every((request) => request.url.includes("?v=53")));
   assert.deepEqual(worker.legacyCacheHits, []);
-  assert.ok(worker.puts.every(({ response }) => response.version === "v50"));
+  assert.ok(worker.puts.every(({ response }) => response.version === "v53"));
 });
 
-test("la navegación antigua v9 converge a v50 tras reclamar el cliente", async () => {
+test("la navegación antigua v9 converge a v53 tras reclamar el cliente", async () => {
   const worker = loadServiceWorker({ oldCaches: ["aurum-fit-shell-v9"] });
   const oldResponse = worker.legacyWorker.intercept({ url: "./" });
   assert.equal(oldResponse.version, "v9");
@@ -119,7 +119,7 @@ test("la navegación antigua v9 converge a v50 tras reclamar el cliente", async 
     respondWith: (promise) => { responsePromise = promise; },
   });
   const response = await responsePromise;
-  assert.equal(response.version, "v50");
+  assert.equal(response.version, "v53");
   assert.deepEqual(worker.navigations, ["http://localhost:8000/"]);
 });
 test("prioriza la red para documentos y actualiza la caché activa", async () => {
@@ -444,14 +444,31 @@ test("cardio se integra en rutinas, sesión activa y diario sin usar series", ()
   assert.match(html, /id="cardioDistanceKm"/);
   assert.match(html, /id="cardioDuration"/);
   assert.match(html, /id="cardioPacePreview"/);
+  assert.match(html, /id="cardioActivityPicker"/);
+  assert.match(html, /id="cardioMetricFields"/);
+  assert.match(html, /id="cardioElevationGainM"/);
+  assert.match(html, /id="cardioInclinePercent"/);
+  assert.match(html, /id="cardioPoolLengthM"/);
+  assert.match(html, /id="cardioResistanceLevel"/);
+  assert.match(html, /id="cardioAverageHeartRateBpm"/);
   assert.match(app, /addCardioToSession/);
   assert.match(app, /archiveRoutine/);
   assert.match(app, /function parseDurationInput/);
   assert.match(app, /function formatPace/);
+  assert.match(app, /const cardioActivityCatalog/);
+  assert.match(app, /function renderCardioActivityPicker/);
+  assert.match(app, /function syncCardioMetricFields/);
+  assert.match(app, /paceSecondsPer100m/);
+  assert.match(app, /averageSpeedKmh/);
   assert.match(app, /routineDayType\(suggested\.routineDay\) === "cardio"/);
   assert.match(app, /document\.querySelector\("\.exercise-picker"\)\.hidden = isCardioSession/);
-  assert.match(app, /Cardio guardado\. El ritmo se calculó automáticamente/);
+  assert.match(app, /Las métricas derivadas se calcularon automáticamente/);
+  assert.match(app, /function renderCardioHistory/);
   assert.match(css, /\.cardio-session-card/);
+  assert.match(css, /\.cardio-activity-picker/);
+  assert.match(css, /\.cardio-derived-grid/);
+  assert.match(app, /icon: "cardio-run"/);
+  assert.match(html, /assets\/icons\.svg/);
   assert.match(css, /\.routine-theme-cardio/);
 });
 
