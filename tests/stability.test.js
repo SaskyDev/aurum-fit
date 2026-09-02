@@ -61,8 +61,8 @@ function loadServiceWorker({ oldCaches = [] } = {}) {
     const url = String(request.url ?? "");
     return {
       ok: true,
-      version: request.mode === "navigate" || request.destination === "document" || url === "./" || url.includes("?v=44")
-        ? "v44"
+      version: request.mode === "navigate" || request.destination === "document" || url === "./" || url.includes("?v=50")
+        ? "v50"
         : "v9",
       clone() { return this; },
     };
@@ -87,7 +87,7 @@ function loadServiceWorker({ oldCaches = [] } = {}) {
   return { listeners, opened, deleted, puts, fetched, legacyCacheHits, legacyWorker, navigations };
 }
 
-test("actualiza desde una caché v9 y precarga un shell coherente v44", async () => {
+test("actualiza desde una caché v9 y precarga un shell coherente v50", async () => {
   const worker = loadServiceWorker({ oldCaches: ["aurum-fit-shell-v1", "aurum-fit-shell-v9"] });
   let activation;
   worker.listeners.activate({ waitUntil: (promise) => { activation = promise; } });
@@ -99,12 +99,12 @@ test("actualiza desde una caché v9 y precarga un shell coherente v44", async ()
   worker.listeners.install({ waitUntil: (promise) => { installation = promise; } });
   await installation;
   assert.equal(worker.fetched.length, 8);
-  assert.ok(worker.fetched.every((request) => request.url.includes("?v=44")));
+  assert.ok(worker.fetched.every((request) => request.url.includes("?v=50")));
   assert.deepEqual(worker.legacyCacheHits, []);
-  assert.ok(worker.puts.every(({ response }) => response.version === "v44"));
+  assert.ok(worker.puts.every(({ response }) => response.version === "v50"));
 });
 
-test("la navegación antigua v9 converge a v44 tras reclamar el cliente", async () => {
+test("la navegación antigua v9 converge a v50 tras reclamar el cliente", async () => {
   const worker = loadServiceWorker({ oldCaches: ["aurum-fit-shell-v9"] });
   const oldResponse = worker.legacyWorker.intercept({ url: "./" });
   assert.equal(oldResponse.version, "v9");
@@ -119,7 +119,7 @@ test("la navegación antigua v9 converge a v44 tras reclamar el cliente", async 
     respondWith: (promise) => { responsePromise = promise; },
   });
   const response = await responsePromise;
-  assert.equal(response.version, "v44");
+  assert.equal(response.version, "v50");
   assert.deepEqual(worker.navigations, ["http://localhost:8000/"]);
 });
 test("prioriza la red para documentos y actualiza la caché activa", async () => {
@@ -165,9 +165,9 @@ test("la navegación principal tiene tres destinos y Diario es el inicio", () =>
 test("el catálogo espera una búsqueda y la sesión distingue los tres tipos de serie", () => {
   const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
   assert.match(app, /No mostramos todo el catálogo de golpe/);
-  assert.match(app, /\["effective", "Efectiva"\]/);
-  assert.match(app, /\["approach", "Aprox\."\]/);
-  assert.match(app, /\["warmup", "Calent\."\]/);
+  assert.match(app, /\["effective", "Efectiva", "Efectiva"\]/);
+  assert.match(app, /\["approach", "Aprox\.", "Aproximación"\]/);
+  assert.match(app, /\["warmup", "Calent\.", "Calentamiento"\]/);
   assert.match(app, /set-type-options/);
   assert.doesNotMatch(app, /placeholder: "(?:10|60|2)"/);
 });
@@ -204,6 +204,7 @@ test("la interfaz limita el catálogo y coloca un temporizador dentro del ejerci
 test("Diario, limpieza de demostración, etiquetas y ajustes tienen una base visible y separada", () => {
   const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
   const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const css = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
   assert.match(html, /id="weeklyRingValue"/);
   assert.match(html, /id="dashboardWorkoutExercises"/);
   assert.match(html, /id="labelPhoto"[^>]*capture="environment"/);
@@ -213,11 +214,29 @@ test("Diario, limpieza de demostración, etiquetas y ajustes tienen una base vis
   assert.match(html, /id="settingsPageTitle"/);
   assert.match(html, /data-open-settings="profile"/);
   assert.match(html, /data-open-settings="data"/);
+  assert.match(html, /class="tab-liquid-indicator"[^>]*aria-hidden="true"/);
+  assert.match(html, /data-tab="diario" aria-current="page"/);
+  assert.match(html, /name="appearanceMode" value="system"/);
+  assert.match(html, /name="appearanceMode" value="dark"/);
+  assert.match(html, /name="appearanceMode" value="light"/);
   assert.doesNotMatch(html, /class="settings-back-row"/);
   assert.match(app, /seedDemoData\(next/);
   assert.match(app, /removeDemoData\(next\)/);
   assert.match(app, /settingsView === "menu"[\s\S]*showTab\("diario"\)/);
   assert.match(app, /cleanupPublishedData\(cleaned\)/);
+  assert.match(app, /matchMedia\("\(prefers-color-scheme: dark\)"\)/);
+  assert.match(app, /root\.dataset\.theme = resolvedTheme/);
+  assert.match(app, /setAttribute\("aria-current", "page"\)/);
+  assert.match(css, /\.tab-liquid-indicator/);
+  assert.match(css, /data-theme="light"/);
+  assert.match(css, /width: min\(430px, calc\(100% - 32px\)\)/);
+  assert.match(css, /:root\[data-theme="light"\] \.surface\.color-panel/);
+  assert.match(css, /:root\[data-theme="light"\] \.tab\.active[\s\S]*color: var\(--on-accent\)/);
+  assert.match(css, /@keyframes nav-liquid-travel/);
+  assert.match(css, /@keyframes nav-icon-pop/);
+  assert.match(app, /--previous-tab-index/);
+  assert.match(app, /--nav-direction/);
+  assert.match(css, /prefers-reduced-motion: reduce[\s\S]*\.tab-liquid-indicator/);
   assert.doesNotMatch(html, /id="loadDemoBtn"|id="removeDemoBtn"|id="demoBadge"/);
 });
 
@@ -287,6 +306,10 @@ test("los días son reversibles y cada ejercicio ofrece duplicado, historial, ac
   assert.match(app, /setInputHints/);
   assert.match(app, /load-stepper/);
   assert.match(app, /stepLoadValue/);
+  assert.match(app, /set-field-label/);
+  assert.match(app, /dataset\.fullLabel = fullLabel/);
+  assert.match(app, /dataset\.label = "Peso"/);
+  assert.match(app, /Registra la primera en el formulario inferior/);
   assert.match(app, /Última referencia usada como guía visual/);
   assert.match(app, /chart-legend exercise-chart-legend/);
   assert.match(app, /Todas tus sesiones anteriores, sin modificar el histórico/);
@@ -299,6 +322,9 @@ test("los días son reversibles y cada ejercicio ofrece duplicado, historial, ac
   assert.match(css, /\.set-type-option:has\(input:checked\)/);
   assert.match(css, /\.set-form \{[\s\S]*grid-template-columns: 36px minmax\(70px, 1\.05fr\)/);
   assert.match(css, /\.set-form input,[\s\S]*min-width: 0/);
+  assert.match(css, /@media \(max-width: 720px\)[\s\S]*\.set-form-headings \{[\s\S]*display: none/);
+  assert.match(css, /@media \(max-width: 720px\)[\s\S]*\.set-type-field \{[\s\S]*grid-column: 1 \/ -1/);
+  assert.match(css, /@media \(max-width: 720px\)[\s\S]*\.set-cell::before/);
   assert.match(app, /button\.dataset\.action === "continue"/);
   assert.match(app, /Ver entrenamiento completado/);
 });
@@ -405,4 +431,38 @@ test("la navegación y los colores se mantienen minimalistas y coherentes entre 
   assert.match(css, /\.planned-skip-button[\s\S]*border-radius: 999px/);
   assert.match(css, /\.day-detail-section-nutrition/);
   assert.match(css, /\.day-detail-section-training/);
+});
+
+test("cardio se integra en rutinas, sesión activa y diario sin usar series", () => {
+  const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const css = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+
+  assert.match(html, /name="routineDayType" value="strength"/);
+  assert.match(html, /name="routineDayType" value="cardio"/);
+  assert.match(html, /id="cardioSessionForm"/);
+  assert.match(html, /id="cardioDistanceKm"/);
+  assert.match(html, /id="cardioDuration"/);
+  assert.match(html, /id="cardioPacePreview"/);
+  assert.match(app, /addCardioToSession/);
+  assert.match(app, /archiveRoutine/);
+  assert.match(app, /function parseDurationInput/);
+  assert.match(app, /function formatPace/);
+  assert.match(app, /routineDayType\(suggested\.routineDay\) === "cardio"/);
+  assert.match(app, /document\.querySelector\("\.exercise-picker"\)\.hidden = isCardioSession/);
+  assert.match(app, /Cardio guardado\. El ritmo se calculó automáticamente/);
+  assert.match(css, /\.cardio-session-card/);
+  assert.match(css, /\.routine-theme-cardio/);
+});
+
+test("Biblioteca permite archivar una rutina con gesto hacia la izquierda", () => {
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const css = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+
+  assert.match(app, /function attachRoutineSwipe/);
+  assert.match(app, /archiveRoutine\(next, routine\.id\)/);
+  assert.match(app, /La rutina dejará de aparecer en el plan/);
+  assert.match(css, /\.routine-swipe-row/);
+  assert.match(css, /\.routine-swipe-delete/);
+  assert.match(css, /touch-action: pan-y/);
 });

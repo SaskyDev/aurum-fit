@@ -1,7 +1,9 @@
 import {
   addExerciseToRoutineDay,
   addExerciseToSession,
+  addCardioToSession,
   addRoutineDay,
+  archiveRoutine,
   addSetToExercise,
   completeSession,
   cleanupPublishedData,
@@ -21,6 +23,7 @@ import {
   removeExerciseFromRoutineDay,
   replaceSessionExerciseForToday,
   restoreLastDeletedSet,
+  routineDayType,
   routineDayWeekdays,
   seedDemoData,
   setSessionExerciseSkipped,
@@ -31,10 +34,16 @@ import {
   startSessionFromRoutineDay,
   updateSet,
   validateLabelPhotoFile,
-} from "./core.js?v=44";
+} from "./core.js?v=50";
 
 const defaultTargets = { calories: 2200, protein: 170, steps: 10000 };
-const defaultPreferences = { accentColor: "lime", effortScale: "rir", defaultRestSeconds: 60 };
+const defaultPreferences = {
+  accentColor: "lime",
+  appearanceMode: "system",
+  effortScale: "rir",
+  defaultRestSeconds: 60,
+};
+const appearanceLabels = { system: "Automático", dark: "Oscuro", light: "Claro" };
 const accentLabels = {
   lime: "Lima",
   orange: "Naranja",
@@ -50,6 +59,14 @@ const accentPalettes = {
   violet: { accent: "#a78bfa", accentStrong: "#8b5cf6", success: "#c4b5fd", rgb: "167, 139, 250" },
   red: { accent: "#fb7185", accentStrong: "#f43f5e", success: "#fda4af", rgb: "251, 113, 133" },
   steel: { accent: "#e5e7eb", accentStrong: "#cbd5e1", success: "#f8fafc", rgb: "229, 231, 235" },
+};
+const lightAccentPalettes = {
+  lime: { accent: "#587a00", accentStrong: "#426100", success: "#467000", rgb: "88, 122, 0" },
+  orange: { accent: "#b84c00", accentStrong: "#963d00", success: "#a84a00", rgb: "184, 76, 0" },
+  blue: { accent: "#0077a8", accentStrong: "#005f88", success: "#006b97", rgb: "0, 119, 168" },
+  violet: { accent: "#6d43c0", accentStrong: "#5833a4", success: "#6540ae", rgb: "109, 67, 192" },
+  red: { accent: "#bd3551", accentStrong: "#9f2942", success: "#ac304a", rgb: "189, 53, 81" },
+  steel: { accent: "#475569", accentStrong: "#334155", success: "#3f4d60", rgb: "71, 85, 105" },
 };
 const $ = (id) => document.getElementById(id);
 
@@ -79,6 +96,7 @@ const pendingSetSubmissions = new Set();
 const restTimerStates = new Map();
 const noticeTimers = new Map();
 let sessionElapsedIntervalId = null;
+let navAnimationTimer = null;
 
 function getTargets(targetState = state) {
   return { ...defaultTargets, ...(targetState.owner?.targets ?? {}) };
@@ -94,6 +112,7 @@ function ensureUiState(targetState) {
   targetState.owner.targets ??= { ...defaultTargets };
   targetState.owner.preferences ??= { ...defaultPreferences };
   targetState.owner.preferences.accentColor ??= defaultPreferences.accentColor;
+  targetState.owner.preferences.appearanceMode ??= defaultPreferences.appearanceMode;
   targetState.owner.preferences.effortScale ??= defaultPreferences.effortScale;
   targetState.owner.preferences.defaultRestSeconds ??= defaultPreferences.defaultRestSeconds;
   targetState.nutrition ??= { recipes: [], labels: [] };
@@ -105,18 +124,38 @@ function ensureUiState(targetState) {
 
 ensureUiState(state);
 
+const darkModeMedia = window.matchMedia("(prefers-color-scheme: dark)");
+
 function applyThemePreferences(targetState = state) {
   const preferences = getPreferences(targetState);
-  const palette = accentPalettes[preferences.accentColor] ?? accentPalettes.lime;
   const root = document.documentElement;
+  const appearanceMode = appearanceLabels[preferences.appearanceMode]
+    ? preferences.appearanceMode
+    : defaultPreferences.appearanceMode;
+  const resolvedTheme = appearanceMode === "system"
+    ? (darkModeMedia.matches ? "dark" : "light")
+    : appearanceMode;
+  const themePalettes = resolvedTheme === "light" ? lightAccentPalettes : accentPalettes;
+  const palette = themePalettes[preferences.accentColor] ?? themePalettes.lime;
   root.dataset.accent = preferences.accentColor;
+  root.dataset.themePreference = appearanceMode;
+  root.dataset.theme = resolvedTheme;
+  root.style.colorScheme = resolvedTheme;
   root.style.setProperty("--accent", palette.accent);
   root.style.setProperty("--accent-strong", palette.accentStrong);
   root.style.setProperty("--success", palette.success);
   root.style.setProperty("--accent-rgb", palette.rgb);
+  root.style.setProperty("--on-accent", resolvedTheme === "light" ? "#ffffff" : "#0b0f0d");
+  document.querySelector('meta[name="theme-color"]')?.setAttribute(
+    "content",
+    resolvedTheme === "dark" ? "#080b09" : "#f3f5f0",
+  );
 }
 
 applyThemePreferences(state);
+darkModeMedia.addEventListener?.("change", () => {
+  if (getPreferences().appearanceMode === "system") applyThemePreferences(state);
+});
 
 function setSettingsView(view = "menu") {
   settingsView = ["menu", "profile", "goals", "appearance", "workout", "data"].includes(view)
@@ -512,6 +551,31 @@ function formatWorkoutDuration(seconds) {
     : `${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(2, "0")}`;
 }
 
+function parseDurationInput(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  if (/^\d+$/.test(raw)) return Number(raw) * 60;
+  const parts = raw.split(":").map((part) => Number(part));
+  if (parts.length < 2 || parts.length > 3 || parts.some((part) => !Number.isInteger(part) || part < 0)) {
+    return NaN;
+  }
+  const [hours, minutes, seconds] = parts.length === 3 ? parts : [0, parts[0], parts[1]];
+  if (minutes > 59 || seconds > 59) return NaN;
+  return (hours * 3600) + (minutes * 60) + seconds;
+}
+
+function formatPace(secondsPerKm) {
+  if (!Number.isFinite(secondsPerKm) || secondsPerKm <= 0) return "--:-- / km";
+  const minutes = Math.floor(secondsPerKm / 60);
+  const seconds = Math.round(secondsPerKm % 60);
+  return `${minutes}:${String(seconds).padStart(2, "0")} / km`;
+}
+
+function cardioSummary(cardio) {
+  if (!cardio?.completedAt) return "Sin distancia registrada";
+  return `${cardio.distanceKm} km · ${formatWorkoutDuration(cardio.durationSeconds)} · ${formatPace(cardio.paceSecondsPerKm)}`;
+}
+
 function sessionElapsedSeconds(session, now = Date.now()) {
   return Math.max(0, Math.round((now - new Date(session.startedAt).getTime()) / 1000));
 }
@@ -713,6 +777,11 @@ function createMuscleIcon(group) {
       "M24 6a7 7 0 0 1 7 7 7 7 0 0 1-14 0 7 7 0 0 1 7-7z",
       "M12 40c1-13 5-21 12-21s11 8 12 21c-7-3-17-3-24 0z",
     ],
+    cardio: [
+      "M25 8c4 0 7 3 7 7s-3 7-7 7-7-3-7-7 3-7 7-7z",
+      "M18 24l8 3 5 6 6 1c2 .3 3 2 2.6 3.8-.3 1.5-1.7 2.5-3.2 2.2l-7.6-1.4-5.1-6.1-4.6 6.8c-.9 1.3-2.7 1.7-4 .8-1.3-.9-1.7-2.6-.8-4l6.8-10.1z",
+      "M17 24l-5 3-3.2 5.5c-.8 1.4-2.6 1.9-4 .9-1.4-.8-1.8-2.6-1-4l3.9-6.5 7.2-4z",
+    ],
   };
   (paths[group] ?? paths.full).forEach(addPath);
   return svg;
@@ -832,12 +901,19 @@ function renderDailyDashboard() {
   exerciseList.replaceChildren();
   if (suggested) {
     title.textContent = `${suggested.routine.name} · ${suggested.routineDay.name}`;
-    detail.textContent = `${countLabel(suggested.routineDay.exercises.length, "ejercicio")} · ${weekdayName(new Date(`${selectedDate}T12:00:00`).getDay())}`;
-    suggested.routineDay.exercises.slice().sort((a, b) => a.order - b.order).forEach((exercise) => {
-      const item = createElement("li");
-      item.append(createElement("span", "", `${exercise.order}. ${exercise.exerciseName}`));
-      exerciseList.appendChild(item);
-    });
+    const isCardioPlan = routineDayType(suggested.routineDay) === "cardio";
+    detail.textContent = isCardioPlan
+      ? `Cardio · ${weekdayName(new Date(`${selectedDate}T12:00:00`).getDay())}`
+      : `${countLabel(suggested.routineDay.exercises.length, "ejercicio")} · ${weekdayName(new Date(`${selectedDate}T12:00:00`).getDay())}`;
+    if (isCardioPlan) {
+      exerciseList.appendChild(createElement("li", "today-rest-message", "Correr/caminar · distancia + tiempo · ritmo automático"));
+    } else {
+      suggested.routineDay.exercises.slice().sort((a, b) => a.order - b.order).forEach((exercise) => {
+        const item = createElement("li");
+        item.append(createElement("span", "", `${exercise.order}. ${exercise.exerciseName}`));
+        exerciseList.appendChild(item);
+      });
+    }
     start.dataset.routineDay = routineDayValue(suggested.routine.id, suggested.routineDay.id);
     start.dataset.date = selectedDate;
     const activeSession = getActiveSession(state);
@@ -860,7 +936,7 @@ function renderDailyDashboard() {
       start.textContent = "Termina el entrenamiento en curso";
     } else {
       start.dataset.action = "start";
-      start.disabled = !suggested.routineDay.exercises.length;
+      start.disabled = !isCardioPlan && !suggested.routineDay.exercises.length;
       start.textContent = "Empezar entrenamiento";
     }
   } else {
@@ -930,10 +1006,13 @@ function renderDailyDashboard() {
     openDay.setAttribute("aria-label", `Abrir el resumen completo del ${date}`);
     openDay.append(createElement("time", "timeline-date", date), createElement("div", "timeline-content", details));
     sessions.forEach((session) => {
+      const isCardioSession = (session.sessionType ?? "strength") === "cardio";
       openDay.appendChild(createElement(
         "small",
         "muted",
-        `${session.source.label} · ${countLabel(sessionSetCount(session), "serie")} guardadas`,
+        isCardioSession
+          ? `${session.source.label} · ${cardioSummary(session.cardio)}`
+          : `${session.source.label} · ${countLabel(sessionSetCount(session), "serie")} guardadas`,
       ));
     });
     if (day.notes) openDay.appendChild(createElement("small", "muted", day.notes));
@@ -1024,10 +1103,22 @@ function openDailyDetail(date) {
     const durationText = session.durationSeconds
       ? ` · ${formatWorkoutDuration(session.durationSeconds)} de entreno`
       : "";
+    const isCardioSession = (session.sessionType ?? "strength") === "cardio";
     sessionCard.append(
       createElement("h4", "", session.source.label),
-      createElement("small", "muted", `${formatDateTime(session.endedAt)} · ${sessionSetCount(session)} series${durationText}`),
+      createElement(
+        "small",
+        "muted",
+        isCardioSession
+          ? `${formatDateTime(session.endedAt)} · ${cardioSummary(session.cardio)}${session.cardio?.steps ? ` · ${session.cardio.steps.toLocaleString("es-ES")} pasos` : ""}${durationText}`
+          : `${formatDateTime(session.endedAt)} · ${sessionSetCount(session)} series${durationText}`,
+      ),
     );
+    if (isCardioSession) {
+      if (session.cardio?.note) sessionCard.appendChild(createElement("p", "day-detail-note", session.cardio.note));
+      training.appendChild(sessionCard);
+      return;
+    }
     session.exercises.slice().sort((a, b) => a.order - b.order).forEach((exercise) => {
       const exerciseBlock = createElement("section", "day-session-exercise");
       exerciseBlock.appendChild(createElement(
@@ -1182,10 +1273,14 @@ function renderSettings() {
   document.querySelectorAll('input[name="accentColor"]').forEach((input) => {
     input.checked = input.value === preferences.accentColor;
   });
+  document.querySelectorAll('input[name="appearanceMode"]').forEach((input) => {
+    input.checked = input.value === preferences.appearanceMode;
+  });
   $("settingsProfileSummary").textContent = state.owner.displayName?.trim() || "Usuario local";
   $("settingsGoalsSummary").textContent =
     `${targets.calories.toLocaleString("es-ES")} kcal · ${targets.protein.toLocaleString("es-ES")} g proteína · ${targets.steps.toLocaleString("es-ES")} pasos`;
-  $("settingsAppearanceSummary").textContent = accentLabels[preferences.accentColor] ?? "Lima";
+  $("settingsAppearanceSummary").textContent =
+    `${appearanceLabels[preferences.appearanceMode] ?? "Automático"} · ${accentLabels[preferences.accentColor] ?? "Lima"}`;
   $("settingsWorkoutSummary").textContent =
     `${preferences.effortScale === "none" ? "Sin escala" : preferences.effortScale.toUpperCase()} · ${preferences.defaultRestSeconds} s`;
   const demoSessions = state.training.sessions.filter((session) => session.isDemo).length;
@@ -1434,6 +1529,10 @@ function routineExerciseCount(routine) {
   return routine.days.reduce((total, day) => total + day.exercises.length, 0);
 }
 
+function routineActivityCount(routine) {
+  return routine.days.reduce((total, day) => total + (routineDayType(day) === "cardio" ? 1 : day.exercises.length), 0);
+}
+
 function routineTheme(routine) {
   const text = normalizeCatalogSearch([
     routine.name,
@@ -1441,6 +1540,12 @@ function routineTheme(routine) {
     ...routine.days.flatMap((day) => day.exercises.map((exercise) => exercise.exerciseName)),
   ].join(" "));
   const matchers = [
+    {
+      group: "cardio",
+      label: "Cardio",
+      title: "Resistencia",
+      words: ["cardio", "correr", "carrera", "run", "running", "caminar", "andar", "walk"],
+    },
     {
       group: "lower",
       label: "Lower",
@@ -1479,6 +1584,7 @@ function routineAccentName(routine) {
   if (["empuje", "push", "pecho", "chest"].some((word) => name.includes(word))) return "red";
   if (["tiron", "pull", "espalda", "back"].some((word) => name.includes(word))) return "blue";
   if (["pierna", "legs", "lower"].some((word) => name.includes(word))) return "lime";
+  if (["cardio", "correr", "carrera", "run", "running", "caminar"].some((word) => name.includes(word))) return "orange";
   if (["brazo", "arms", "biceps", "triceps"].some((word) => name.includes(word))) return "violet";
   if (["full", "cuerpo completo"].some((word) => name.includes(word))) return "orange";
   const fallbackColors = ["orange", "violet", "blue", "lime", "red"];
@@ -1753,11 +1859,13 @@ function createRoutineDayWeekdayEditor(routine, routineDay) {
 
 function createRoutineDayCard(routine, routineDay, index) {
   const card = createElement("article", "routine-day");
+  const isCardioDay = routineDayType(routineDay) === "cardio";
   const header = createElement("div", "routine-day-header");
   const title = createElement("div", "routine-day-title");
   title.append(
-    createElement("span", "routine-day-icon", "◆"),
+    createElement("span", "routine-day-icon", isCardioDay ? "●" : "◆"),
     createElement("h4", "", routineDay.name),
+    createElement("span", "weekday-badge", isCardioDay ? "Cardio" : "Fuerza"),
     createElement(
       "span",
       "weekday-badge",
@@ -1775,13 +1883,21 @@ function createRoutineDayCard(routine, routineDay, index) {
     );
     if (!started) trainingView = "routines";
   });
-  start.disabled = !routineDay.exercises.length || Boolean(getActiveSession(state));
+  start.disabled = (!isCardioDay && !routineDay.exercises.length) || Boolean(getActiveSession(state));
   if (getActiveSession(state)) start.title = "Finaliza el entrenamiento en curso antes de empezar otro.";
   actions.append(start);
   header.append(title, actions);
 
   const list = createElement("ol", "routine-exercises");
-  routineDay.exercises
+  if (isCardioDay) {
+    const item = createElement("li", "routine-cardio-summary");
+    item.append(
+      createElement("strong", "", "Correr o caminar"),
+      createElement("small", "muted", "Durante la sesión registrarás distancia y tiempo; el ritmo se calculará solo."),
+    );
+    list.appendChild(item);
+  } else {
+    routineDay.exercises
     .slice()
     .sort((a, b) => a.order - b.order)
     .forEach((exercise, exerciseIndex) => {
@@ -1792,6 +1908,7 @@ function createRoutineDayCard(routine, routineDay, index) {
         exerciseIndex,
       ));
     });
+  }
   if (!list.children.length) {
     const empty = createElement("li", "empty-state");
     empty.textContent = "Sin ejercicios. Añade uno para poder iniciar este día.";
@@ -1833,8 +1950,79 @@ function createRoutineDayCard(routine, routineDay, index) {
     if (saved) exerciseForm.reset();
   });
 
-  card.append(header, createRoutineDayWeekdayEditor(routine, routineDay), list, exerciseForm);
+  card.append(header, createRoutineDayWeekdayEditor(routine, routineDay), list);
+  if (!isCardioDay) card.appendChild(exerciseForm);
   return card;
+}
+
+function attachRoutineSwipe(row, foreground) {
+  let startX = 0;
+  let startY = 0;
+  let currentX = 0;
+  let dragging = false;
+  let pointerId = null;
+  let suppressClickUntil = 0;
+  const deleteWidth = 118;
+
+  const close = () => {
+    row.classList.remove("routine-swipe-open", "routine-swiping");
+    foreground.style.transform = "";
+  };
+  const open = () => {
+    row.classList.add("routine-swipe-open");
+    row.classList.remove("routine-swiping");
+    foreground.style.transform = `translateX(-${deleteWidth}px)`;
+  };
+  const finish = () => {
+    if (!dragging) return;
+    dragging = false;
+    if (pointerId !== null) foreground.releasePointerCapture?.(pointerId);
+    pointerId = null;
+    if (Math.abs(currentX) > 8) suppressClickUntil = Date.now() + 280;
+    if (currentX < -62) open();
+    else close();
+  };
+
+  foreground.addEventListener("pointerdown", (event) => {
+    if (event.button !== undefined && event.button !== 0) return;
+    if (row.classList.contains("routine-swipe-open")) {
+      close();
+      suppressClickUntil = Date.now() + 180;
+      return;
+    }
+    startX = event.clientX;
+    startY = event.clientY;
+    currentX = 0;
+    dragging = true;
+    pointerId = event.pointerId;
+    foreground.setPointerCapture?.(event.pointerId);
+  });
+  foreground.addEventListener("pointermove", (event) => {
+    if (!dragging) return;
+    const deltaX = event.clientX - startX;
+    const deltaY = event.clientY - startY;
+    if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 12) {
+      dragging = false;
+      pointerId = null;
+      close();
+      return;
+    }
+    currentX = Math.max(-deleteWidth, Math.min(0, deltaX));
+    row.classList.toggle("routine-swiping", currentX < -8);
+    foreground.style.transform = `translateX(${currentX}px)`;
+  });
+  foreground.addEventListener("pointerup", finish);
+  foreground.addEventListener("pointercancel", () => {
+    dragging = false;
+    pointerId = null;
+    close();
+  });
+  foreground.addEventListener("click", (event) => {
+    if (Date.now() < suppressClickUntil) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+  }, true);
 }
 
 function renderRoutineManager() {
@@ -1845,6 +2033,19 @@ function renderRoutineManager() {
   renderRoutineCalendar();
   routines.forEach((routine, routineIndex) => {
     const theme = routineTheme(routine);
+    const swipeRow = createElement("article", "routine-swipe-row");
+    const remove = createElement("button", "routine-swipe-delete", "Eliminar");
+    remove.type = "button";
+    remove.setAttribute("aria-label", `Eliminar rutina ${routine.name}`);
+    remove.addEventListener("click", () => {
+      if (!window.confirm(
+        `¿Eliminar “${routine.name}” del plan? La rutina dejará de aparecer en el plan, pero tu historial y diario se conservarán.`,
+      )) return;
+      commit(
+        (next) => archiveRoutine(next, routine.id),
+        `Rutina ${routine.name} eliminada del plan. Tu historial se conserva.`,
+      );
+    });
     const card = createElement("button", `routine-overview-card surface ${routineVisualClasses(routine)}`);
     card.type = "button";
     card.classList.toggle("routine-card-demo", Boolean(routine.isDemo));
@@ -1857,7 +2058,7 @@ function renderRoutineManager() {
       createElement(
         "small",
         "",
-        `${countLabel(routineScheduledWeekdayCount(routine), "día")} · ${countLabel(routineExerciseCount(routine), "ejercicio")}`,
+        `${countLabel(routineScheduledWeekdayCount(routine), "día")} · ${countLabel(routineActivityCount(routine), "actividad", "actividades")}`,
       ),
     );
     const weekdays = createElement("span", "routine-weekday-pills");
@@ -1871,7 +2072,9 @@ function renderRoutineManager() {
       renderRoutineManager();
       window.scrollTo({ top: 0, behavior: "smooth" });
     });
-    list.appendChild(card);
+    swipeRow.append(remove, card);
+    attachRoutineSwipe(swipeRow, card);
+    list.appendChild(swipeRow);
   });
 
   if (!routines.length) {
@@ -1890,7 +2093,7 @@ function renderRoutineManager() {
   if (!selectedRoutine) return;
   $("plannedWorkoutPanel").hidden = true;
   $("routineDetailTitle").textContent = selectedRoutine.name;
-  $("routineDetailMeta").textContent = `${countLabel(routineScheduledWeekdayCount(selectedRoutine), "día")} · ${countLabel(routineExerciseCount(selectedRoutine), "ejercicio")}`;
+  $("routineDetailMeta").textContent = `${countLabel(routineScheduledWeekdayCount(selectedRoutine), "día")} · ${countLabel(routineActivityCount(selectedRoutine), "actividad", "actividades")}`;
   $("routineSpotlight").replaceChildren(createRoutineSpotlight(selectedRoutine));
   document.querySelectorAll('input[name="selectedRoutineAccentColor"]').forEach((input) => {
     input.checked = input.value === (selectedRoutine.accentColor ?? "auto");
@@ -1934,6 +2137,7 @@ function renderRoutineExerciseOptions(query = "") {
 }
 
 function sessionSetCount(session) {
+  if ((session?.sessionType ?? "strength") === "cardio") return session.cardio?.completedAt ? 1 : 0;
   return session.exercises.reduce((total, exercise) => total + exercise.sets.length, 0);
 }
 
@@ -2053,17 +2257,19 @@ function renderSetForm(session, sessionExercise, reference) {
   setTypeGroup.appendChild(setTypeLegend);
   const setTypeInputs = new Map();
   [
-    ["effective", "Efectiva"],
-    ["approach", "Aprox."],
-    ["warmup", "Calent."],
-  ].forEach(([value, label], index) => {
+    ["effective", "Efectiva", "Efectiva"],
+    ["approach", "Aprox.", "Aproximación"],
+    ["warmup", "Calent.", "Calentamiento"],
+  ].forEach(([value, label, fullLabel], index) => {
     const option = createElement("label", `set-type-option ${setTypeClass(value)}`);
     const input = document.createElement("input");
     input.type = "radio";
     input.name = "setType";
     input.value = value;
     input.checked = index === 0;
-    option.append(input, createElement("span", "", label));
+    const labelSpan = createElement("span", "", label);
+    labelSpan.dataset.fullLabel = fullLabel;
+    option.append(input, labelSpan);
     setTypeInputs.set(value, input);
     setTypeGroup.appendChild(option);
   });
@@ -2101,10 +2307,9 @@ function renderSetForm(session, sessionExercise, reference) {
   load.label.classList.add("set-field-load");
   reps.label.classList.add("set-field-reps");
   rir.label.classList.add("set-field-rir");
-  [load.label, reps.label, rir.label].forEach((label) => {
-    label.childNodes[0]?.remove();
-  });
-  load.label.replaceChildren(loadStepper);
+  load.label.replaceChildren(createElement("span", "set-field-label", "Peso · kg"), loadStepper);
+  reps.label.replaceChildren(createElement("span", "set-field-label", "Reps"), reps.input);
+  rir.label.replaceChildren(createElement("span", "set-field-label", "RIR"), rir.input);
   applySetInputHints(reference, sessionExercise.sets.length + 1, {
     load: load.input,
     reps: reps.input,
@@ -2473,9 +2678,13 @@ function renderSessionExercise(session, sessionExercise) {
     );
     const foreground = createElement("div", "set-row-content");
     foreground.appendChild(createElement("span", "set-number set-complete", String(workoutSet.order)));
-    foreground.appendChild(createElement("strong", "set-cell set-load", workoutSet.loadKg === null ? "—" : `${workoutSet.loadKg} kg`));
-    foreground.appendChild(createElement("span", "set-cell set-reps", `${workoutSet.reps}`));
-    foreground.appendChild(createElement("span", "set-cell set-rir", workoutSet.rir ?? "—"));
+    const loadCell = createElement("strong", "set-cell set-load", workoutSet.loadKg === null ? "—" : `${workoutSet.loadKg} kg`);
+    loadCell.dataset.label = "Peso";
+    const repsCell = createElement("span", "set-cell set-reps", `${workoutSet.reps}`);
+    repsCell.dataset.label = "Reps";
+    const rirCell = createElement("span", "set-cell set-rir", workoutSet.rir ?? "—");
+    rirCell.dataset.label = "RIR";
+    foreground.append(loadCell, repsCell, rirCell);
     foreground.appendChild(createElement("span", `set-type-badge ${setTypeClass(workoutSet)}`, setTypeText(workoutSet)));
     const actions = createElement("div", "item-actions set-row-actions");
     actions.append(
@@ -2492,7 +2701,7 @@ function renderSessionExercise(session, sessionExercise) {
 
   if (!list.children.length) {
     const empty = createElement("li", "empty-state");
-    empty.textContent = "Aún no hay series. Registra la primera a la derecha.";
+    empty.textContent = "Aún no hay series. Registra la primera en el formulario inferior.";
     list.appendChild(empty);
   }
 
@@ -2537,27 +2746,60 @@ function renderTraining() {
   $("startFreeSessionBtn").disabled = Boolean(active);
 
   if (active) {
+    const isCardioSession = (active.sessionType ?? "strength") === "cardio";
     $("activeSessionResumeTitle").textContent = active.source.label;
-    $("activeSessionResumeMeta").textContent = `${countLabel(sessionSetCount(active), "serie")} guardadas · pulsa para continuar`;
+    $("activeSessionResumeMeta").textContent = isCardioSession
+      ? `${cardioSummary(active.cardio)} · pulsa para continuar`
+      : `${countLabel(sessionSetCount(active), "serie")} guardadas · pulsa para continuar`;
     $("activeSessionTitle").textContent = active.source.label;
-    $("activeSessionMeta").textContent = `Iniciada ${formatDateTime(active.startedAt)} · ${countLabel(sessionSetCount(active), "serie")} guardadas`;
+    $("activeSessionMeta").textContent = isCardioSession
+      ? `Iniciada ${formatDateTime(active.startedAt)} · ${cardioSummary(active.cardio)}`
+      : `Iniciada ${formatDateTime(active.startedAt)} · ${countLabel(sessionSetCount(active), "serie")} guardadas`;
     $("sessionExerciseList").replaceChildren();
-    active.exercises
+    $("sessionExerciseList").hidden = isCardioSession;
+    $("cardioSessionForm").hidden = !isCardioSession || trainingView !== "session";
+    document.querySelector(".exercise-picker").hidden = isCardioSession;
+    if (isCardioSession) {
+      setCardioForm(active);
+      updateCardioPacePreview();
+    }
+    if (!isCardioSession) active.exercises
       .slice()
       .sort((a, b) => a.order - b.order)
       .forEach((exercise) => $("sessionExerciseList").appendChild(renderSessionExercise(active, exercise)));
-    if (!active.exercises.length) {
+    if (!isCardioSession && !active.exercises.length) {
       renderEmpty(
         $("sessionExerciseList"),
         "Añade el primer ejercicio",
         "Usa el catálogo completo o crea uno personal.",
       );
     }
+  } else {
+    $("sessionExerciseList").hidden = false;
+    $("cardioSessionForm").hidden = true;
+    document.querySelector(".exercise-picker").hidden = false;
   }
 
   $("undoBar").hidden = !state.training.undo;
   renderCatalogResults();
   updateActiveSessionElapsed();
+}
+
+function setCardioForm(session) {
+  const cardio = session.cardio ?? {};
+  $("cardioDistanceKm").value = cardio.distanceKm ?? "";
+  $("cardioDuration").value = cardio.durationSeconds ? formatWorkoutDuration(cardio.durationSeconds) : "";
+  $("cardioSteps").value = cardio.steps ?? "";
+  $("cardioNote").value = cardio.note ?? "";
+}
+
+function updateCardioPacePreview() {
+  const distance = numberValue("cardioDistanceKm");
+  const duration = parseDurationInput($("cardioDuration").value);
+  const pace = Number(distance) > 0 && Number(duration) > 0
+    ? Math.round(duration / distance)
+    : null;
+  $("cardioPacePreview").textContent = `Ritmo ${formatPace(pace)}`;
 }
 
 function updateActiveSessionElapsed() {
@@ -2726,7 +2968,7 @@ function renderCatalogResults() {
 
 async function loadCatalog() {
   try {
-    const response = await fetch("./data/exercises.es.json?v=44", { cache: "no-cache" });
+    const response = await fetch("./data/exercises.es.json?v=50", { cache: "no-cache" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     if (!Array.isArray(payload.exercises)) throw new Error("Estructura no válida");
@@ -2764,9 +3006,39 @@ const tabIds = new Set([
 
 function showTab(tabId, { updateUrl = true } = {}) {
   if (!tabIds.has(tabId)) return;
+  const tabs = [...document.querySelectorAll(".tab")];
+  const tabIndex = tabs.findIndex((button) => button.dataset.tab === tabId);
+  const tabsNav = document.querySelector(".tabs");
+  const previousIndex = Number(tabsNav?.dataset.activeIndex ?? tabIndex);
   document.querySelectorAll(".tab, .panel").forEach((element) => element.classList.remove("active"));
   document.querySelector(`.tab[data-tab="${tabId}"]`)?.classList.add("active");
+  tabs.forEach((button) => {
+    if (button.dataset.tab === tabId) button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
+  });
   $(tabId).classList.add("active");
+  if (tabsNav) {
+    tabsNav.classList.remove("is-switching");
+    if (tabIndex >= 0) {
+      const directionMultiplier = tabIndex < previousIndex ? -1 : 1;
+      tabsNav.style.setProperty("--previous-tab-index", previousIndex);
+      tabsNav.style.setProperty("--active-tab-index", tabIndex);
+      tabsNav.style.setProperty("--nav-direction", directionMultiplier);
+      tabsNav.dataset.activeIndex = String(tabIndex);
+      tabsNav.dataset.hasActiveTab = "true";
+      tabsNav.dataset.direction = tabIndex < previousIndex ? "backward" : "forward";
+      if (tabIndex !== previousIndex) {
+        void tabsNav.offsetWidth;
+        tabsNav.classList.add("is-switching");
+        window.clearTimeout(navAnimationTimer);
+        navAnimationTimer = window.setTimeout(() => {
+          tabsNav.classList.remove("is-switching");
+        }, 760);
+      }
+    } else {
+      tabsNav.dataset.hasActiveTab = "false";
+    }
+  }
   if (updateUrl && window.location.hash !== `#${tabId}`) {
     window.history.pushState({}, "", `#${tabId}`);
   }
@@ -2926,9 +3198,12 @@ $("createRoutineForm").addEventListener("submit", (event) => {
   const name = $("routineName").value;
   const weekdays = selectedWeekdays("newRoutineWeekdays");
   const selectedColor = document.querySelector('input[name="routineAccentColor"]:checked')?.value ?? "auto";
+  const selectedType = document.querySelector('input[name="routineDayType"]:checked')?.value ?? "strength";
   const saved = commit(
     (next) => createRoutineWithWeekdays(next, name, weekdays, {
       accentColor: selectedColor === "auto" ? null : selectedColor,
+      dayType: selectedType,
+      cardioType: selectedType === "cardio" ? "run" : "run",
     }),
     `Rutina ${name.trim()} creada con ${countLabel(weekdays.length, "día")}.`,
   );
@@ -2966,7 +3241,8 @@ $("addRoutineDayForm").addEventListener("submit", (event) => {
     return;
   }
   commit((next) => {
-    const day = addRoutineDay(next, selectedRoutineId, weekdayName(weekday));
+    const type = $("addRoutineDayType").value === "cardio" ? "cardio" : "strength";
+    const day = addRoutineDay(next, selectedRoutineId, weekdayName(weekday), { type, cardioType: "run" });
     setRoutineDayWeekday(next, selectedRoutineId, day.id, weekday);
   }, `Variante para ${weekdayName(weekday)} creada dentro de la rutina.`);
 });
@@ -2986,6 +3262,27 @@ $("continueSessionBtn").addEventListener("click", () => {
   window.scrollTo({ top: 0, behavior: "smooth" });
 });
 
+["cardioDistanceKm", "cardioDuration"].forEach((id) => {
+  $(id).addEventListener("input", updateCardioPacePreview);
+});
+
+$("cardioSessionForm").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const active = getActiveSession(state);
+  if (!active) return;
+  const durationSeconds = parseDurationInput($("cardioDuration").value);
+  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+    showNotice("Introduce el tiempo como mm:ss, por ejemplo 25:00.", { error: true });
+    return;
+  }
+  commit((next) => addCardioToSession(next, active.id, {
+    distanceKm: numberValue("cardioDistanceKm"),
+    durationSeconds,
+    steps: numberValue("cardioSteps"),
+    note: $("cardioNote").value,
+  }), "Cardio guardado. El ritmo se calculó automáticamente.");
+});
+
 $("backToRoutinesBtn").addEventListener("click", () => {
   trainingView = "routines";
   renderTraining();
@@ -2996,7 +3293,11 @@ function confirmDiscardActiveSession() {
   const active = getActiveSession(state);
   if (!active) return;
   const savedSets = sessionSetCount(active);
-  const detail = savedSets
+  const detail = (active.sessionType ?? "strength") === "cardio"
+    ? active.cardio?.completedAt
+      ? " Se eliminará el cardio registrado sin añadirlo al Diario."
+      : " No se añadirá nada al Diario."
+    : savedSets
     ? ` Se eliminarán ${countLabel(savedSets, "serie")} de esta sesión sin añadirlas al Diario.`
     : " No se añadirá nada al Diario.";
   if (!window.confirm(`¿Descartar “${active.source.label}”?${detail} Esta acción no se puede deshacer.`)) return;
@@ -3087,6 +3388,8 @@ $("settingsForm").addEventListener("submit", (event) => {
   event.preventDefault();
   const selectedAccent = document.querySelector('input[name="accentColor"]:checked')?.value
     ?? defaultPreferences.accentColor;
+  const selectedAppearance = document.querySelector('input[name="appearanceMode"]:checked')?.value
+    ?? defaultPreferences.appearanceMode;
   const saved = commit((next) => {
     ensureUiState(next);
     next.owner.displayName = $("profileName").value.trim();
@@ -3102,6 +3405,7 @@ $("settingsForm").addEventListener("submit", (event) => {
     };
     next.owner.preferences = {
       accentColor: selectedAccent,
+      appearanceMode: selectedAppearance,
       effortScale: $("effortScale").value || defaultPreferences.effortScale,
       defaultRestSeconds: numberValue("defaultRestSeconds") || defaultPreferences.defaultRestSeconds,
     };
@@ -3116,6 +3420,18 @@ document.querySelectorAll('input[name="accentColor"]').forEach((input) => {
       owner: {
         ...state.owner,
         preferences: { ...getPreferences(), accentColor: input.value },
+      },
+    });
+  });
+});
+
+document.querySelectorAll('input[name="appearanceMode"]').forEach((input) => {
+  input.addEventListener("change", () => {
+    applyThemePreferences({
+      ...state,
+      owner: {
+        ...state.owner,
+        preferences: { ...getPreferences(), appearanceMode: input.value },
       },
     });
   });

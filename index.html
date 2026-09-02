@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es">
+<html lang="es" data-theme="dark" data-theme-preference="system">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -8,21 +8,35 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Aurum Fit" />
     <title>Aurum Fit</title>
-    <link rel="manifest" href="manifest.json?v=44" />
-    <link rel="apple-touch-icon" href="icon.svg?v=44" />
-    <link rel="stylesheet" href="styles.css?v=44" />
+    <script>
+      (() => {
+        try {
+          const saved = JSON.parse(localStorage.getItem("aurum-fit-v2") || "null");
+          const preference = saved?.owner?.preferences?.appearanceMode || "system";
+          const resolved = preference === "system"
+            ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+            : preference;
+          document.documentElement.dataset.themePreference = preference;
+          document.documentElement.dataset.theme = resolved;
+        } catch {}
+      })();
+    </script>
+    <link rel="manifest" href="manifest.json?v=50" />
+    <link rel="apple-touch-icon" href="icon.svg?v=50" />
+    <link rel="stylesheet" href="styles.css?v=50" />
   </head>
   <body>
     <main>
       <nav class="tabs" aria-label="Secciones principales">
+        <span class="tab-liquid-indicator" aria-hidden="true"><span></span></span>
         <button class="tab" type="button" data-tab="entreno">
-          <svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#dumbbell"></use></svg> Rutinas
+          <svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#dumbbell"></use></svg><span class="tab-label">Rutinas</span>
         </button>
-        <button class="tab active" type="button" data-tab="diario">
-          <svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#diary"></use></svg> Diario
+        <button class="tab active" type="button" data-tab="diario" aria-current="page">
+          <svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#diary"></use></svg><span class="tab-label">Diario</span>
         </button>
         <button class="tab" type="button" data-tab="comida">
-          <svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#apple"></use></svg> Nutrición
+          <svg class="ui-icon" aria-hidden="true"><use href="assets/icons.svg#apple"></use></svg><span class="tab-label">Nutrición</span>
         </button>
       </nav>
 
@@ -260,6 +274,13 @@
                 <summary><span class="create-routine-plus" aria-hidden="true"><svg class="ui-icon"><use href="assets/icons.svg#plus"></use></svg></span><span><strong>Crear nueva rutina</strong><small>Elige nombre y días de repetición</small></span></summary>
                 <form id="createRoutineForm" class="create-routine-form">
                   <label>Nombre de la rutina<input id="routineName" type="text" minlength="2" maxlength="80" placeholder="Ej. Push Pull Legs" required /></label>
+                  <fieldset class="routine-type-fieldset">
+                    <legend>Tipo de entrenamiento</legend>
+                    <div class="routine-type-picker" aria-label="Tipo de entrenamiento">
+                      <label><input type="radio" name="routineDayType" value="strength" checked /><span><strong>Fuerza</strong><small>Series, peso, reps y RIR</small></span></label>
+                      <label><input type="radio" name="routineDayType" value="cardio" /><span><strong>Cardio</strong><small>Distancia, tiempo y ritmo</small></span></label>
+                    </div>
+                  </fieldset>
                   <fieldset class="routine-color-fieldset">
                     <legend>Color de la rutina</legend>
                     <div class="routine-color-picker" aria-label="Color de la nueva rutina">
@@ -329,6 +350,7 @@
             <div id="routineDetailDays" class="routine-day-list"></div>
             <form id="addRoutineDayForm" class="add-routine-day surface">
               <div><strong>+ Crear entrenamiento diferente</strong><small>Solo si quieres una variante distinta dentro de esta rutina.</small></div>
+              <label class="routine-day-type-select">Tipo<select id="addRoutineDayType"><option value="strength">Fuerza</option><option value="cardio">Cardio</option></select></label>
               <div id="addRoutineDayWeekdays" class="weekday-selector compact-weekdays" aria-label="Nuevo día de entrenamiento"></div>
               <button class="button button-secondary" type="submit">Crear variante</button>
             </form>
@@ -356,6 +378,23 @@
           </div>
 
           <div id="sessionExerciseList" class="session-exercises"></div>
+
+          <form id="cardioSessionForm" class="cardio-session-card surface color-panel color-panel-orange" hidden>
+            <div class="section-heading compact">
+              <div>
+                <p class="eyebrow">Cardio</p>
+                <h3>Registrar carrera</h3>
+              </div>
+              <span id="cardioPacePreview" class="count-badge">Ritmo --:-- / km</span>
+            </div>
+            <div class="cardio-form-grid">
+              <label>Distancia <span>km</span><input id="cardioDistanceKm" type="number" min="0.01" max="1000" step="0.01" inputmode="decimal" placeholder="5.00" /></label>
+              <label>Tiempo <span>mm:ss o hh:mm:ss</span><input id="cardioDuration" type="text" inputmode="numeric" placeholder="25:00" /></label>
+              <label>Pasos <span>opcional</span><input id="cardioSteps" type="number" min="0" max="200000" step="1" inputmode="numeric" placeholder="6200" /></label>
+              <label class="wide">Notas <span>opcional</span><textarea id="cardioNote" rows="3" maxlength="300" placeholder="Terreno, sensaciones, molestias..."></textarea></label>
+            </div>
+            <button class="button button-accent button-large" type="submit">Guardar cardio</button>
+          </form>
 
           <details class="exercise-picker surface">
             <summary class="exercise-picker-summary">
@@ -486,7 +525,14 @@
 
           <section id="settingsAppearanceView" class="settings-view settings-subview" data-settings-view="appearance" hidden aria-labelledby="settingsAppearanceTitle">
             <div class="settings-section surface">
-              <div class="settings-section-heading"><div><p class="eyebrow">Apariencia</p><h3 id="settingsAppearanceTitle">Color de acento</h3></div></div>
+              <div class="settings-section-heading"><div><p class="eyebrow">Apariencia</p><h3 id="settingsAppearanceTitle">Tema de la app</h3></div></div>
+              <fieldset class="appearance-picker">
+                <legend>Modo</legend>
+                <label><input type="radio" name="appearanceMode" value="system" /><span><strong>Automático</strong><small>Sigue la apariencia del móvil</small></span></label>
+                <label><input type="radio" name="appearanceMode" value="dark" /><span><strong>Oscuro</strong><small>Negro deportivo</small></span></label>
+                <label><input type="radio" name="appearanceMode" value="light" /><span><strong>Claro</strong><small>Limpio y luminoso</small></span></label>
+              </fieldset>
+              <div class="settings-section-heading appearance-accent-heading"><div><p class="eyebrow">Personalización</p><h3>Color de acento</h3></div></div>
               <fieldset class="accent-picker">
                 <legend class="visually-hidden">Color de acento</legend>
                 <label><input type="radio" name="accentColor" value="lime" /><span style="--swatch:#c7f464">Lima</span></label>
@@ -543,6 +589,6 @@
 
     </main>
 
-    <script type="module" src="app.js?v=44"></script>
+    <script type="module" src="app.js?v=50"></script>
   </body>
 </html>

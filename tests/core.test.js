@@ -9,7 +9,10 @@ import {
   addExerciseToRoutineDay,
   addExerciseToSession,
   addRoutineDay,
+  addCardioToSession,
+  archiveRoutine,
   addSetToExercise,
+  cardioPaceSecondsPerKm,
   completeSession,
   cleanupPublishedData,
   createEmptyState,
@@ -39,6 +42,7 @@ import {
   startSessionFromRoutineDay,
   updateSet,
   validateLabelPhotoFile,
+  validateCardioInput,
   validateState,
   validateSetInput,
 } from "../core.js";
@@ -102,17 +106,23 @@ test("crea y valida preferencias de apariencia y entrenamiento", () => {
 
   assert.deepEqual(state.owner.preferences, {
     accentColor: "lime",
+    appearanceMode: "system",
     effortScale: "rir",
     defaultRestSeconds: 60,
   });
 
   state.owner.preferences.accentColor = "violet";
+  state.owner.preferences.appearanceMode = "light";
   state.owner.preferences.effortScale = "rpe";
   state.owner.preferences.defaultRestSeconds = 90;
   assert.equal(validateState(state), null);
 
   state.owner.preferences.accentColor = "neon-random";
   assert.match(validateState(state), /color de acento/i);
+
+  state.owner.preferences.accentColor = "lime";
+  state.owner.preferences.appearanceMode = "sepia";
+  assert.match(validateState(state), /modo de apariencia/i);
 });
 
 test("abre en memoria y conserva el legado si el almacenamiento está lleno", () => {
@@ -429,6 +439,8 @@ test("inicia desde un día y conserva una copia histórica al editar la rutina",
     routineName: "Torso-pierna",
     routineDayName: "Torso",
     routineAccentColor: null,
+    routineDayType: "strength",
+    cardioType: null,
   });
   assert.deepEqual(session.exercises.map((exercise) => exercise.exerciseName), ["Press banca"]);
   assert.deepEqual(torso.exercises.map((exercise) => exercise.exerciseName), ["Press banca"]);
@@ -759,6 +771,70 @@ test("permite cambiar varios días de repetición en un mismo bloque", () => {
   setRoutineDayWeekdays(state, first.id, firstDay.id, [5]);
   assert.deepEqual(routineDayWeekdays(firstDay), [5]);
   assert.equal(validateState(state), null);
+});
+
+test("crea una rutina de correr y calcula ritmo desde distancia y tiempo", () => {
+  const state = createEmptyState({ now: "2026-09-02T08:00:00.000Z" });
+  const routine = createRoutineWithWeekdays(state, "Correr suave", [3], {
+    id: "routine-run",
+    dayType: "cardio",
+    cardioType: "run",
+  });
+
+  const day = routine.days[0];
+  assert.equal(day.type, "cardio");
+  assert.equal(day.cardioType, "run");
+  assert.equal(day.exercises.length, 0);
+  assert.equal(cardioPaceSecondsPerKm(5, 1500), 300);
+
+  const session = startSessionFromRoutineDay(state, routine.id, day.id, {
+    id: "session-run",
+    now: "2026-09-02T18:00:00.000Z",
+  });
+  assert.equal(session.sessionType, "cardio");
+  assert.equal(session.cardio.activityType, "run");
+  assert.equal(session.exercises.length, 0);
+  assert.equal(validateState(state), null);
+
+  const activity = addCardioToSession(state, session.id, {
+    distanceKm: 5,
+    durationSeconds: 1500,
+    steps: 6200,
+    note: "Ritmo cómodo",
+  }, { id: "cardio-run-1", now: "2026-09-02T18:25:00.000Z" });
+  assert.equal(activity.paceSecondsPerKm, 300);
+
+  completeSession(state, session.id, "2026-09-02T18:26:00.000Z");
+  assert.equal(state.legacy.days["2026-09-02"].cardioMinutes, 25);
+  assert.equal(state.legacy.days["2026-09-02"].steps, 6200);
+  assert.equal(state.legacy.days["2026-09-02"].workouts[0].type, "cardio");
+});
+
+test("archiva una rutina sin borrar su historial de sesiones", () => {
+  const state = createEmptyState({ now: "2026-09-02T08:00:00.000Z" });
+  const routine = createRoutineWithWeekdays(state, "Correr", [2], { id: "routine-run" });
+  const day = routine.days[0];
+  addExerciseToRoutineDay(state, routine.id, day.id, "Sentadilla", { exerciseId: "squat" });
+  const session = startSessionFromRoutineDay(state, routine.id, day.id, {
+    id: "session-history",
+    sessionExerciseIds: ["session-exercise"],
+  });
+  addSetToExercise(state, session.id, session.exercises[0].id, { reps: 8, loadKg: 80 });
+  completeSession(state, session.id, "2026-09-02T09:00:00.000Z");
+
+  archiveRoutine(state, routine.id, "2026-09-02T10:00:00.000Z");
+
+  assert.equal(routine.status, "archived");
+  assert.equal(state.training.sessions.length, 1);
+  assert.throws(() => archiveRoutine(state, routine.id), /activa/i);
+  assert.equal(validateState(state), null);
+});
+
+test("valida cardio con distancia y tiempo obligatorios", () => {
+  assert.equal(validateCardioInput({ distanceKm: 5, durationSeconds: 1500 }).value.paceSecondsPerKm, 300);
+  assert.match(validateCardioInput({ distanceKm: "", durationSeconds: 1500 }).error, /distancia/i);
+  assert.match(validateCardioInput({ distanceKm: 5, durationSeconds: "" }).error, /tiempo/i);
+  assert.match(validateCardioInput({ distanceKm: 5, durationSeconds: 1500, steps: 1.5 }).error, /pasos/i);
 });
 
 test("una rutina real puede sustituir un día ocupado solo por la demostración", () => {

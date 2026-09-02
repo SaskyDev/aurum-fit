@@ -15,7 +15,10 @@ const MAX_WEEKDAY = 6;
 const MAX_LABEL_PHOTO_BYTES = 15 * 1024 * 1024;
 const SET_TYPES = new Set(["effective", "approach", "warmup"]);
 const ACCENT_COLORS = new Set(["lime", "orange", "blue", "violet", "red", "steel"]);
+const APPEARANCE_MODES = new Set(["system", "dark", "light"]);
 const EFFORT_SCALES = new Set(["rir", "rpe", "none"]);
+const ROUTINE_DAY_TYPES = new Set(["strength", "cardio"]);
+const CARDIO_TYPES = new Set(["run", "walk"]);
 const STORAGE_RECOVERY_MESSAGE =
   "No se pudo preparar el guardado local. Los datos existentes no se han borrado. "
   + "Exporta una copia y libera espacio del navegador antes de continuar.";
@@ -26,6 +29,17 @@ function isObject(value) {
 
 function copy(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+function dateKeyFromIso(value) {
+  return String(value).slice(0, 10);
+}
+
+function ensureLegacyDay(state, date) {
+  state.legacy.days[date] ??= { foods: [], workouts: [] };
+  state.legacy.days[date].foods ??= [];
+  state.legacy.days[date].workouts ??= [];
+  return state.legacy.days[date];
 }
 
 function sanitizeLegacyDays(legacyDays) {
@@ -56,6 +70,19 @@ export function routineDayWeekdays(routineDay) {
     .sort((left, right) => ((left + 6) % 7) - ((right + 6) % 7));
 }
 
+export function routineDayType(routineDay) {
+  return routineDay?.type === "cardio" ? "cardio" : "strength";
+}
+
+export function cardioPaceSecondsPerKm(distanceKm, durationSeconds) {
+  const distance = Number(distanceKm);
+  const duration = Number(durationSeconds);
+  if (!Number.isFinite(distance) || distance <= 0 || !Number.isFinite(duration) || duration <= 0) {
+    return null;
+  }
+  return Math.round(duration / distance);
+}
+
 export function createId(prefix = "id") {
   const randomPart = globalThis.crypto?.randomUUID?.()
     ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
@@ -75,6 +102,7 @@ export function createEmptyState({ now = new Date().toISOString(), legacyDays = 
       },
       preferences: {
         accentColor: "lime",
+        appearanceMode: "system",
         effortScale: "rir",
         defaultRestSeconds: 60,
       },
@@ -123,6 +151,12 @@ export function validateState(state) {
       && !ACCENT_COLORS.has(state.owner.preferences.accentColor)
     ) {
       return "El color de acento no es válido.";
+    }
+    if (
+      state.owner.preferences.appearanceMode !== undefined
+      && !APPEARANCE_MODES.has(state.owner.preferences.appearanceMode)
+    ) {
+      return "El modo de apariencia no es válido.";
     }
     if (
       state.owner.preferences.effortScale !== undefined
@@ -205,6 +239,12 @@ export function validateState(state) {
         || typeof routineDay.id !== "string"
         || typeof routineDay.name !== "string"
         || !Number.isInteger(routineDay.order)
+        || !ROUTINE_DAY_TYPES.has(routineDayType(routineDay))
+        || (
+          routineDay.cardioType !== undefined
+          && routineDay.cardioType !== null
+          && !CARDIO_TYPES.has(routineDay.cardioType)
+        )
         || !Array.isArray(routineDay.exercises)
         || (
           routineDay.weekday !== undefined
@@ -287,9 +327,24 @@ export function validateState(state) {
       || !isObject(session.source)
       || typeof session.source.type !== "string"
       || typeof session.source.label !== "string"
+      || !ROUTINE_DAY_TYPES.has(session.sessionType ?? "strength")
       || !Array.isArray(session.exercises)
     ) {
       return "Hay una sesión no válida.";
+    }
+    if (session.sessionType === "cardio") {
+      if (!isObject(session.cardio) || !CARDIO_TYPES.has(session.cardio.activityType ?? "run")) {
+        return "Hay una actividad de cardio no válida.";
+      }
+      const cardioPending = session.status === "in_progress"
+        && session.cardio.distanceKm === null
+        && session.cardio.durationSeconds === null;
+      if (!cardioPending) {
+        const checkedCardio = validateCardioInput(session.cardio);
+        if (checkedCardio.error) return "Hay una actividad de cardio no válida.";
+      }
+    } else if (session.cardio !== undefined && session.cardio !== null) {
+      return "Una sesión de fuerza no puede contener cardio.";
     }
     if (session.status === "completed" && typeof session.endedAt !== "string") {
       return "Una sesión finalizada no tiene fecha de fin.";
@@ -517,6 +572,8 @@ export function createRoutine(
     now = new Date().toISOString(),
     id = createId("routine"),
     accentColor = null,
+    dayType = "strength",
+    cardioType = "run",
   } = {},
 ) {
   const result = validateShortName(name, "El nombre de la rutina", {
@@ -560,6 +617,8 @@ export function createRoutineWithWeekdays(
     now = new Date().toISOString(),
     id = createId("routine"),
     accentColor = null,
+    dayType = "strength",
+    cardioType = "run",
   } = {},
 ) {
   if (!Array.isArray(weekdays) || !weekdays.length) {
@@ -597,6 +656,8 @@ export function createRoutineWithWeekdays(
   const day = addRoutineDay(state, routine.id, sortedWeekdays.length === 1 ? weekdayLabel(sortedWeekdays[0]) : "Entrenamiento", {
     now,
     id: createId("routine-day"),
+    type: dayType,
+    cardioType,
   });
   setRoutineDayWeekdays(state, routine.id, day.id, sortedWeekdays, now);
   return routine;
@@ -617,6 +678,17 @@ export function setRoutineAccentColor(
   return routine;
 }
 
+export function archiveRoutine(
+  state,
+  routineId,
+  now = new Date().toISOString(),
+) {
+  const routine = findRoutine(state, routineId);
+  routine.status = "archived";
+  routine.updatedAt = now;
+  return routine;
+}
+
 export function addRoutineDay(
   state,
   routineId,
@@ -624,6 +696,8 @@ export function addRoutineDay(
   {
     now = new Date().toISOString(),
     id = createId("routine-day"),
+    type = "strength",
+    cardioType = "run",
   } = {},
 ) {
   const routine = findRoutine(state, routineId);
@@ -640,11 +714,19 @@ export function addRoutineDay(
   ) {
     throw new Error("Ya existe un día con ese nombre en la rutina.");
   }
+  if (!ROUTINE_DAY_TYPES.has(type)) {
+    throw new Error("El tipo de entrenamiento no es válido.");
+  }
+  if (type === "cardio" && !CARDIO_TYPES.has(cardioType)) {
+    throw new Error("El tipo de cardio no es válido.");
+  }
 
   const routineDay = {
     id,
     name: result.value,
     order: routine.days.length + 1,
+    type,
+    cardioType: type === "cardio" ? cardioType : null,
     weekday: null,
     exercises: [],
   };
@@ -766,6 +848,9 @@ export function addExerciseToRoutineDay(
   } = {},
 ) {
   const { routine, routineDay } = findRoutineDay(state, routineId, routineDayId);
+  if (routineDayType(routineDay) === "cardio") {
+    throw new Error("Un día de cardio no usa ejercicios con series.");
+  }
   const exercise = findOrCreateExercise(state, name, { now, exerciseId });
   if (routineDay.exercises.some((item) => item.exerciseId === exercise.id)) {
     throw new Error("Ese ejercicio ya está incluido en el día.");
@@ -881,9 +966,11 @@ export function startFreeSession(
       routineDayId: null,
       label: "Entrenamiento libre",
     },
+    sessionType: "strength",
     status: "in_progress",
     startedAt: now,
     endedAt: null,
+    cardio: null,
     exercises: [],
   };
   state.training.sessions.push(session);
@@ -904,7 +991,8 @@ export function startSessionFromRoutineDay(
   const active = getActiveSession(state);
   if (active) throw new Error("Ya hay un entrenamiento en curso.");
   const { routine, routineDay } = findRoutineDay(state, routineId, routineDayId);
-  if (!routineDay.exercises.length) {
+  const sessionType = routineDayType(routineDay);
+  if (sessionType === "strength" && !routineDay.exercises.length) {
     throw new Error("Añade al menos un ejercicio al día antes de entrenar.");
   }
 
@@ -920,12 +1008,30 @@ export function startSessionFromRoutineDay(
         routineName: routine.name,
         routineDayName: routineDay.name,
         routineAccentColor: routine.accentColor ?? null,
+        routineDayType: sessionType,
+        cardioType: routineDay.cardioType ?? null,
       },
     },
+    sessionType,
     status: "in_progress",
     startedAt: now,
     endedAt: null,
-    exercises: routineDay.exercises
+    cardio: sessionType === "cardio"
+      ? {
+        id: null,
+        activityType: routineDay.cardioType ?? "run",
+        distanceKm: null,
+        durationSeconds: null,
+        paceSecondsPerKm: null,
+        steps: null,
+        note: "",
+        completedAt: null,
+        updatedAt: null,
+      }
+      : null,
+    exercises: sessionType === "cardio"
+      ? []
+      : routineDay.exercises
       .slice()
       .sort((a, b) => a.order - b.order)
       .map((routineExercise, index) => ({
@@ -1042,6 +1148,43 @@ export function validateSetInput(input) {
   };
 }
 
+export function validateCardioInput(input) {
+  const distance = optionalNumber(input.distanceKm, "La distancia", { min: 0.01, max: 1000, step: 0.01 });
+  if (distance.error) return { error: distance.error };
+  if (distance.value === null) return { error: "La distancia es obligatoria." };
+
+  const duration = optionalNumber(input.durationSeconds, "El tiempo", { min: 1, max: 24 * 60 * 60, step: 1 });
+  if (duration.error) return { error: duration.error };
+  if (duration.value === null) return { error: "El tiempo es obligatorio." };
+
+  const steps = optionalNumber(input.steps, "Los pasos", { min: 0, max: 200000, step: 1 });
+  if (steps.error) return { error: steps.error };
+  if (steps.value !== null && !Number.isInteger(steps.value)) {
+    return { error: "Los pasos deben ser un número entero." };
+  }
+
+  const activityType = input.activityType ?? "run";
+  if (!CARDIO_TYPES.has(activityType)) {
+    return { error: "El tipo de cardio no es válido." };
+  }
+
+  const note = String(input.note ?? "").trim();
+  if (note.length > MAX_NOTE_LENGTH) {
+    return { error: `La nota no puede superar ${MAX_NOTE_LENGTH} caracteres.` };
+  }
+
+  return {
+    value: {
+      activityType,
+      distanceKm: Number(distance.value.toFixed(2)),
+      durationSeconds: duration.value,
+      paceSecondsPerKm: cardioPaceSecondsPerKm(distance.value, duration.value),
+      steps: steps.value,
+      note,
+    },
+  };
+}
+
 export function validateLabelPhotoFile(file) {
   if (!file) return { value: null };
   if (!String(file.type ?? "").startsWith("image/")) {
@@ -1131,6 +1274,33 @@ export function addSetToExercise(
   return workoutSet;
 }
 
+export function addCardioToSession(
+  state,
+  sessionId,
+  input,
+  { now = new Date().toISOString(), id = createId("cardio") } = {},
+) {
+  const session = state.training.sessions.find((item) => item.id === sessionId);
+  if (!session || session.status !== "in_progress") {
+    throw new Error("No hay una sesión editable con ese identificador.");
+  }
+  if ((session.sessionType ?? "strength") !== "cardio") {
+    throw new Error("Esta sesión no es de cardio.");
+  }
+  const result = validateCardioInput({
+    activityType: session.cardio?.activityType ?? input.activityType ?? "run",
+    ...input,
+  });
+  if (result.error) throw new Error(result.error);
+  session.cardio = {
+    id,
+    ...result.value,
+    completedAt: now,
+    updatedAt: now,
+  };
+  return session.cardio;
+}
+
 export function duplicateSet(
   state,
   sessionId,
@@ -1209,17 +1379,40 @@ export function completeSession(state, sessionId, now = new Date().toISOString()
   if (!session || session.status !== "in_progress") {
     throw new Error("No se encontró una sesión en curso.");
   }
+  const isCardioSession = (session.sessionType ?? "strength") === "cardio";
   const completedSets = session.exercises.reduce(
     (total, exercise) => total + exercise.sets.filter((item) => item.status === "completed").length,
     0,
   );
-  if (!completedSets) throw new Error("Añade al menos una serie antes de finalizar.");
+  if (isCardioSession && !session.cardio?.completedAt) {
+    throw new Error("Registra distancia y tiempo antes de finalizar el cardio.");
+  }
+  if (!isCardioSession && !completedSets) throw new Error("Añade al menos una serie antes de finalizar.");
   session.status = "completed";
   session.endedAt = now;
   session.durationSeconds = Math.max(
     0,
     Math.round((new Date(now).getTime() - new Date(session.startedAt).getTime()) / 1000),
   );
+  if (isCardioSession) {
+    const date = dateKeyFromIso(now);
+    const day = ensureLegacyDay(state, date);
+    const cardioMinutes = Math.round((Number(session.cardio.durationSeconds) || 0) / 60);
+    const steps = Number(session.cardio.steps) || 0;
+    day.cardioMinutes = (Number(day.cardioMinutes) || 0) + cardioMinutes;
+    if (steps) day.steps = (Number(day.steps) || 0) + steps;
+    day.workouts.push({
+      type: "cardio",
+      activityType: session.cardio.activityType,
+      distanceKm: session.cardio.distanceKm,
+      durationSeconds: session.cardio.durationSeconds,
+      paceSecondsPerKm: session.cardio.paceSecondsPerKm,
+      steps: session.cardio.steps,
+      note: session.cardio.note,
+      sessionId: session.id,
+      completedAt: now,
+    });
+  }
   state.training.activeSessionId = null;
   state.training.undo = null;
   return session;

@@ -1,4 +1,4 @@
-const SHELL_VERSION = "44";
+const SHELL_VERSION = "50";
 const CACHE_NAME = `aurum-fit-shell-v${SHELL_VERSION}`;
 const ASSETS = [
   `./index.html?v=${SHELL_VERSION}`,
