@@ -173,6 +173,21 @@ falla si alguien las quita.
 - `prefers-reduced-motion` desactiva la transición de color.
 - La miniatura compacta no dibuja la trama: a ese tamaño es ruido.
 
+## Sobre la referencia
+
+El mapa nace de lo que Alex vio en Brenzo. La lectura de sus fuentes oficiales
+(`docs/REFERENCIAS_UX.md`) confirma que allí conviven dos cosas distintas:
+
+- **volumen y distribución del trabajo por grupo muscular**, que es lo que hemos
+  construido;
+- **`Body Rank`**, que compara tu condición con la de personas de tu edad, sexo y
+  peso para señalar grupos desatendidos.
+
+Lo segundo queda descartado a propósito: exige datos poblacionales de referencia
+que no tenemos. Inventar ese percentil sería la métrica fabricada que el resto
+del producto evita. Nuestro mapa responde a "qué me estoy dejando", no a "cómo
+estoy respecto a los demás".
+
 ## Pendiente
 
 - **Logros.** Decidido con Alex: solo hechos verificables recalculables desde el
