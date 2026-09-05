@@ -122,11 +122,24 @@ cuádriceps en vasto lateral, recto femoral y vasto medial, isquiotibiales en do
 vientres, gemelos en dos cabezas, deltoides, dorsales en ala, trapecio en dos
 porciones. Son setenta polígonos, y la mitad es el espejo de la otra.
 
-La primera versión usaba cápsulas redondeadas sobre un esqueleto de
-articulaciones. Alex envió como referencia la pantalla de logros de Brenzo, que
-usa figuras anatómicas facetadas, y se rehízo para acercarse a ese nivel de
-lectura: con cápsulas no se distingue el cuádriceps del aductor, y el mapa
-pierde justo la información que lo hace útil.
+La figura ha pasado por tres versiones, y las dos primeras se descartaron por el
+mismo motivo: no parecían un cuerpo.
+
+1. **Cápsulas sobre un esqueleto de articulaciones.** No distinguía el
+   cuádriceps del aductor: el mapa perdía justo la información que lo hace útil.
+2. **Polígonos con proporciones rectas.** Torso de lados paralelos, hombros que
+   no sobresalían y músculos rectangulares. Leía como una armadura por placas.
+3. **La actual.** Lo que cambió no fueron los músculos sino las proporciones:
+   cintura en V, deltoides coronando el hombro como punto más ancho del cuerpo,
+   brazos colgando separados del tronco con su propio contorno, y vientres
+   afilados de cinco o seis vértices en lugar de rectángulos.
+
+La lección, por si hay una cuarta: en una figura anatómica el realismo está en la
+silueta y en el afilado de cada vientre, no en el número de polígonos.
+
+Sigue sin ser una lámina anatómica, y no pretende serlo. Alcanzar ese nivel
+exigiría un dibujo encargado o con licencia comercial verificable, que es la
+misma decisión pendiente que bloquea las imágenes de ejercicios.
 
 El estilo facetado (polígonos de líneas rectas) es deliberado: **se declara como
 diagrama y no finge ser una lámina anatómica**, que es exactamente lo que este
