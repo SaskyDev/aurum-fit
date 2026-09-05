@@ -42,7 +42,7 @@ import {
   startSessionFromRoutineDay,
   updateSet,
   validateLabelPhotoFile,
-} from "./core.js?v=56";
+} from "./core.js?v=57";
 
 const defaultTargets = { calories: 2200, protein: 170, steps: 10000 };
 const defaultPreferences = {
@@ -3352,7 +3352,7 @@ function backfillExerciseMuscles() {
 
 async function loadCatalog() {
   try {
-    const response = await fetch("./data/exercises.es.json?v=56", { cache: "no-cache" });
+    const response = await fetch("./data/exercises.es.json?v=57", { cache: "no-cache" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     if (!Array.isArray(payload.exercises)) throw new Error("Estructura no válida");
@@ -3381,55 +3381,151 @@ async function loadCatalog() {
 // músculo y la silueta no pueden desalinearse al retocar una postura.
 // ---------------------------------------------------------------------------
 
-const BODY_VIEWBOX = "0 0 120 250";
+const BODY_VIEWBOX = "0 0 140 260";
 
 const BODY_SILHOUETTE = [
-  { t: "e", cx: 60, cy: 17, rx: 10.5, ry: 12.5 },
-  { t: "r", x: 54.5, y: 25, w: 11, h: 14, rx: 5 },
-  { t: "p", d: "M41 47q19-8 38 0l-3 30q-2 16-4.5 24l-.5 14q-15 7-22 0l-.5-14q-2.5-8-4.5-24z" },
-  { t: "r", x: 46, y: 106, w: 28, h: 28, rx: 12 },
-  { t: "r", x: 30, y: 49.71, w: 13, h: 42.58, rx: 6.5, tr: "rotate(9.5 36.50 71.00)" },
-  { t: "r", x: 25.5, y: 91.89, w: 11, h: 36.22, rx: 5.5, tr: "rotate(6.3 31.00 110.00)" },
-  { t: "e", cx: 29, cy: 133, rx: 5, ry: 6 },
-  { t: "r", x: 42.5, y: 127.98, w: 17, h: 54.04, rx: 8.5, tr: "rotate(2.1 51.00 155.00)" },
-  { t: "r", x: 43.75, y: 182, w: 12.5, h: 46, rx: 6.25, tr: "rotate(0.0 50.00 205.00)" },
-  { t: "e", cx: 50, cy: 231, rx: 6.5, ry: 5 },
-  { t: "r", x: 77, y: 49.71, w: 13, h: 42.58, rx: 6.5, tr: "rotate(-9.5 83.50 71.00)" },
-  { t: "r", x: 83.5, y: 91.89, w: 11, h: 36.22, rx: 5.5, tr: "rotate(-6.3 89.00 110.00)" },
-  { t: "e", cx: 91, cy: 133, rx: 5, ry: 6 },
-  { t: "r", x: 60.5, y: 127.98, w: 17, h: 54.04, rx: 8.5, tr: "rotate(-2.1 69.00 155.00)" },
-  { t: "r", x: 63.75, y: 182, w: 12.5, h: 46, rx: 6.25, tr: "rotate(0.0 70.00 205.00)" },
-  { t: "e", cx: 70, cy: 231, rx: 6.5, ry: 5 },
+  "M70 4L76 6L80 11L81 18L79 26L74 33L70 35L66 33L61 26L59 18L60 11L64 6Z",
+  "M63 32L77 32L79 44L70 48L61 44Z",
+  "M70 44L84 46L94 52L97 64L93 88L88 110L86 132L70 138L54 132L52 110L47 88L43 64L46 52L56 46Z",
+  "M52 126L88 126L89 146L80 158L60 158L51 146Z",
+  "M36 50L50 52L47 80L41 112L27 110L30 76Z",
+  "M104 50L90 52L93 80L99 112L113 110L110 76Z",
+  "M27 110L41 112L38 140L34 154L22 152L24 128Z",
+  "M113 110L99 112L102 140L106 154L118 152L116 128Z",
+  "M22 152L34 154L33 164L35 172L31 173L29 166L28 175L24 175L24 165L21 173L18 171L19 161L17 156Z",
+  "M118 152L106 154L107 164L105 172L109 173L111 166L112 175L116 175L116 165L119 173L122 171L121 161L123 156Z",
+  "M50 142L70 146L70 200L67 206L53 206L47 184L47 158Z",
+  "M90 142L70 146L70 200L73 206L87 206L93 184L93 158Z",
+  "M53 206L67 206L66 232L64 246L53 246L51 230Z",
+  "M87 206L73 206L74 232L76 246L87 246L89 230Z",
+  "M53 244L64 244L66 252L58 257L46 257L47 249Z",
+  "M87 244L76 244L74 252L82 257L94 257L93 249Z",
 ];
 
 const MUSCLE_SHAPES = {
   front: {
-    neck: [{ t: "r", x: 55.5, y: 26, w: 9, h: 12, rx: 4 }],
-    shoulders: [{ t: "e", cx: 41.5, cy: 52, rx: 8, ry: 8 }, { t: "e", cx: 78.5, cy: 52, rx: 8, ry: 8 }],
-    chest: [{ t: "p", d: "M47 51q6-4 12-1.5v16q-7 3-13-1z" }, { t: "p", d: "M73 51q-6-4-12-1.5v16q7 3 13-1z" }],
-    serratus: [{ t: "p", d: "M46.5 69l3.5 1 .5 8-3.5-1z" }, { t: "p", d: "M73.5 69l-3.5 1-.5 8 3.5-1z" }],
-    biceps: [{ t: "r", x: 32.74, y: 55.71, w: 8.5, h: 24.7, rx: 4.25, tr: "rotate(9.5 36.99 68.06)" }, { t: "r", x: 78.76, y: 55.71, w: 8.5, h: 24.7, rx: 4.25, tr: "rotate(-9.5 83.01 68.06)" }],
-    forearms: [{ t: "r", x: 27.29, y: 95.51, w: 7.5, h: 28.25, rx: 3.75, tr: "rotate(6.3 31.04 109.64)" }, { t: "r", x: 85.21, y: 95.51, w: 7.5, h: 28.25, rx: 3.75, tr: "rotate(-6.3 88.96 109.64)" }],
-    abs: [{ t: "r", x: 53.5, y: 69, w: 13, h: 38, rx: 5 }],
-    obliques: [{ t: "p", d: "M52.5 74l-4 1.5-.5 22 4.5 4z" }, { t: "p", d: "M67.5 74l4 1.5.5 22-4.5 4z" }],
-    hip_flexors: [{ t: "r", x: 51.5, y: 108, w: 17, h: 11, rx: 5 }],
-    abductors: [{ t: "r", x: 48.95, y: 129.08, w: 5.5, h: 14.05, rx: 2.75, tr: "rotate(2.1 51.70 136.10)" }, { t: "r", x: 65.55, y: 129.08, w: 5.5, h: 14.05, rx: 2.75, tr: "rotate(-2.1 68.30 136.10)" }],
-    adductors: [{ t: "r", x: 52.48, y: 132.49, w: 5.5, h: 33.53, rx: 2.75, tr: "rotate(2.3 55.23 149.25)" }, { t: "r", x: 62.02, y: 132.49, w: 5.5, h: 33.53, rx: 2.75, tr: "rotate(-2.3 64.77 149.25)" }],
-    quads: [{ t: "r", x: 46.02, y: 131.22, w: 10, h: 46.47, rx: 5, tr: "rotate(2.1 51.02 154.46)" }, { t: "r", x: 63.98, y: 131.22, w: 10, h: 46.47, rx: 5, tr: "rotate(-2.1 68.98 154.46)" }],
-    tibialis: [{ t: "r", x: 47, y: 186.6, w: 6, h: 34.96, rx: 3, tr: "rotate(0.0 50.00 204.08)" }, { t: "r", x: 67, y: 186.6, w: 6, h: 34.96, rx: 3, tr: "rotate(0.0 70.00 204.08)" }],
+    neck: [
+      "M64 34L70 37L70 47L64 45L62 39Z",
+      "M76 34L70 37L70 47L76 45L78 39Z",
+    ],
+    traps: [
+      "M62 39L70 42L70 48L53 52L51 46Z",
+      "M78 39L70 42L70 48L87 52L89 46Z",
+    ],
+    shoulders: [
+      "M51 50L41 52L35 62L36 76L45 80L50 68Z",
+      "M89 50L99 52L105 62L104 76L95 80L90 68Z",
+    ],
+    chest: [
+      "M52 55L69 53L69 66L51 68Z",
+      "M51 68L69 66L69 80L58 82L49 76Z",
+      "M88 55L71 53L71 66L89 68Z",
+      "M89 68L71 66L71 80L82 82L91 76Z",
+    ],
+    serratus: [
+      "M50 80L56 84L55 91L49 87Z",
+      "M51 92L57 95L56 101L50 98Z",
+      "M90 80L84 84L85 91L91 87Z",
+      "M89 92L83 95L84 101L90 98Z",
+    ],
+    abs: [
+      "M60 84L69 84L69 94L60.6 94Z",
+      "M60.8 95L69 95L69 105L61.4 105Z",
+      "M61.6 106L69 106L69 116L62.2 116Z",
+      "M62.4 117L69 117L69 128L63 128Z",
+      "M80 84L71 84L71 94L79.4 94Z",
+      "M79.2 95L71 95L71 105L78.6 105Z",
+      "M78.4 106L71 106L71 116L77.8 116Z",
+      "M77.6 117L71 117L71 128L77 128Z",
+    ],
+    obliques: [
+      "M53 88L60 92L60 118L57 124L52 110Z",
+      "M87 88L80 92L80 118L83 124L88 110Z",
+    ],
+    biceps: [
+      "M36 70L45 72L41 104L32 102Z",
+      "M104 70L95 72L99 104L108 102Z",
+    ],
+    forearms: [
+      "M27 116L38 118L35 142L25 140Z",
+      "M113 116L102 118L105 142L115 140Z",
+    ],
+    hip_flexors: [
+      "M58 128L69 130L69 142L60 140Z",
+      "M82 128L71 130L71 142L80 140Z",
+    ],
+    abductors: [
+      "M49 146L56 148L55 164L48 158Z",
+      "M91 146L84 148L85 164L92 158Z",
+    ],
+    quads: [
+      "M49 152L57 150L56 188L51 196L47 176Z",
+      "M58 150L65 152L64 190L57 190Z",
+      "M65 174L70 176L69 198L64 196Z",
+      "M91 152L83 150L84 188L89 196L93 176Z",
+      "M82 150L75 152L76 190L83 190Z",
+      "M75 174L70 176L71 198L76 196Z",
+    ],
+    adductors: [
+      "M66 148L70 150L70 172L65 168Z",
+      "M74 148L70 150L70 172L75 168Z",
+    ],
+    tibialis: [
+      "M55 212L61 214L60 240L55 240Z",
+      "M85 212L79 214L80 240L85 240Z",
+    ],
   },
   back: {
-    neck: [{ t: "r", x: 55.5, y: 26, w: 9, h: 12, rx: 4 }],
-    traps: [{ t: "p", d: "M60 40l15 7-2 13-13 5-13-5-2-13z" }],
-    shoulders: [{ t: "e", cx: 41.5, cy: 52, rx: 8, ry: 8 }, { t: "e", cx: 78.5, cy: 52, rx: 8, ry: 8 }],
-    upper_back: [{ t: "r", x: 49, y: 61, w: 10, h: 15, rx: 4 }, { t: "r", x: 61, y: 61, w: 10, h: 15, rx: 4 }],
-    lats: [{ t: "p", d: "M48 64l-2.5 20 5 13 8.5-7-2-26z" }, { t: "p", d: "M72 64l2.5 20-5 13-8.5-7 2-26z" }],
-    lower_back: [{ t: "r", x: 53, y: 90, w: 14, h: 20, rx: 6 }],
-    triceps: [{ t: "r", x: 32.6, y: 54.85, w: 8.5, h: 28.1, rx: 4.25, tr: "rotate(9.5 36.85 68.90)" }, { t: "r", x: 78.9, y: 54.85, w: 8.5, h: 28.1, rx: 4.25, tr: "rotate(-9.5 83.15 68.90)" }],
-    forearms: [{ t: "r", x: 27.29, y: 95.51, w: 7.5, h: 28.25, rx: 3.75, tr: "rotate(6.3 31.04 109.64)" }, { t: "r", x: 85.21, y: 95.51, w: 7.5, h: 28.25, rx: 3.75, tr: "rotate(-6.3 88.96 109.64)" }],
-    glutes: [{ t: "r", x: 47.5, y: 110, w: 12, h: 22, rx: 8 }, { t: "r", x: 60.5, y: 110, w: 12, h: 22, rx: 8 }],
-    hamstrings: [{ t: "r", x: 45.42, y: 135.55, w: 11, h: 43.23, rx: 5.5, tr: "rotate(2.1 50.92 157.16)" }, { t: "r", x: 63.58, y: 135.55, w: 11, h: 43.23, rx: 5.5, tr: "rotate(-2.1 69.08 157.16)" }],
-    calves: [{ t: "r", x: 45.5, y: 184.76, w: 9, h: 30.36, rx: 4.5, tr: "rotate(0.0 50.00 199.94)" }, { t: "r", x: 65.5, y: 184.76, w: 9, h: 30.36, rx: 4.5, tr: "rotate(0.0 70.00 199.94)" }],
+    neck: [
+      "M63 34L70 35L70 46L63 46Z",
+      "M77 34L70 35L70 46L77 46Z",
+    ],
+    traps: [
+      "M62 39L70 42L70 58L52 56L51 46Z",
+      "M52 58L70 60L70 78L55 74Z",
+      "M78 39L70 42L70 58L88 56L89 46Z",
+      "M88 58L70 60L70 78L85 74Z",
+    ],
+    shoulders: [
+      "M51 50L41 52L35 62L36 76L45 80L50 68Z",
+      "M89 50L99 52L105 62L104 76L95 80L90 68Z",
+    ],
+    upper_back: [
+      "M56 76L69 78L69 92L57 90Z",
+      "M84 76L71 78L71 92L83 90Z",
+    ],
+    lats: [
+      "M48 72L59 84L60 108L53 118L45 100L45 78Z",
+      "M92 72L81 84L80 108L87 118L95 100L95 78Z",
+    ],
+    lower_back: [
+      "M60 102L69 104L69 124L61 122Z",
+      "M80 102L71 104L71 124L79 122Z",
+    ],
+    triceps: [
+      "M30 70L39 72L36 104L28 102Z",
+      "M110 70L101 72L104 104L112 102Z",
+    ],
+    forearms: [
+      "M27 116L38 118L35 142L25 140Z",
+      "M113 116L102 118L105 142L115 140Z",
+    ],
+    glutes: [
+      "M54 128L69 132L69 152L58 156L51 146Z",
+      "M86 128L71 132L71 152L82 156L89 146Z",
+    ],
+    hamstrings: [
+      "M49 158L57 156L56 192L50 196L47 180Z",
+      "M58 156L68 158L66 194L57 192Z",
+      "M91 158L83 156L84 192L90 196L93 180Z",
+      "M82 156L72 158L74 194L83 192Z",
+    ],
+    calves: [
+      "M53 210L59 212L58 234L54 232Z",
+      "M60 212L66 212L65 234L59 234Z",
+      "M87 210L81 212L82 234L86 232Z",
+      "M80 212L74 212L75 234L81 234Z",
+    ],
   },
 };
 
@@ -3437,26 +3533,9 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 
 let muscleMapPeriod = "week";
 
-function muscleShapeElement(shape) {
-  let element;
-  if (shape.t === "e") {
-    element = document.createElementNS(SVG_NS, "ellipse");
-    element.setAttribute("cx", shape.cx);
-    element.setAttribute("cy", shape.cy);
-    element.setAttribute("rx", shape.rx);
-    element.setAttribute("ry", shape.ry);
-  } else if (shape.t === "r") {
-    element = document.createElementNS(SVG_NS, "rect");
-    element.setAttribute("x", shape.x);
-    element.setAttribute("y", shape.y);
-    element.setAttribute("width", shape.w);
-    element.setAttribute("height", shape.h);
-    element.setAttribute("rx", shape.rx);
-  } else {
-    element = document.createElementNS(SVG_NS, "path");
-    element.setAttribute("d", shape.d);
-  }
-  if (shape.tr) element.setAttribute("transform", shape.tr);
+function muscleShapeElement(d) {
+  const element = document.createElementNS(SVG_NS, "path");
+  element.setAttribute("d", d);
   return element;
 }
 
@@ -3466,8 +3545,8 @@ function renderMuscleFigure(view, volume) {
   svg.setAttribute("class", "muscle-figure");
   svg.setAttribute("role", "img");
 
-  BODY_SILHOUETTE.forEach((shape) => {
-    const element = muscleShapeElement(shape);
+  BODY_SILHOUETTE.forEach((d) => {
+    const element = muscleShapeElement(d);
     element.setAttribute("class", "muscle-body");
     svg.appendChild(element);
   });
@@ -3481,7 +3560,7 @@ function renderMuscleFigure(view, volume) {
     const group = document.createElementNS(SVG_NS, "g");
     group.setAttribute("class", `muscle-region intensity-${intensity}${onlySecondary ? " only-secondary" : ""}`);
     group.dataset.region = regionId;
-    shapes.forEach((shape) => group.appendChild(muscleShapeElement(shape)));
+    shapes.forEach((d) => group.appendChild(muscleShapeElement(d)));
     const title = document.createElementNS(SVG_NS, "title");
     title.textContent = `${muscleRegionLabel(regionId)}: ${region.directSets} series directas, ${region.secondarySets} con implicación`;
     group.appendChild(title);

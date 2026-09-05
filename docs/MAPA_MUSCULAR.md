@@ -116,19 +116,32 @@ desaparecer entre el total de series efectivas y un mapa apagado.
 
 ## Geometría
 
-La figura se genera con `scripts/generate-muscle-map.mjs` a partir de un
-**esqueleto de articulaciones** (hombro, codo, muñeca, cadera, rodilla, tobillo).
-La silueta y los músculos salen de las mismas articulaciones, así que retocar una
-postura no puede dejar un músculo flotando fuera del cuerpo.
+Dos cuerpos facetados, frontal y posterior, con **cada músculo como polígono
+propio**: pectoral en dos haces, recto abdominal en cuatro filas por lado,
+cuádriceps en vasto lateral, recto femoral y vasto medial, isquiotibiales en dos
+vientres, gemelos en dos cabezas, deltoides, dorsales en ala, trapecio en dos
+porciones. Son setenta polígonos, y la mitad es el espejo de la otra.
+
+La primera versión usaba cápsulas redondeadas sobre un esqueleto de
+articulaciones. Alex envió como referencia la pantalla de logros de Brenzo, que
+usa figuras anatómicas facetadas, y se rehízo para acercarse a ese nivel de
+lectura: con cápsulas no se distingue el cuádriceps del aductor, y el mapa
+pierde justo la información que lo hace útil.
+
+El estilo facetado (polígonos de líneas rectas) es deliberado: **se declara como
+diagrama y no finge ser una lámina anatómica**, que es exactamente lo que este
+documento exige no prometer. Y es dibujo propio: no entra arte de terceros, ni
+de Brenzo ni de ningún atlas con licencia dudosa.
 
 ```bash
 node scripts/generate-muscle-map.mjs           # imprime el bloque para app.js
+node scripts/generate-muscle-map.mjs --json     # vuelca la geometría
 node scripts/generate-muscle-map.mjs --check    # falla si app.js se desvió
 ```
 
-Es dibujo propio, sin activos de terceros: ninguna lámina anatómica con licencia
-dudosa entra en el repositorio. Esto es coherente con la política que ya seguimos
-con las imágenes de ejercicios.
+El script define solo el lado izquierdo de cada músculo par y espeja el otro, así
+que un retoque no puede dejar los dos lados distintos. Editar las coordenadas a
+mano en `app.js` rompe esa garantía, y `--check` lo detecta.
 
 ## Color
 

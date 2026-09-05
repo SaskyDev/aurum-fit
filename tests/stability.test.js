@@ -225,25 +225,34 @@ test("el mapa muscular vive en el Diario con periodo propio y alternativa en tex
   assert.match(app, /No mide activación muscular ni sustituye una valoración profesional/);
 });
 
-test("la geometría del mapa sigue saliendo del esqueleto que la genera", () => {
+test("la geometría del mapa la genera el script y cubre las dos vistas", () => {
   const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
   const generador = fs.readFileSync(new URL("../scripts/generate-muscle-map.mjs", import.meta.url), "utf8");
 
-  // Silueta y músculos comparten articulaciones. Si alguien retoca las
-  // coordenadas a mano en app.js, el músculo acaba flotando fuera del cuerpo.
-  assert.match(generador, /const J = \{/);
+  // La figura son más de setenta polígonos y la mitad es el espejo de la otra.
+  // Si alguien los edita a mano en app.js, los dos lados dejan de coincidir.
+  assert.match(generador, /const mirror = \(points\)/);
+  assert.match(generador, /const pair = \(points\)/);
   assert.match(app, /const BODY_SILHOUETTE = \[/);
   assert.match(app, /const MUSCLE_SHAPES = \{/);
 
-  const regiones = [...app.matchAll(/^    ([a-z_]+): \[\{ t: "/gm)].map((match) => match[1]);
-  const front = regiones.slice(0, regiones.indexOf("neck", 1));
-  assert.ok(front.length >= 13, "la vista frontal perdió regiones");
-  ["chest", "quads", "abs", "biceps"].forEach((region) => {
+  const bloque = app.slice(app.indexOf("const MUSCLE_SHAPES"), app.indexOf("const SVG_NS"));
+  const regiones = [...bloque.matchAll(/^    ([a-z_]+): \[/gm)].map((match) => match[1]);
+  const corte = regiones.indexOf("neck", 1);
+  const front = regiones.slice(0, corte);
+  const back = regiones.slice(corte);
+
+  ["chest", "quads", "abs", "biceps", "obliques", "serratus"].forEach((region) => {
     assert.ok(front.includes(region), `falta ${region} en la vista frontal`);
   });
-  ["traps", "lats", "glutes", "hamstrings", "triceps"].forEach((region) => {
-    assert.ok(regiones.includes(region), `falta ${region} en la vista posterior`);
+  ["traps", "lats", "glutes", "hamstrings", "triceps", "lower_back"].forEach((region) => {
+    assert.ok(back.includes(region), `falta ${region} en la vista posterior`);
   });
+
+  // Polígonos, no cápsulas: el estilo facetado se declara como diagrama y no
+  // finge ser una lámina anatómica.
+  const poligonos = [...bloque.matchAll(/"M[\d.]+ [\d.]+(?:L[\d.]+ [\d.]+)+Z"/g)];
+  assert.ok(poligonos.length >= 60, `se esperaban más polígonos, hay ${poligonos.length}`);
 });
 
 test("los músculos se guardan en el ejercicio y no se recalculan al pintar", () => {

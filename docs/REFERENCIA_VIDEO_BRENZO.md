@@ -73,6 +73,28 @@ Grabación vertical de móvil, modo oscuro, acentos verde neón, en español.
   `English`, y `Personalización` marcada como PRO.
 - **Datos y dispositivos**: `Apple Watch` y `Copia de seguridad` (PRO).
 
+## La pantalla de logros
+
+Alex envió además una captura de la pantalla `Logros` de Brenzo:
+
+- Cabecera `TUS MEDALLAS · Logros`.
+- Tarjeta `RANGO PREDICHO` con el estado `Sin clasificar` y el texto "Registra
+  entrenos completos para clasificar tus grupos musculares", más un pentágono
+  vacío como insignia.
+- **Dos figuras anatómicas facetadas**, frontal y posterior, dibujadas con
+  líneas blancas sobre negro, con cada vientre muscular delineado.
+- Lista `POR GRUPO MUSCULAR`: cada grupo con su estado (`Sin dato`) y un
+  ejercicio de referencia (`Pecho · ref. Press de banca`).
+
+De aquí sale el rediseño de nuestro mapa: la primera versión usaba cápsulas
+redondeadas y no distinguía el cuádriceps del aductor. La segunda es anatómica y
+facetada, con dibujo propio (`docs/MAPA_MUSCULAR.md`).
+
+El `RANGO PREDICHO` es `Body Rank` otra vez, y sigue descartado por la misma
+razón. La idea que **sí** merece copiarse de esa pantalla es el **ejercicio de
+referencia por grupo muscular**: da un siguiente paso concreto en lugar de solo
+señalar el hueco.
+
 ## Contraste con Aurum Fit
 
 ### Ya lo tenemos, de otra forma

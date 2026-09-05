@@ -1,127 +1,201 @@
-// Genera la geometría del mapa muscular a partir de un esqueleto de
-// articulaciones. La razón de que esto sea un script y no coordenadas escritas
-// a mano: cuando la silueta y los músculos se colocan por separado, cualquier
-// retoque de una postura los desalinea y el músculo acaba flotando fuera del
-// cuerpo. Aquí las dos cosas salen de las mismas articulaciones.
+// Genera la figura del mapa muscular: dos cuerpos facetados, frontal y
+// posterior, con cada músculo como polígono propio.
+//
+// Por qué un script y no coordenadas escritas a mano en app.js: la figura son
+// más de setenta polígonos y la mitad son el espejo de la otra. Definir solo el
+// lado izquierdo y espejar aquí evita que un retoque deje los dos lados
+// distintos, y mantiene app.js legible.
+//
+// Estilo facetado (polígonos rectos) a propósito: se declara como diagrama y no
+// finge ser una lámina anatómica, que es justo lo que docs/MAPA_MUSCULAR.md
+// exige no prometer. Es dibujo propio; no entra arte de terceros.
 //
 // Uso:
-//   node scripts/generate-muscle-map.mjs          -> imprime el bloque JS
-//   node scripts/generate-muscle-map.mjs --check   -> compara con app.js
+//   node scripts/generate-muscle-map.mjs           -> imprime el bloque JS
+//   node scripts/generate-muscle-map.mjs --json     -> vuelca la geometría
+//   node scripts/generate-muscle-map.mjs --check    -> compara con app.js
 //
-// El resultado se pega en app.js entre BODY_SILHOUETTE y MUSCLE_SHAPES.
+// Lienzo 140 x 260. Eje de simetría en x = 70.
 
-const J = {
-  shoulder_l: [40, 50], elbow_l: [33, 92], wrist_l: [29, 128],
-  shoulder_r: [80, 50], elbow_r: [87, 92], wrist_r: [91, 128],
-  hip_l: [52, 128], knee_l: [50, 182], ankle_l: [50, 228],
-  hip_r: [68, 128], knee_r: [70, 182], ankle_r: [70, 228],
-};
+const AXIS = 70;
+const mirror = (points) => points.map(([x, y]) => [round(2 * AXIS - x), y]);
+const round = (value) => Math.round(value * 10) / 10;
+// Un músculo par: el polígono dado y su espejo.
+const pair = (points) => [points, mirror(points)];
 
-const round = (value) => Math.round(value * 100) / 100;
+// --------------------------------------------------------------------------
+// Silueta
+// --------------------------------------------------------------------------
 
-// Cápsula a lo largo del segmento a→b, entre las fracciones t0 y t1.
-function capsule([ax, ay], [bx, by], w, t0 = 0, t1 = 1) {
-  const px = ax + (bx - ax) * t0;
-  const py = ay + (by - ay) * t0;
-  const qx = ax + (bx - ax) * t1;
-  const qy = ay + (by - ay) * t1;
-  const cx = (px + qx) / 2;
-  const cy = (py + qy) / 2;
-  const h = Math.hypot(qx - px, qy - py);
-  // La cápsula es simétrica: θ y θ+180 se ven igual. Normalizar el ángulo deja
-  // el archivo legible en lugar de llenarlo de rotate(-170.5 ...).
-  let angle = (Math.atan2(qx - px, -(qy - py)) * 180) / Math.PI;
-  while (angle > 90) angle -= 180;
-  while (angle <= -90) angle += 180;
-  return {
-    t: "r", x: round(cx - w / 2), y: round(cy - h / 2), w: round(w), h: round(h), rx: round(w / 2),
-    tr: `rotate(${angle.toFixed(1)} ${cx.toFixed(2)} ${cy.toFixed(2)})`,
-  };
-}
-
-const pair = (a, b, w, t0, t1) => [
-  capsule(J[`${a}_l`], J[`${b}_l`], w, t0, t1),
-  capsule(J[`${a}_r`], J[`${b}_r`], w, t0, t1),
+const HEAD = [[70, 4], [76, 6], [80, 11], [81, 18], [79, 26], [74, 33], [70, 35], [66, 33], [61, 26], [59, 18], [60, 11], [64, 6]];
+const NECK_BLOCK = [[63, 32], [77, 32], [79, 44], [70, 48], [61, 44]];
+const TORSO = [
+  [70, 44], [84, 46], [94, 52], [97, 64], [93, 88], [88, 110], [86, 132],
+  [70, 138], [54, 132], [52, 110], [47, 88], [43, 64], [46, 52], [56, 46],
 ];
+const PELVIS = [[52, 126], [88, 126], [89, 146], [80, 158], [60, 158], [51, 146]];
+
+const ARM_UPPER = [[36, 50], [50, 52], [47, 80], [41, 112], [27, 110], [30, 76]];
+const ARM_LOWER = [[27, 110], [41, 112], [38, 140], [34, 154], [22, 152], [24, 128]];
+const HAND = [
+  [22, 152], [34, 154], [33, 164], [35, 172], [31, 173], [29, 166],
+  [28, 175], [24, 175], [24, 165], [21, 173], [18, 171], [19, 161], [17, 156],
+];
+
+const THIGH = [[50, 142], [70, 146], [70, 200], [67, 206], [53, 206], [47, 184], [47, 158]];
+const SHIN = [[53, 206], [67, 206], [66, 232], [64, 246], [53, 246], [51, 230]];
+const FOOT = [[53, 244], [64, 244], [66, 252], [58, 257], [46, 257], [47, 249]];
 
 const silhouette = [
-  { t: "e", cx: 60, cy: 17, rx: 10.5, ry: 12.5 },
-  { t: "r", x: 54.5, y: 25, w: 11, h: 14, rx: 5 },
-  { t: "p", d: "M41 47q19-8 38 0l-3 30q-2 16-4.5 24l-.5 14q-15 7-22 0l-.5-14q-2.5-8-4.5-24z" },
-  { t: "r", x: 46, y: 106, w: 28, h: 28, rx: 12 },
+  HEAD, NECK_BLOCK, TORSO, PELVIS,
+  ...pair(ARM_UPPER), ...pair(ARM_LOWER), ...pair(HAND),
+  ...pair(THIGH), ...pair(SHIN), ...pair(FOOT),
 ];
-for (const side of ["l", "r"]) {
-  silhouette.push(
-    capsule(J[`shoulder_${side}`], J[`elbow_${side}`], 13),
-    capsule(J[`elbow_${side}`], J[`wrist_${side}`], 11),
-    { t: "e", cx: J[`wrist_${side}`][0], cy: J[`wrist_${side}`][1] + 5, rx: 5, ry: 6 },
-    capsule(J[`hip_${side}`], J[`knee_${side}`], 17),
-    capsule(J[`knee_${side}`], J[`ankle_${side}`], 12.5),
-    { t: "e", cx: J[`ankle_${side}`][0], cy: 231, rx: 6.5, ry: 5 },
-  );
+
+// --------------------------------------------------------------------------
+// Músculos, vista frontal
+// --------------------------------------------------------------------------
+
+const front = {
+  // Esternocleidomastoideo: las dos bandas visibles del cuello.
+  neck: pair([[64, 34], [70, 37], [70, 47], [64, 45], [62, 39]]),
+  // Trapecio superior, la parte que asoma por delante.
+  traps: pair([[62, 39], [70, 42], [70, 48], [53, 52], [51, 46]]),
+  shoulders: pair([[51, 50], [41, 52], [35, 62], [36, 76], [45, 80], [50, 68]]),
+  chest: [
+    [[52, 55], [69, 53], [69, 66], [51, 68]],
+    [[51, 68], [69, 66], [69, 80], [58, 82], [49, 76]],
+    ...mirrorAll([
+      [[52, 55], [69, 53], [69, 66], [51, 68]],
+      [[51, 68], [69, 66], [69, 80], [58, 82], [49, 76]],
+    ]),
+  ],
+  serratus: [
+    [[50, 80], [56, 84], [55, 91], [49, 87]],
+    [[51, 92], [57, 95], [56, 101], [50, 98]],
+    ...mirrorAll([
+      [[50, 80], [56, 84], [55, 91], [49, 87]],
+      [[51, 92], [57, 95], [56, 101], [50, 98]],
+    ]),
+  ],
+  // Recto abdominal: cuatro filas por lado, como en una lámina clásica.
+  abs: absSegments(),
+  obliques: pair([[53, 88], [60, 92], [60, 118], [57, 124], [52, 110]]),
+  biceps: pair([[36, 70], [45, 72], [41, 104], [32, 102]]),
+  forearms: pair([[27, 116], [38, 118], [35, 142], [25, 140]]),
+  hip_flexors: pair([[58, 128], [69, 130], [69, 142], [60, 140]]),
+  abductors: pair([[49, 146], [56, 148], [55, 164], [48, 158]]),
+  // Cuádriceps: vasto lateral, recto femoral y vasto medial.
+  quads: [
+    [[49, 152], [57, 150], [56, 188], [51, 196], [47, 176]],
+    [[58, 150], [65, 152], [64, 190], [57, 190]],
+    [[65, 174], [70, 176], [69, 198], [64, 196]],
+    ...mirrorAll([
+      [[49, 152], [57, 150], [56, 188], [51, 196], [47, 176]],
+      [[58, 150], [65, 152], [64, 190], [57, 190]],
+      [[65, 174], [70, 176], [69, 198], [64, 196]],
+    ]),
+  ],
+  adductors: pair([[66, 148], [70, 150], [70, 172], [65, 168]]),
+  tibialis: pair([[55, 212], [61, 214], [60, 240], [55, 240]]),
+};
+
+// --------------------------------------------------------------------------
+// Músculos, vista posterior
+// --------------------------------------------------------------------------
+
+const back = {
+  neck: pair([[63, 34], [70, 35], [70, 46], [63, 46]]),
+  traps: [
+    [[62, 39], [70, 42], [70, 58], [52, 56], [51, 46]],
+    [[52, 58], [70, 60], [70, 78], [55, 74]],
+    ...mirrorAll([
+      [[62, 39], [70, 42], [70, 58], [52, 56], [51, 46]],
+      [[52, 58], [70, 60], [70, 78], [55, 74]],
+    ]),
+  ],
+  shoulders: pair([[51, 50], [41, 52], [35, 62], [36, 76], [45, 80], [50, 68]]),
+  upper_back: pair([[56, 76], [69, 78], [69, 92], [57, 90]]),
+  lats: pair([[48, 72], [59, 84], [60, 108], [53, 118], [45, 100], [45, 78]]),
+  lower_back: pair([[60, 102], [69, 104], [69, 124], [61, 122]]),
+  triceps: pair([[30, 70], [39, 72], [36, 104], [28, 102]]),
+  forearms: pair([[27, 116], [38, 118], [35, 142], [25, 140]]),
+  glutes: pair([[54, 128], [69, 132], [69, 152], [58, 156], [51, 146]]),
+  // Isquiotibiales: bíceps femoral por fuera, semitendinoso por dentro.
+  hamstrings: [
+    [[49, 158], [57, 156], [56, 192], [50, 196], [47, 180]],
+    [[58, 156], [68, 158], [66, 194], [57, 192]],
+    ...mirrorAll([
+      [[49, 158], [57, 156], [56, 192], [50, 196], [47, 180]],
+      [[58, 156], [68, 158], [66, 194], [57, 192]],
+    ]),
+  ],
+  // Gemelos: las dos cabezas del gastrocnemio.
+  calves: [
+    [[53, 210], [59, 212], [58, 234], [54, 232]],
+    [[60, 212], [66, 212], [65, 234], [59, 234]],
+    ...mirrorAll([
+      [[53, 210], [59, 212], [58, 234], [54, 232]],
+      [[60, 212], [66, 212], [65, 234], [59, 234]],
+    ]),
+  ],
+};
+
+function mirrorAll(polygons) {
+  return polygons.map(mirror);
 }
 
-const muscles = {
-  front: {
-    neck: [{ t: "r", x: 55.5, y: 26, w: 9, h: 12, rx: 4 }],
-    shoulders: [{ t: "e", cx: 41.5, cy: 52, rx: 8, ry: 8 }, { t: "e", cx: 78.5, cy: 52, rx: 8, ry: 8 }],
-    chest: [{ t: "p", d: "M47 51q6-4 12-1.5v16q-7 3-13-1z" }, { t: "p", d: "M73 51q-6-4-12-1.5v16q7 3 13-1z" }],
-    serratus: [{ t: "p", d: "M46.5 69l3.5 1 .5 8-3.5-1z" }, { t: "p", d: "M73.5 69l-3.5 1-.5 8 3.5-1z" }],
-    biceps: pair("shoulder", "elbow", 8.5, 0.14, 0.72),
-    forearms: pair("elbow", "wrist", 7.5, 0.10, 0.88),
-    abs: [{ t: "r", x: 53.5, y: 69, w: 13, h: 38, rx: 5 }],
-    obliques: [{ t: "p", d: "M52.5 74l-4 1.5-.5 22 4.5 4z" }, { t: "p", d: "M67.5 74l4 1.5.5 22-4.5 4z" }],
-    hip_flexors: [{ t: "r", x: 51.5, y: 108, w: 17, h: 11, rx: 5 }],
-    abductors: pair("hip", "knee", 5.5, 0.02, 0.28),
-    adductors: [
-      capsule([56, 130], [54, 180], 5.5, 0.05, 0.72),
-      capsule([64, 130], [66, 180], 5.5, 0.05, 0.72),
-    ],
-    quads: pair("hip", "knee", 10, 0.06, 0.92),
-    tibialis: pair("knee", "ankle", 6, 0.10, 0.86),
-  },
-  back: {
-    neck: [{ t: "r", x: 55.5, y: 26, w: 9, h: 12, rx: 4 }],
-    traps: [{ t: "p", d: "M60 40l15 7-2 13-13 5-13-5-2-13z" }],
-    shoulders: [{ t: "e", cx: 41.5, cy: 52, rx: 8, ry: 8 }, { t: "e", cx: 78.5, cy: 52, rx: 8, ry: 8 }],
-    upper_back: [{ t: "r", x: 49, y: 61, w: 10, h: 15, rx: 4 }, { t: "r", x: 61, y: 61, w: 10, h: 15, rx: 4 }],
-    lats: [{ t: "p", d: "M48 64l-2.5 20 5 13 8.5-7-2-26z" }, { t: "p", d: "M72 64l2.5 20-5 13-8.5-7 2-26z" }],
-    lower_back: [{ t: "r", x: 53, y: 90, w: 14, h: 20, rx: 6 }],
-    triceps: pair("shoulder", "elbow", 8.5, 0.12, 0.78),
-    forearms: pair("elbow", "wrist", 7.5, 0.10, 0.88),
-    glutes: [{ t: "r", x: 47.5, y: 110, w: 12, h: 22, rx: 8 }, { t: "r", x: 60.5, y: 110, w: 12, h: 22, rx: 8 }],
-    hamstrings: pair("hip", "knee", 11, 0.14, 0.94),
-    calves: pair("knee", "ankle", 9, 0.06, 0.72),
+function absSegments() {
+  const segments = [];
+  const rows = [[84, 94], [95, 105], [106, 116], [117, 128]];
+  rows.forEach(([top, bottom], index) => {
+    // El recto se estrecha al bajar hacia el pubis.
+    const outer = 60 + index * 0.8;
+    const inner = 69;
+    segments.push([[outer, top], [inner, top], [inner, bottom], [outer + 0.6, bottom]]);
+  });
+  return [...segments, ...mirrorAll(segments)];
+}
+
+// --------------------------------------------------------------------------
+// Salida
+// --------------------------------------------------------------------------
+
+const pathFor = (points) => `M${points.map(([x, y]) => `${round(x)} ${round(y)}`).join("L")}Z`;
+
+const geometry = {
+  viewBox: "0 0 140 260",
+  silhouette: silhouette.map(pathFor),
+  muscles: {
+    front: Object.fromEntries(Object.entries(front).map(([id, polys]) => [id, polys.map(pathFor)])),
+    back: Object.fromEntries(Object.entries(back).map(([id, polys]) => [id, polys.map(pathFor)])),
   },
 };
 
-function shapeSource(shape) {
-  if (shape.t === "e") return `{ t: "e", cx: ${shape.cx}, cy: ${shape.cy}, rx: ${shape.rx}, ry: ${shape.ry} }`;
-  if (shape.t === "p") return `{ t: "p", d: "${shape.d}" }`;
-  const tail = shape.tr ? `, tr: "${shape.tr}"` : "";
-  return `{ t: "r", x: ${shape.x}, y: ${shape.y}, w: ${shape.w}, h: ${shape.h}, rx: ${shape.rx}${tail} }`;
-}
-
-let source = "const BODY_SILHOUETTE = [\n";
-silhouette.forEach((shape) => { source += `  ${shapeSource(shape)},\n`; });
+let source = `const BODY_VIEWBOX = "${geometry.viewBox}";\n\nconst BODY_SILHOUETTE = [\n`;
+geometry.silhouette.forEach((d) => { source += `  "${d}",\n`; });
 source += "];\n\nconst MUSCLE_SHAPES = {\n";
 for (const view of ["front", "back"]) {
   source += `  ${view}: {\n`;
-  for (const [region, shapes] of Object.entries(muscles[view])) {
-    source += `    ${region}: [${shapes.map(shapeSource).join(", ")}],\n`;
+  for (const [region, paths] of Object.entries(geometry.muscles[view])) {
+    source += `    ${region}: [\n`;
+    paths.forEach((d) => { source += `      "${d}",\n`; });
+    source += "    ],\n";
   }
   source += "  },\n";
 }
 source += "};\n";
 
-if (process.argv.includes("--check")) {
+if (process.argv.includes("--json")) {
+  console.log(JSON.stringify(geometry));
+} else if (process.argv.includes("--check")) {
   const fs = await import("node:fs");
   const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
   const ok = app.includes(source.trim());
   console.log(ok
-    ? "La geometría de app.js coincide con el esqueleto."
+    ? "La geometría de app.js coincide con el generador."
     : "DESINCRONIZADA: app.js no coincide. Vuelve a pegar la salida de este script.");
   process.exit(ok ? 0 : 1);
+} else {
+  console.log(source);
 }
-
-console.log(source);

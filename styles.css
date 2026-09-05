@@ -4217,6 +4217,7 @@ th {
   --muscle-medium: #79ab3f;
   --muscle-high: #c7f464;
   --muscle-secondary-ink: #8aa39a;
+  --muscle-edge: #55685b;
 }
 
 :root[data-theme="light"] {
@@ -4226,6 +4227,7 @@ th {
   --muscle-medium: #5f8a1a;
   --muscle-high: #365008;
   --muscle-secondary-ink: #5d7266;
+  --muscle-edge: #a3b39d;
 }
 
 /* El grupo de periodos del Diario tiene cuatro opciones; el del mapa, tres. */
@@ -4252,22 +4254,35 @@ th {
 
 .muscle-figure {
   width: 100%;
-  max-width: 184px;
+  max-width: 172px;
   height: auto;
 }
 
-.muscle-body { fill: var(--muscle-body); }
+/* La figura es facetada: cada músculo es un polígono con su propio borde, así
+   que la anatomía se lee aunque no haya ni una serie registrada. */
+.muscle-body {
+  fill: var(--muscle-body);
+  stroke: var(--muscle-edge);
+  stroke-width: .6;
+  stroke-linejoin: round;
+}
 
-.muscle-region > :not(title) { fill: var(--muscle-none); transition: fill .18s ease; }
+.muscle-region > :not(title) {
+  fill: var(--muscle-none);
+  stroke: var(--muscle-edge);
+  stroke-width: .6;
+  stroke-linejoin: round;
+  transition: fill .18s ease;
+}
 .muscle-region.intensity-low > :not(title) { fill: var(--muscle-low); }
 .muscle-region.intensity-medium > :not(title) { fill: var(--muscle-medium); }
 .muscle-region.intensity-high > :not(title) { fill: var(--muscle-high); }
 
 .muscle-region.only-secondary > :not(title) {
   stroke: var(--muscle-secondary-ink);
-  stroke-width: 1.2;
-  stroke-dasharray: 2.5 2.5;
-  stroke-opacity: .7;
+  stroke-width: 1;
+  stroke-dasharray: 2.5 2;
+  stroke-opacity: .8;
 }
 
 .muscle-map-legend {
