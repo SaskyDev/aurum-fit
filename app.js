@@ -42,13 +42,13 @@ import {
   startSessionFromRoutineDay,
   updateSet,
   validateLabelPhotoFile,
-} from "./core.js?v=63";
-import { BODY_FIGURES } from "./body-paths.js?v=63";
+} from "./core.js?v=65";
+import { BODY_FIGURES } from "./body-paths.js?v=65";
 
 const defaultTargets = { calories: 2200, protein: 170, steps: 10000 };
 const defaultPreferences = {
   accentColor: "lime",
-  appearanceMode: "system",
+  appearanceMode: "dark",
   effortScale: "rir",
   defaultRestSeconds: 60,
   autoRestTimer: true,
@@ -139,6 +139,8 @@ function getPreferences(targetState = state) {
   return { ...defaultPreferences, ...(targetState.owner?.preferences ?? {}) };
 }
 
+const DARK_DEFAULT_VERSION = 1;
+
 function ensureUiState(targetState) {
   targetState.owner ??= {};
   targetState.owner.profile ??= { birthDate: null, heightCm: null, weightKg: null };
@@ -154,10 +156,28 @@ function ensureUiState(targetState) {
   targetState.nutrition.recipes ??= [];
   targetState.nutrition.labels ??= [];
   targetState.meta ??= {};
+  // La app arranca siempre en oscuro, aunque el móvil esté en claro. Quien ya
+  // tenía guardado "system" lo tenía por ser el valor por defecto anterior, no
+  // por haberlo elegido, así que se migra una sola vez. La marca evita repetir
+  // la migración si después elige "Automático" a propósito.
+  if (targetState.meta.darkDefaultVersion !== DARK_DEFAULT_VERSION) {
+    if (targetState.owner.preferences.appearanceMode === "system") {
+      targetState.owner.preferences.appearanceMode = "dark";
+    }
+    targetState.meta.darkDefaultVersion = DARK_DEFAULT_VERSION;
+  }
   return targetState;
 }
 
+const estadoAntesDeNormalizar = JSON.stringify(state.owner?.preferences ?? null) + JSON.stringify(state.meta ?? null);
 ensureUiState(state);
+if (JSON.stringify(state.owner.preferences) + JSON.stringify(state.meta) !== estadoAntesDeNormalizar) {
+  try {
+    state = persistState(localStorage, state);
+  } catch {
+    // Si el almacenamiento falla, la preferencia se aplica igual en esta sesión.
+  }
+}
 
 const darkModeMedia = window.matchMedia("(prefers-color-scheme: dark)");
 
@@ -1654,7 +1674,7 @@ const weekdayShort = new Map([
   [1, "Lun"], [2, "Mar"], [3, "Mié"], [4, "Jue"], [5, "Vie"], [6, "Sáb"], [0, "Dom"],
 ]);
 
-function createWeekdaySelector({ name, selected = [], disabled = [], single = false }) {
+function createWeekdaySelector({ name, selected = [], disabled = [], single = false, occupiedBy = new Map() }) {
   const fragment = document.createDocumentFragment();
   weekdayOptions.forEach(({ value, label }) => {
     const weekday = Number(value);
@@ -1666,11 +1686,37 @@ function createWeekdaySelector({ name, selected = [], disabled = [], single = fa
     input.checked = selected.includes(weekday);
     input.disabled = disabled.includes(weekday);
     const visual = createElement("span", "", weekdayShort.get(weekday));
-    visual.title = input.disabled ? `${label}: ocupado` : label;
+    // El nombre accesible dice por qué está bloqueado. `title` no basta: en un
+    // móvil no hay puntero que se pose encima, así que un día deshabilitado se
+    // vive como un botón roto.
+    const ocupante = occupiedBy.get(weekday)?.routine?.name ?? null;
+    visual.title = input.disabled
+      ? `${label}: ocupado${ocupante ? ` por ${ocupante}` : ""}`
+      : label;
+    input.setAttribute(
+      "aria-label",
+      input.disabled ? `${label}, ocupado${ocupante ? ` por ${ocupante}` : ""}` : label,
+    );
+    wrapper.classList.toggle("is-occupied", input.disabled);
     wrapper.append(input, visual);
     fragment.appendChild(wrapper);
   });
   return fragment;
+}
+
+// Texto visible bajo el selector: qué días están bloqueados y por qué rutina.
+function describeOccupiedWeekdays(occupiedBy) {
+  const entradas = [...occupiedBy.entries()].sort((a, b) => a[0] - b[0]);
+  if (!entradas.length) return "";
+  const porRutina = new Map();
+  entradas.forEach(([weekday, ocupante]) => {
+    const nombre = ocupante?.routine?.name ?? "otra rutina";
+    if (!porRutina.has(nombre)) porRutina.set(nombre, []);
+    porRutina.get(nombre).push(weekdayName(weekday));
+  });
+  return [...porRutina.entries()]
+    .map(([nombre, dias]) => `${dias.join(", ")} ${dias.length > 1 ? "los ocupa" : "lo ocupa"} ${nombre}`)
+    .join(" · ");
 }
 
 function selectedWeekdays(containerId) {
@@ -1730,11 +1776,17 @@ function syncAddRoutineCardioVisibility() {
 }
 
 function renderNewRoutineWeekdays() {
-  const occupied = [...weekdayAssignments({ includeDemo: false }).keys()];
+  const occupiedBy = weekdayAssignments({ includeDemo: false });
   $("newRoutineWeekdays").replaceChildren(createWeekdaySelector({
     name: "new-routine-weekdays",
-    disabled: occupied,
+    disabled: [...occupiedBy.keys()],
+    occupiedBy,
   }));
+  const ayuda = $("newRoutineWeekdaysHelp");
+  const detalle = describeOccupiedWeekdays(occupiedBy);
+  ayuda.textContent = detalle
+    ? `${detalle}. Elige otro día o libera ese primero.`
+    : "Elige uno o varios días para repetir la rutina.";
 }
 
 function weekdayName(value) {
@@ -2354,12 +2406,17 @@ function renderRoutineManager() {
     .sort((left, right) => left.order - right.order)
     .forEach((routineDay, index) => detailDays.appendChild(createRoutineDayCard(selectedRoutine, routineDay, index)));
   if (!detailDays.children.length) renderEmpty(detailDays, "Añade el primer día", "Selecciona abajo uno de los días disponibles.");
-  const occupied = [...weekdayAssignments({ includeDemo: Boolean(selectedRoutine.isDemo) }).keys()];
+  const occupiedBy = weekdayAssignments({ includeDemo: Boolean(selectedRoutine.isDemo) });
   $("addRoutineDayWeekdays").replaceChildren(createWeekdaySelector({
     name: "add-routine-day-weekday",
-    disabled: occupied,
+    disabled: [...occupiedBy.keys()],
     single: true,
+    occupiedBy,
   }));
+  const ayudaDias = describeOccupiedWeekdays(occupiedBy);
+  $("addRoutineDayWeekdaysHelp").textContent = ayudaDias
+    ? `${ayudaDias}. Elige otro día o libera ese primero.`
+    : "";
 }
 
 function renderRoutineExerciseOptions(query = "") {
@@ -3366,7 +3423,7 @@ function backfillExerciseMuscles() {
 
 async function loadCatalog() {
   try {
-    const response = await fetch("./data/exercises.es.json?v=63", { cache: "no-cache" });
+    const response = await fetch("./data/exercises.es.json?v=65", { cache: "no-cache" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     if (!Array.isArray(payload.exercises)) throw new Error("Estructura no válida");
@@ -3824,6 +3881,21 @@ $("createRoutineForm").addEventListener("submit", (event) => {
   event.preventDefault();
   const name = $("routineName").value;
   const weekdays = selectedWeekdays("newRoutineWeekdays");
+  // Si no hay nada seleccionado, lo más probable es que haya intentado tocar un
+  // día ya ocupado: en el móvil no hay tooltip que lo explique y el botón se
+  // vive como roto. El aviso dice qué pasa y qué hacer.
+  if (!weekdays.length) {
+    const ocupados = weekdayAssignments({ includeDemo: false });
+    const detalle = describeOccupiedWeekdays(ocupados);
+    showNotice(
+      detalle
+        ? `Selecciona al menos un día. Los días tachados no están libres: ${detalle}.`
+        : "Selecciona al menos un día para la rutina.",
+      { error: true },
+    );
+    $("newRoutineWeekdays").scrollIntoView({ block: "center", behavior: "smooth" });
+    return;
+  }
   const selectedColor = document.querySelector('input[name="routineAccentColor"]:checked')?.value ?? "auto";
   const selectedType = document.querySelector('input[name="routineDayType"]:checked')?.value ?? "strength";
   const selectedCardioType = document.querySelector('input[name="cardioActivityType"]:checked')?.value ?? "run";

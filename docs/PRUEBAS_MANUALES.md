@@ -349,6 +349,44 @@ Una prueba automatizada cubre el reparto (`el volumen por músculo separa trabaj
 directo de implicación y solo cuenta series efectivas`), pero la lectura visual
 de los tramos y la trama hay que confirmarla en el navegador.
 
+### Días ocupados al crear una rutina (QA-ROUTINE-002)
+
+Regresión encontrada el 5 de septiembre de 2026 probando la app en el móvil de
+un amigo: creamos una rutina y, al intentar crear la segunda, el botón verde
+`Crear rutina` "no funcionaba".
+
+La causa no era el botón. Los días que ya ocupa otra rutina se pintan
+deshabilitados, y lo único que lo explicaba era un `title`, **que en un móvil no
+existe porque no hay puntero que se pose encima**. El usuario tocaba el día, no
+pasaba nada, pulsaba Crear y recibía "Selecciona al menos un día" cuando creía
+haberlos seleccionado.
+
+1. Crear una rutina que ocupe lunes y miércoles.
+2. Abrir `Crear nueva rutina` otra vez: bajo el selector de días debe leerse
+   `Lunes, Miércoles los ocupa <nombre>. Elige otro día o libera ese primero.`
+3. Comprobar que esos dos días se ven tachados, con borde discontinuo y en gris,
+   no solo desvaídos.
+4. Tocarlos: no deben seleccionarse. Con lector de pantalla deben anunciarse
+   como `Lunes, ocupado por <nombre>`.
+5. Pulsar `Crear rutina` sin elegir día: el aviso debe nombrar los días ocupados
+   y su rutina, y la vista debe desplazarse hasta el selector de días.
+6. Elegir un día libre y crear: debe funcionar.
+7. Repetir el recorrido dentro de una rutina, en `Crear entrenamiento diferente`:
+   ese selector tiene la misma ayuda bajo los días.
+8. Alternar `Fuerza` y `Cardio` antes de crear, en los dos sentidos: no debe
+   bloquear el envío del formulario.
+
+### Tema oscuro por defecto (QA-THEME-001)
+
+1. Con el móvil en tema claro, abrir la app por primera vez: debe aparecer en
+   **oscuro**.
+2. En `Ajustes > Apariencia`, elegir `Claro`: debe respetarse y sobrevivir a una
+   recarga.
+3. Elegir `Automático`: entonces sí debe seguir al sistema.
+4. Con una copia anterior que tuviera `Automático` guardado del valor por
+   defecto antiguo, abrir la app: debe migrar a oscuro una sola vez. Si después
+   se elige `Automático` a propósito, no puede volver a migrarse.
+
 ### Exportación (QA-EXPORT-001)
 
 1. Pulsar `Exportar`.

@@ -685,3 +685,44 @@ test("la paleta del tema claro cumple el contraste y coincide con el código", a
   assert.match(app, /--accent-ink", resolvedTheme === "light" \? palette\.accentStrong : palette\.accent/);
   assert.doesNotMatch(styles, /color: var\(--accent\)/);
 });
+
+test("un día ocupado explica por qué, no se queda mudo", () => {
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+
+  // El bug: al crear una segunda rutina, los días que ya ocupa otra están
+  // deshabilitados y solo lo explicaba un `title`. En un móvil no hay puntero
+  // que se pose, así que el usuario tocaba el día, no pasaba nada, pulsaba
+  // Crear y le decía que no había elegido ninguno. El botón parecía roto.
+  assert.match(app, /function describeOccupiedWeekdays\(occupiedBy\)/);
+  assert.match(app, /occupiedBy\.get\(weekday\)\?\.routine\?\.name/);
+  assert.match(app, /input\.setAttribute\(\s*"aria-label"/);
+  assert.match(app, /wrapper\.classList\.toggle\("is-occupied", input\.disabled\)/);
+
+  // Ayuda visible bajo cada uno de los dos selectores de días.
+  assert.ok(html.includes('id="newRoutineWeekdaysHelp"'), "falta la ayuda al crear rutina");
+  assert.ok(html.includes('id="addRoutineDayWeekdaysHelp"'), "falta la ayuda al añadir día");
+  assert.match(app, /\$\("newRoutineWeekdaysHelp"\)/);
+  assert.match(app, /\$\("addRoutineDayWeekdaysHelp"\)/);
+
+  // Y el aviso de error nombra los días ocupados y su rutina.
+  assert.match(app, /Los días tachados no están libres: \$\{detalle\}/);
+  assert.match(app, /\$\("newRoutineWeekdays"\)\.scrollIntoView/);
+});
+
+test("la app arranca en oscuro aunque el móvil esté en claro", () => {
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+
+  // Por defecto oscuro siempre; el sistema deja de mandar salvo que la persona
+  // elija "Automático" a propósito desde Ajustes.
+  assert.match(app, /appearanceMode: "dark",/);
+  assert.doesNotMatch(app, /appearanceMode: "system",/);
+
+  // Migración única para quien ya tenía "system" guardado por ser el valor por
+  // defecto anterior. La marca evita repetirla si luego elige Automático.
+  assert.match(app, /const DARK_DEFAULT_VERSION = 1;/);
+  assert.match(app, /targetState\.meta\.darkDefaultVersion !== DARK_DEFAULT_VERSION/);
+  assert.match(app, /targetState\.meta\.darkDefaultVersion = DARK_DEFAULT_VERSION;/);
+  // Y tiene que persistir, no quedarse solo en memoria.
+  assert.match(app, /state = persistState\(localStorage, state\);/);
+});

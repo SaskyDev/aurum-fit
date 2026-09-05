@@ -63,6 +63,8 @@ Nutrición sobre un modelo local versionado, sin cuentas ni backend.
   falle: la aplicación sigue siendo utilizable sin conexión.
 - Limpieza versionada de datos ficticios que conserva rutinas, sesiones,
   comidas, recetas y objetivos reales ya guardados en el dispositivo.
+- Tema oscuro por defecto, independientemente del sistema del móvil, con la
+  opción de cambiarlo a claro o automático en Ajustes.
 - Ajustes locales de perfil y objetivos manuales de calorías, proteína y pasos.
 - Base nutricional para recetas y etiquetas específicas por marca, incluida una
   foto local reducida de la etiqueta sin lectura automática ficticia.

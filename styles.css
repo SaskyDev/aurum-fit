@@ -1649,7 +1649,15 @@ progress::-moz-progress-bar {
 .weekday-choice input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .weekday-choice span { display: grid; min-height: 46px; place-items: center; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink-soft); cursor: pointer; font-size: .72rem; font-weight: 850; }
 .weekday-choice input:checked + span { border-color: var(--accent-ink); background: var(--accent); color: var(--on-accent); }
-.weekday-choice input:disabled + span { cursor: not-allowed; opacity: .32; text-decoration: line-through; }
+.weekday-choice input:disabled + span {
+  cursor: not-allowed;
+  /* .32 de opacidad hacía que un día ocupado pareciera un fallo de pintado.
+     Se ve deshabilitado a propósito, y con contraste suficiente para leerse. */
+  opacity: .55;
+  border-style: dashed;
+  color: var(--ink-soft);
+  text-decoration: line-through;
+}
 .routine-color-fieldset { display: grid; gap: var(--space-2); margin: 0; padding: 0; border: 0; }
 .routine-color-fieldset legend { margin-bottom: var(--space-2); color: var(--ink); font-size: .8rem; font-weight: 850; }
 .routine-color-fieldset > small { color: var(--ink-soft); font-size: .72rem; line-height: 1.45; }

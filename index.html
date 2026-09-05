@@ -21,10 +21,10 @@
         } catch {}
       })();
     </script>
-    <link rel="manifest" href="manifest.json?v=63" />
-    <link rel="icon" type="image/svg+xml" href="icon.svg?v=63" />
-    <link rel="apple-touch-icon" href="icon.svg?v=63" />
-    <link rel="stylesheet" href="styles.css?v=63" />
+    <link rel="manifest" href="manifest.json?v=65" />
+    <link rel="icon" type="image/svg+xml" href="icon.svg?v=65" />
+    <link rel="apple-touch-icon" href="icon.svg?v=65" />
+    <link rel="stylesheet" href="styles.css?v=65" />
   </head>
   <body>
     <main>
@@ -329,7 +329,7 @@
                   <fieldset class="weekday-fieldset">
                     <legend>¿Qué días se repite?</legend>
                     <div id="newRoutineWeekdays" class="weekday-selector" aria-label="Días de la nueva rutina"></div>
-                    <small>Los días ocupados por una rutina real no se pueden repetir.</small>
+                    <small id="newRoutineWeekdaysHelp">Los días ocupados por otra rutina aparecen tachados y no se pueden elegir.</small>
                   </fieldset>
                   <button class="button button-accent button-large" type="submit">Crear rutina</button>
                 </form>
@@ -385,6 +385,7 @@
               <label class="routine-day-type-select">Tipo<select id="addRoutineDayType"><option value="strength">Fuerza</option><option value="cardio">Cardio</option></select></label>
               <label id="addRoutineCardioTypeLabel" class="routine-day-type-select" hidden>Actividad<select id="addRoutineCardioType"></select></label>
               <div id="addRoutineDayWeekdays" class="weekday-selector compact-weekdays" aria-label="Nuevo día de entrenamiento"></div>
+              <small id="addRoutineDayWeekdaysHelp" class="muted"></small>
               <button class="button button-secondary" type="submit">Crear variante</button>
             </form>
           </section>
@@ -653,6 +654,6 @@
 
     </main>
 
-    <script type="module" src="app.js?v=63"></script>
+    <script type="module" src="app.js?v=65"></script>
   </body>
 </html>
