@@ -4315,3 +4315,61 @@ th {
   .muscle-region.intensity-medium > :not(title),
   .muscle-region.intensity-high > :not(title) { forced-color-adjust: none; }
 }
+
+/* Interruptor de ajustes. El primero del producto es "Timer automático", así
+   que el patrón queda definido aquí para los que vengan. */
+.settings-toggle {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  min-height: 56px;
+}
+
+.settings-toggle > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.settings-toggle input[type="checkbox"] {
+  appearance: none;
+  flex: none;
+  width: 52px;
+  height: 32px;
+  margin: 0;
+  border-radius: 999px;
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+  position: relative;
+  cursor: pointer;
+  transition: background .18s ease, border-color .18s ease;
+}
+
+.settings-toggle input[type="checkbox"]::after {
+  content: "";
+  position: absolute;
+  inset-block-start: 3px;
+  inset-inline-start: 3px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--ink-soft);
+  transition: transform .18s ease, background .18s ease;
+}
+
+.settings-toggle input[type="checkbox"]:checked {
+  background: var(--accent);
+  border-color: var(--accent-strong);
+}
+
+.settings-toggle input[type="checkbox"]:checked::after {
+  background: var(--night);
+  transform: translateX(20px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-toggle input[type="checkbox"],
+  .settings-toggle input[type="checkbox"]::after { transition: none; }
+}

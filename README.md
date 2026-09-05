@@ -39,6 +39,8 @@ Nutrición sobre un modelo local versionado, sin cuentas ni backend.
   series y con un temporizador de descanso propio.
 - Temporizador compacto con descansos de 30 segundos, 1, 2 o 3 minutos y una
   duración personalizada entre 00:01 y 59:59.
+- El descanso arranca solo al guardar una serie, usando tu descanso por defecto.
+  Se puede desactivar en Ajustes y no se dispara al corregir una serie.
 - Alternativas, ejercicios no realizados o extras que solo afectan a la sesión actual.
 - Guardado automático, recuperación tras recarga y copia local previa.
 - Opción explícita para descartar una sesión en curso y liberar otra rutina.
@@ -132,6 +134,7 @@ Documentación:
 
 - `docs/MODELO_LOCAL_V2.md`
 - `docs/MAPA_MUSCULAR.md`
+- `docs/REFERENCIA_VIDEO_BRENZO.md`
 - `docs/IMPORTACION_CATALOGO.md`
 - `docs/SISTEMA_VISUAL.md`
 - `docs/REFERENCIAS_UX.md`

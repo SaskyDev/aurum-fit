@@ -118,6 +118,7 @@ test("crea y valida preferencias de apariencia y entrenamiento", () => {
     appearanceMode: "system",
     effortScale: "rir",
     defaultRestSeconds: 60,
+    autoRestTimer: true,
   });
 
   state.owner.preferences.accentColor = "violet";
@@ -125,6 +126,12 @@ test("crea y valida preferencias de apariencia y entrenamiento", () => {
   state.owner.preferences.effortScale = "rpe";
   state.owner.preferences.defaultRestSeconds = 90;
   assert.equal(validateState(state), null);
+
+  state.owner.preferences.autoRestTimer = false;
+  assert.equal(validateState(state), null, "apagar el timer automático es válido");
+  state.owner.preferences.autoRestTimer = "sí";
+  assert.match(validateState(state), /temporizador automático/i);
+  state.owner.preferences.autoRestTimer = true;
 
   state.owner.preferences.accentColor = "neon-random";
   assert.match(validateState(state), /color de acento/i);

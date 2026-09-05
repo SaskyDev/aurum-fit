@@ -42,7 +42,7 @@ import {
   startSessionFromRoutineDay,
   updateSet,
   validateLabelPhotoFile,
-} from "./core.js?v=55";
+} from "./core.js?v=56";
 
 const defaultTargets = { calories: 2200, protein: 170, steps: 10000 };
 const defaultPreferences = {
@@ -50,6 +50,7 @@ const defaultPreferences = {
   appearanceMode: "system",
   effortScale: "rir",
   defaultRestSeconds: 60,
+  autoRestTimer: true,
 };
 const appearanceLabels = { system: "Automático", dark: "Oscuro", light: "Claro" };
 const accentLabels = {
@@ -138,6 +139,7 @@ function ensureUiState(targetState) {
   targetState.owner.preferences.appearanceMode ??= defaultPreferences.appearanceMode;
   targetState.owner.preferences.effortScale ??= defaultPreferences.effortScale;
   targetState.owner.preferences.defaultRestSeconds ??= defaultPreferences.defaultRestSeconds;
+  targetState.owner.preferences.autoRestTimer ??= defaultPreferences.autoRestTimer;
   targetState.nutrition ??= { recipes: [], labels: [] };
   targetState.nutrition.recipes ??= [];
   targetState.nutrition.labels ??= [];
@@ -646,7 +648,12 @@ function sessionElapsedSeconds(session, now = Date.now()) {
 
 function timerFor(exerciseId) {
   if (!restTimerStates.has(exerciseId)) {
-    restTimerStates.set(exerciseId, { duration: 60, remaining: 60, running: false, intervalId: null });
+    // El descanso por defecto de Ajustes es el punto de partida. Cada ejercicio
+    // puede desviarse con sus botones, y esa desviación se conserva mientras
+    // dure la sesión.
+    const duration = state.owner.preferences?.defaultRestSeconds
+      ?? defaultPreferences.defaultRestSeconds;
+    restTimerStates.set(exerciseId, { duration, remaining: duration, running: false, intervalId: null });
   }
   return restTimerStates.get(exerciseId);
 }
@@ -701,6 +708,23 @@ function toggleExerciseTimer(exerciseId) {
   renderExerciseTimer(exerciseId);
 }
 
+// Guardar una serie arranca el descanso solo. Es el gesto que más fricción
+// quita durante el entrenamiento y no registra nada por su cuenta, así que no
+// choca con la regla de que nada se dé por hecho sin confirmarlo.
+//
+// Corregir una serie ya guardada NO lo arranca: ahí no acabas de entrenar,
+// estás arreglando un número.
+function autoRestTimerEnabled() {
+  return (state.owner.preferences?.autoRestTimer ?? defaultPreferences.autoRestTimer) !== false;
+}
+
+function startRestAfterSet(exerciseId) {
+  stopExerciseTimer(exerciseId);
+  const timer = timerFor(exerciseId);
+  timer.remaining = timer.duration;
+  toggleExerciseTimer(exerciseId);
+}
+
 function setExerciseTimerDuration(exerciseId, seconds) {
   stopExerciseTimer(exerciseId);
   const timer = timerFor(exerciseId);
@@ -714,7 +738,7 @@ function createExerciseRestTimer(exerciseId) {
   root.dataset.restTimer = exerciseId;
   const heading = createElement("div", "exercise-timer-heading");
   const label = createElement("span", "eyebrow", "Descanso de este ejercicio");
-  const display = createElement("strong", "timer-display", "01:00");
+  const display = createElement("strong", "timer-display", formatTimer(timerFor(exerciseId).duration));
   display.dataset.restDisplay = "";
   heading.append(label, display);
   const controls = createElement("div", "timer-controls compact-timer-controls");
@@ -1402,6 +1426,7 @@ function renderSettings() {
   $("targetProtein").value = targets.protein;
   $("targetSteps").value = targets.steps;
   $("defaultRestSeconds").value = preferences.defaultRestSeconds;
+  $("autoRestTimer").checked = preferences.autoRestTimer !== false;
   $("effortScale").value = preferences.effortScale;
   document.querySelectorAll('input[name="accentColor"]').forEach((input) => {
     input.checked = input.value === preferences.accentColor;
@@ -1415,7 +1440,8 @@ function renderSettings() {
   $("settingsAppearanceSummary").textContent =
     `${appearanceLabels[preferences.appearanceMode] ?? "Automático"} · ${accentLabels[preferences.accentColor] ?? "Lima"}`;
   $("settingsWorkoutSummary").textContent =
-    `${preferences.effortScale === "none" ? "Sin escala" : preferences.effortScale.toUpperCase()} · ${preferences.defaultRestSeconds} s`;
+    `${preferences.effortScale === "none" ? "Sin escala" : preferences.effortScale.toUpperCase()} · ${preferences.defaultRestSeconds} s`
+    + `${preferences.autoRestTimer === false ? "" : " · timer automático"}`;
   const demoSessions = state.training.sessions.filter((session) => session.isDemo).length;
   const demoDays = Object.values(state.legacy.days).filter((day) => day?.isDemo).length;
   $("demoDataSummary").textContent = demoSessions || demoDays
@@ -2554,14 +2580,23 @@ function renderSetForm(session, sessionExercise, reference) {
       note: note.input.value,
     };
     const editingSetId = form.dataset.editingSetId;
+    const restSeconds = timerFor(sessionExercise.id).duration;
+    const successMessage = editingSetId
+      ? "Serie corregida y guardada."
+      : (autoRestTimerEnabled()
+        ? `Serie guardada. Descanso de ${formatTimer(restSeconds)} en marcha.`
+        : "Serie guardada automáticamente.");
     const saved = runOnce(submit, () => commit((next) => {
       if (editingSetId) {
         updateSet(next, session.id, sessionExercise.id, editingSetId, input);
       } else {
         addSetToExercise(next, session.id, sessionExercise.id, input);
       }
-    }, editingSetId ? "Serie corregida y guardada." : "Serie guardada automáticamente."), submissionKey);
-    if (saved) form.reset();
+    }, successMessage), submissionKey);
+    if (saved) {
+      form.reset();
+      if (!editingSetId && autoRestTimerEnabled()) startRestAfterSet(sessionExercise.id);
+    }
   });
 
   form.startEditing = (workoutSet) => {
@@ -3317,7 +3352,7 @@ function backfillExerciseMuscles() {
 
 async function loadCatalog() {
   try {
-    const response = await fetch("./data/exercises.es.json?v=55", { cache: "no-cache" });
+    const response = await fetch("./data/exercises.es.json?v=56", { cache: "no-cache" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     if (!Array.isArray(payload.exercises)) throw new Error("Estructura no válida");
@@ -4024,6 +4059,7 @@ $("settingsForm").addEventListener("submit", (event) => {
       appearanceMode: selectedAppearance,
       effortScale: $("effortScale").value || defaultPreferences.effortScale,
       defaultRestSeconds: numberValue("defaultRestSeconds") || defaultPreferences.defaultRestSeconds,
+      autoRestTimer: $("autoRestTimer").checked,
     };
   }, "Ajustes y objetivos guardados.");
   if (saved) setSettingsView("menu");

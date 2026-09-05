@@ -165,6 +165,7 @@ export function createEmptyState({ now = new Date().toISOString(), legacyDays = 
         appearanceMode: "system",
         effortScale: "rir",
         defaultRestSeconds: 60,
+        autoRestTimer: true,
       },
       targets: {
         calories: 2200,
@@ -223,6 +224,12 @@ export function validateState(state) {
       && !EFFORT_SCALES.has(state.owner.preferences.effortScale)
     ) {
       return "La escala de esfuerzo no es válida.";
+    }
+    if (
+      state.owner.preferences.autoRestTimer !== undefined
+      && typeof state.owner.preferences.autoRestTimer !== "boolean"
+    ) {
+      return "El ajuste del temporizador automático no es válido.";
     }
     if (
       state.owner.preferences.defaultRestSeconds !== undefined

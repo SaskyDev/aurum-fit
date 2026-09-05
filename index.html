@@ -21,10 +21,10 @@
         } catch {}
       })();
     </script>
-    <link rel="manifest" href="manifest.json?v=55" />
-    <link rel="icon" type="image/svg+xml" href="icon.svg?v=55" />
-    <link rel="apple-touch-icon" href="icon.svg?v=55" />
-    <link rel="stylesheet" href="styles.css?v=55" />
+    <link rel="manifest" href="manifest.json?v=56" />
+    <link rel="icon" type="image/svg+xml" href="icon.svg?v=56" />
+    <link rel="apple-touch-icon" href="icon.svg?v=56" />
+    <link rel="stylesheet" href="styles.css?v=56" />
   </head>
   <body>
     <main>
@@ -601,6 +601,13 @@
               <div class="settings-section-heading"><div><p class="eyebrow">Entrenamiento</p><h3 id="settingsWorkoutTitle">Preferencias de sesión</h3></div></div>
               <div class="form-grid compact-form-grid">
                 <label>Descanso por defecto <span>seg</span><input id="defaultRestSeconds" type="number" min="15" max="900" step="15" inputmode="numeric" /></label>
+                <label class="settings-toggle">
+                  <span>
+                    <strong>Timer automático</strong>
+                    <small class="muted">Inicia el descanso al guardar una serie</small>
+                  </span>
+                  <input id="autoRestTimer" type="checkbox" role="switch" />
+                </label>
                 <label>Escala de esfuerzo
                   <select id="effortScale">
                     <option value="rir">RIR</option>
@@ -640,6 +647,6 @@
 
     </main>
 
-    <script type="module" src="app.js?v=55"></script>
+    <script type="module" src="app.js?v=56"></script>
   </body>
 </html>

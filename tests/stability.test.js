@@ -261,7 +261,7 @@ test("el submit de serie conserva el bloqueo aunque renderice otro formulario", 
   assert.match(app, /const pendingSetSubmissions = new Set\(\)/);
   assert.match(app, /pendingSetSubmissions\.has\(key\)/);
   assert.match(app, /const submissionKey = `\$\{session\.id\}:\$\{sessionExercise\.id\}`/);
-  assert.match(app, /Serie guardada automáticamente\."\), submissionKey\)/);
+  assert.match(app, /\}, successMessage\), submissionKey\)/);
 });
 
 test("Importar deja el input fuera del foco y la actualización offline no silencia fallos online", () => {
@@ -604,4 +604,30 @@ test("Biblioteca permite archivar una rutina con gesto hacia la izquierda", () =
   assert.match(css, /\.routine-swipe-row/);
   assert.match(css, /\.routine-swipe-delete/);
   assert.match(css, /touch-action: pan-y/);
+});
+
+test("guardar una serie arranca el descanso, corregirla no", () => {
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+
+  assert.match(app, /function startRestAfterSet\(exerciseId\)/);
+  // Solo en series nuevas: corregir un número no es acabar de entrenar.
+  assert.match(app, /if \(!editingSetId && autoRestTimerEnabled\(\)\) startRestAfterSet\(sessionExercise\.id\);/);
+  // Y después de guardar, no antes: si fallara la validación no debe arrancar.
+  const submit = app.slice(app.indexOf("const saved = runOnce(submit"), app.indexOf("form.startEditing"));
+  assert.ok(
+    submit.indexOf("const saved") < submit.indexOf("startRestAfterSet"),
+    "el descanso no puede arrancar antes de saber si la serie se guardó",
+  );
+  assert.match(app, /Descanso de \$\{formatTimer\(restSeconds\)\} en marcha/);
+
+  // El descanso por defecto de Ajustes existía pero el temporizador lo ignoraba.
+  assert.match(app, /state\.owner\.preferences\?\.defaultRestSeconds/);
+  assert.doesNotMatch(app, /duration: 60, remaining: 60/);
+
+  // Es un ajuste, no una imposición: Brenzo lo ofrece como interruptor y aquí
+  // también, encendido por defecto.
+  const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  assert.match(html, /id="autoRestTimer" type="checkbox" role="switch"/);
+  assert.match(app, /autoRestTimer: true,/);
+  assert.match(app, /autoRestTimer: \$\("autoRestTimer"\)\.checked/);
 });

@@ -39,7 +39,7 @@ Patrones observados que encajan con Aurum Fit:
 | Volumen y distribución del trabajo por grupo muscular | **Hecho** — mapa muscular del Diario (`docs/MAPA_MUSCULAR.md`) |
 | Registrar series, repeticiones, peso, descanso y notas | **Hecho** |
 | Recordar peso y repeticiones del entrenamiento anterior | **Parcial y a propósito** — se muestran como sugerencia visible, no se rellenan solos (ver límites abajo) |
-| El temporizador de descanso arranca solo al guardar la serie | **Falta** — hoy hay que iniciarlo a mano |
+| El temporizador de descanso arranca solo al guardar la serie | **Hecho** el 5/9/2026, con interruptor propio en Ajustes |
 | Aviso de récord personal al superarlo | **Falta** — no existe el concepto de récord en el modelo |
 | Historial, progresión de fuerza y volumen semanal | **Hecho** |
 | Rutinas por objetivo y splits (PPL, Torso/Pierna, Full Body) | **Parcial** — las rutinas son libres, sin plantillas por objetivo |
@@ -62,15 +62,21 @@ Patrones observados que encajan con Aurum Fit:
 
 ### Lo que sí merece la pena tomar
 
-1. **Que el temporizador de descanso arranque al guardar la serie.** Es el gesto
-   que más fricción quita durante el entrenamiento y no registra nada por su
-   cuenta, así que no choca con nuestros límites. Falta decidir si arranca
-   siempre o solo en las series efectivas.
+1. ~~Que el temporizador de descanso arranque al guardar la serie.~~ **Hecho.**
+   Las capturas de Ajustes que envió Alex mostraron que en Brenzo es un
+   interruptor (`Timer automático · Inicia descanso al completar set`), no una
+   imposición, así que aquí también lo es, encendido por defecto. Arranca con
+   cualquier serie nueva, incluidas calentamiento y aproximación, porque también
+   se descansa entre ellas; corregir una serie ya guardada no lo dispara.
 2. **El récord personal como hecho, no como insignia.** Encaja con los logros ya
    decididos (`docs/MAPA_MUSCULAR.md`): superar tu mejor peso en un ejercicio es
    un dato recalculable desde el historial, no una recompensa inventada.
 3. **Plantillas de split** (PPL, Torso/Pierna, Full Body) como punto de partida
    al crear una rutina, sin impedir la rutina libre.
+
+La descripción del vídeo de referencia y de las capturas de Ajustes está en
+`docs/REFERENCIA_VIDEO_BRENZO.md`, con el contraste completo función por
+función.
 
 ## Decisiones aplicadas
 
