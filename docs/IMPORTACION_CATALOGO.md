@@ -1,6 +1,7 @@
 # Importación reproducible del catálogo
 
 Fecha: 24 de julio de 2026.
+Última revisión: 5 de septiembre de 2026.
 
 ## Decisión
 

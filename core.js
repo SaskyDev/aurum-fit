@@ -165,6 +165,7 @@ export function createEmptyState({ now = new Date().toISOString(), legacyDays = 
         appearanceMode: "system",
         effortScale: "rir",
         defaultRestSeconds: 60,
+        autoRestTimer: true,
       },
       targets: {
         calories: 2200,
@@ -223,6 +224,12 @@ export function validateState(state) {
       && !EFFORT_SCALES.has(state.owner.preferences.effortScale)
     ) {
       return "La escala de esfuerzo no es válida.";
+    }
+    if (
+      state.owner.preferences.autoRestTimer !== undefined
+      && typeof state.owner.preferences.autoRestTimer !== "boolean"
+    ) {
+      return "El ajuste del temporizador automático no es válido.";
     }
     if (
       state.owner.preferences.defaultRestSeconds !== undefined
@@ -1866,4 +1873,256 @@ export function seedDemoData(state, { now = new Date().toISOString() } = {}) {
   } finally {
     state.training.activeSessionId = preservedActiveSessionId;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Mapa muscular
+//
+// El dataset trae tres campos de músculo con vocabularios distintos e
+// incoherentes entre sí: `target` (19 valores, limpio), `secondaryMuscles`
+// (40 valores, con cola de ruido) y `muscleGroup` (29 valores, con duplicados
+// como "traps"/"trapezius" o "quads"/"quadriceps"). Antes de pintar nada hay
+// que reducirlos a un vocabulario propio y estable, porque es el que se guarda
+// en el historial y tiene que sobrevivir a futuras versiones del catálogo.
+// ---------------------------------------------------------------------------
+
+export const MUSCLE_REGIONS = Object.freeze([
+  { id: "neck", labelEs: "Cuello", views: ["front", "back"] },
+  { id: "traps", labelEs: "Trapecios", views: ["back"] },
+  { id: "shoulders", labelEs: "Hombros", views: ["front", "back"] },
+  { id: "chest", labelEs: "Pecho", views: ["front"] },
+  { id: "serratus", labelEs: "Serrato", views: ["front"] },
+  { id: "biceps", labelEs: "Bíceps", views: ["front"] },
+  { id: "triceps", labelEs: "Tríceps", views: ["back"] },
+  { id: "forearms", labelEs: "Antebrazos", views: ["front", "back"] },
+  { id: "abs", labelEs: "Abdomen", views: ["front"] },
+  { id: "obliques", labelEs: "Oblicuos", views: ["front"] },
+  { id: "lats", labelEs: "Dorsales", views: ["back"] },
+  { id: "upper_back", labelEs: "Espalda superior", views: ["back"] },
+  { id: "lower_back", labelEs: "Lumbares", views: ["back"] },
+  { id: "glutes", labelEs: "Glúteos", views: ["back"] },
+  { id: "hip_flexors", labelEs: "Flexores de cadera", views: ["front"] },
+  { id: "quads", labelEs: "Cuádriceps", views: ["front"] },
+  { id: "hamstrings", labelEs: "Isquiotibiales", views: ["back"] },
+  { id: "adductors", labelEs: "Aductores", views: ["front"] },
+  { id: "abductors", labelEs: "Abductores", views: ["front"] },
+  { id: "calves", labelEs: "Gemelos", views: ["back"] },
+  { id: "tibialis", labelEs: "Tibial anterior", views: ["front"] },
+]);
+
+// Cubre los 50 valores distintos que aparecen hoy en data/exercises.es.json
+// entre `target`, `secondaryMuscles` y `muscleGroup`. La prueba
+// "el vocabulario muscular cubre el dataset entero" falla si el catálogo
+// introduce un valor nuevo sin traducir aquí.
+const MUSCLE_SYNONYMS = Object.freeze({
+  neck: "neck",
+  sternocleidomastoid: "neck",
+  traps: "traps",
+  trapezius: "traps",
+  "levator scapulae": "traps",
+  delts: "shoulders",
+  deltoids: "shoulders",
+  shoulders: "shoulders",
+  "rear deltoids": "shoulders",
+  "rotator cuff": "shoulders",
+  pectorals: "chest",
+  chest: "chest",
+  "upper chest": "chest",
+  "serratus anterior": "serratus",
+  biceps: "biceps",
+  brachialis: "biceps",
+  triceps: "triceps",
+  forearms: "forearms",
+  "wrist flexors": "forearms",
+  "wrist extensors": "forearms",
+  wrists: "forearms",
+  hands: "forearms",
+  "grip muscles": "forearms",
+  abs: "abs",
+  abdominals: "abs",
+  core: "abs",
+  "lower abs": "abs",
+  obliques: "obliques",
+  lats: "lats",
+  "latissimus dorsi": "lats",
+  "upper back": "upper_back",
+  rhomboids: "upper_back",
+  back: "upper_back",
+  "lower back": "lower_back",
+  spine: "lower_back",
+  glutes: "glutes",
+  "hip flexors": "hip_flexors",
+  quads: "quads",
+  quadriceps: "quads",
+  hamstrings: "hamstrings",
+  adductors: "adductors",
+  "inner thighs": "adductors",
+  groin: "adductors",
+  abductors: "abductors",
+  calves: "calves",
+  soleus: "calves",
+  shins: "tibialis",
+  ankles: "tibialis",
+  "ankle stabilizers": "tibialis",
+  feet: "tibialis",
+  // El sistema cardiovascular no es una región del mapa: el cardio no pinta
+  // músculos. Se reconoce para poder ignorarlo de forma explícita.
+  "cardiovascular system": null,
+});
+
+const MUSCLE_REGION_IDS = new Set(MUSCLE_REGIONS.map((region) => region.id));
+
+export function muscleRegionLabel(regionId) {
+  return MUSCLE_REGIONS.find((region) => region.id === regionId)?.labelEs ?? null;
+}
+
+export function normalizeMuscleName(value) {
+  if (typeof value !== "string") return null;
+  const key = value.trim().toLowerCase();
+  if (!key) return null;
+  if (MUSCLE_REGION_IDS.has(key)) return key;
+  return MUSCLE_SYNONYMS[key] ?? null;
+}
+
+// Devuelve el vocabulario propio de un ejercicio del catálogo. Un músculo nunca
+// aparece a la vez como directo y secundario: si el dataset lo repite, manda el
+// trabajo directo.
+export function normalizeCatalogMuscles(entry) {
+  if (!entry || typeof entry !== "object") return { direct: [], secondary: [] };
+  const direct = [];
+  const secondary = [];
+  const push = (list, regionId) => {
+    if (regionId && !direct.includes(regionId) && !list.includes(regionId)) list.push(regionId);
+  };
+  push(direct, normalizeMuscleName(entry.target));
+  [entry.muscleGroup, ...(Array.isArray(entry.secondaryMuscles) ? entry.secondaryMuscles : [])]
+    .forEach((value) => push(secondary, normalizeMuscleName(value)));
+  return { direct, secondary };
+}
+
+export function sanitizeExerciseMuscles(muscles) {
+  if (!muscles || typeof muscles !== "object") return null;
+  const clean = (list) => (Array.isArray(list)
+    ? [...new Set(list.filter((id) => MUSCLE_REGION_IDS.has(id)))]
+    : []);
+  const direct = clean(muscles.direct);
+  const secondary = clean(muscles.secondary).filter((id) => !direct.includes(id));
+  if (!direct.length && !secondary.length) return null;
+  return { direct, secondary };
+}
+
+// ---------------------------------------------------------------------------
+// Volumen por músculo
+//
+// Regla deliberada: el trabajo directo y la implicación secundaria NO se suman
+// ni se ponderan. En el dataset "hombros" aparece como secundario en 444 de
+// 1.317 ejercicios; sumarlo dejaría el mapa encendido siempre y dejaría de
+// informar. Además, cualquier coeficiente de activación que inventásemos no
+// tendría respaldo y convertiría el mapa en una medida médica que no es.
+//
+// Solo cuentan las series efectivas: calentamiento y aproximación preparan, no
+// son volumen de trabajo. Es la misma regla que ya usa la gráfica de progreso.
+// ---------------------------------------------------------------------------
+
+export function emptyMuscleVolume() {
+  const byRegion = {};
+  MUSCLE_REGIONS.forEach((region) => {
+    byRegion[region.id] = { directSets: 0, secondarySets: 0, exercises: [] };
+  });
+  return {
+    byRegion,
+    effectiveSets: 0,
+    unmappedSets: 0,
+    unmappedExercises: [],
+    indirectOnlySets: 0,
+    indirectOnlyExercises: [],
+  };
+}
+
+export function computeMuscleVolume(state, { fromIso = null, toIso = null, sessionId = null } = {}) {
+  const volume = emptyMuscleVolume();
+  const musclesByExerciseId = new Map(
+    (state?.training?.exercises ?? []).map((exercise) => [exercise.id, sanitizeExerciseMuscles(exercise.muscles)]),
+  );
+
+  (state?.training?.sessions ?? []).forEach((session) => {
+    if (sessionId) {
+      if (session.id !== sessionId) return;
+    } else {
+      // La sesión en curso también cuenta: lo que ya has hecho hoy es trabajo
+      // hecho, y el mapa semanal del Diario se mueve mientras entrenas.
+      if (session.status !== "completed" && session.status !== "in_progress") return;
+      const stamp = session.status === "completed"
+        ? (session.endedAt ?? session.startedAt)
+        : session.startedAt;
+      if (!stamp) return;
+      if (fromIso && stamp < fromIso) return;
+      if (toIso && stamp > toIso) return;
+    }
+
+    (session.exercises ?? []).forEach((sessionExercise) => {
+      const effective = (sessionExercise.sets ?? []).filter((item) => (
+        item.status === "completed" && (item.setType ?? "effective") === "effective"
+      )).length;
+      if (!effective) return;
+      volume.effectiveSets += effective;
+
+      const muscles = musclesByExerciseId.get(sessionExercise.exerciseId);
+      if (!muscles) {
+        volume.unmappedSets += effective;
+        if (!volume.unmappedExercises.includes(sessionExercise.exerciseName)) {
+          volume.unmappedExercises.push(sessionExercise.exerciseName);
+        }
+        return;
+      }
+
+      const note = (regionId, kind) => {
+        const region = volume.byRegion[regionId];
+        if (!region) return;
+        region[kind === "direct" ? "directSets" : "secondarySets"] += effective;
+        const existing = region.exercises.find((item) => item.name === sessionExercise.exerciseName);
+        if (existing) {
+          existing.sets += effective;
+          if (kind === "direct") existing.kind = "direct";
+        } else {
+          region.exercises.push({ name: sessionExercise.exerciseName, sets: effective, kind });
+        }
+      };
+      // Un ejercicio puede tener implicación pero ningún músculo principal
+      // (el dataset marca así los 29 de cardio, entre ellos los burpees). Esas
+      // series no colorean ninguna zona, así que se declaran en lugar de
+      // desaparecer del recuento.
+      if (!muscles.direct.length) {
+        volume.indirectOnlySets += effective;
+        if (!volume.indirectOnlyExercises.includes(sessionExercise.exerciseName)) {
+          volume.indirectOnlyExercises.push(sessionExercise.exerciseName);
+        }
+      }
+      muscles.direct.forEach((regionId) => note(regionId, "direct"));
+      muscles.secondary.forEach((regionId) => note(regionId, "secondary"));
+    });
+  });
+
+  Object.values(volume.byRegion).forEach((region) => {
+    region.exercises.sort((a, b) => b.sets - a.sets || a.name.localeCompare(b.name, "es"));
+  });
+  return volume;
+}
+
+// Cuatro tramos, no un gradiente continuo: el objetivo es leer "esto lo tengo
+// cubierto" o "esto lo estoy dejando", no comparar 7 series contra 8.
+export const MUSCLE_INTENSITY_STEPS = Object.freeze([
+  { id: "none", labelEs: "Sin trabajo directo", min: 0 },
+  { id: "low", labelEs: "Poco volumen", min: 1 },
+  { id: "medium", labelEs: "Volumen medio", min: 5 },
+  { id: "high", labelEs: "Volumen alto", min: 10 },
+]);
+
+export function muscleIntensity(directSets) {
+  const sets = Number(directSets) || 0;
+  let current = MUSCLE_INTENSITY_STEPS[0];
+  MUSCLE_INTENSITY_STEPS.forEach((step) => {
+    if (sets >= step.min) current = step;
+  });
+  return current.id;
 }

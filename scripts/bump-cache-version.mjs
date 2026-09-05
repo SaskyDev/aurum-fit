@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
-// La versión de caché vive en 6 sitios (service-worker.js, index.html x4,
-// app.js x2). Antes había que actualizarlos a mano uno a uno, y era fácil
+// La versión de caché vive repartida entre service-worker.js, index.html y
+// app.js. Antes había que actualizarlos a mano uno a uno, y era fácil
 // olvidar alguno y dejar la PWA sirviendo una mezcla de versiones. Este
 // script toma service-worker.js como fuente de la verdad y sincroniza el
 // resto, o sube la versión en los 6 sitios a la vez si se le pide.
@@ -12,7 +12,7 @@ import path from "node:path";
 //                                                    versión actual de
 //                                                    service-worker.js
 //   node scripts/bump-cache-version.mjs 54         -> sube a la versión 54
-//                                                    en los 6 sitios
+//                                                    en todas partes
 
 const root = path.resolve(import.meta.dirname, "..");
 const serviceWorkerFile = path.join(root, "service-worker.js");

@@ -200,10 +200,10 @@ explícito `tests/*.test.js`.
    `aurum-fit-shell-v9` con la copia antigua de `index.html`, estilos, scripts y
    catálogo.
 2. Recargar con conexión y comprobar que la interfaz actual se muestra tras la
-   activación del worker nuevo, sin mezclar recursos v9 y v31.
-3. En `Application > Cache Storage`, verificar que queda
-   `aurum-fit-shell-v31` y que la caché v9 ha sido eliminada al activarse el
-   worker nuevo.
+   activación del worker nuevo, sin mezclar recursos antiguos y nuevos.
+3. En `Application > Cache Storage`, verificar que solo queda
+   `aurum-fit-shell-v<versión actual de SHELL_VERSION>` y que la caché v9 ha
+   sido eliminada al activarse el worker nuevo.
 4. Cortar la conexión, recargar y comprobar que la interfaz actual sigue
    disponible desde la caché, sin mezclar los archivos versionados antiguos.
 
@@ -211,10 +211,21 @@ La nueva precarga usa URLs versionadas y se escribe en una caché nueva antes de
 activar el worker. Tras `clients.claim()`, el worker navega una vez las ventanas
 que ya estaban abiertas; así no depende de que el código antiguo capture
 `controllerchange`. El documento se solicita primero a la red para no mostrar
-una interfaz vieja; si no hay conexión se usa el `index.html?v=31` de la caché
-activa. El catálogo también usa
-`exercises.es.json?v=31`, por lo que el catálogo deduplicado de 1.317 ejercicios
-no puede reutilizar una respuesta antigua.
+una interfaz vieja; si no hay conexión se usa el `index.html` versionado de la
+caché activa. El catálogo también se pide con la misma versión, por lo que el
+catálogo deduplicado de 1.317 ejercicios no puede reutilizar una respuesta
+antigua.
+
+La versión vive repartida entre `SHELL_VERSION` (`service-worker.js`) y las
+referencias `?v=` de `index.html` y `app.js`. No se tocan a mano:
+
+```bash
+node scripts/bump-cache-version.mjs      # sincroniza todo con SHELL_VERSION
+node scripts/bump-cache-version.mjs 55   # sube la versión en todas partes
+```
+
+La prueba `la versión de caché está sincronizada en todo el shell`
+falla si alguna referencia se queda atrás.
 
 ### Importación, validación, búsqueda y navegación
 
@@ -258,6 +269,123 @@ no puede reutilizar una respuesta antigua.
 6. En un ejercicio abierto, cambiar entre `Historial`, `Actual` y `Progreso`:
    Historial muestra todas las sesiones anteriores inmutables; Actual conserva
    el formulario y las series de hoy; Progreso muestra el gráfico del ejercicio.
+
+### Confirmaciones accesibles (QA-A11Y-001)
+
+1. Iniciar una sesión, guardar una serie y pulsar `Borrar`.
+2. Comprobar que aparece la confirmación propia de la aplicación, no la del
+   navegador, con título, mensaje y los botones `Cancelar` y `Borrar`.
+3. Sin tocar el ratón, pulsar `Tab` varias veces: el foco debe alternar solo
+   entre `Cancelar` y `Borrar`, sin salir a la página de detrás. Con
+   `Mayúsculas + Tab` debe recorrerlos en sentido contrario.
+4. Pulsar `Escape`: la confirmación se cierra, la serie sigue existiendo y el
+   foco vuelve al botón `Borrar` de esa serie.
+5. Repetir y pulsar fuera de la caja: debe comportarse como `Cancelar`.
+6. Repetir y confirmar: la serie se borra y sigue apareciendo `Deshacer`.
+7. Comprobar que el fondo no se desplaza mientras la confirmación está abierta.
+8. Con un lector de pantalla, comprobar que el diálogo se anuncia con su título
+   y su mensaje al abrirse.
+9. Repetir el paso 1 en `Descartar sesión`, `Finalizar entrenamiento`, `Quitar
+   ejercicio`, `Eliminar rutina`, `Borrar comida`, `Cargar demo`, `Quitar demo`
+   e `Importar`: ninguna debe abrir el diálogo del navegador.
+
+### Instalación offline con el catálogo caído (QA-PWA-002)
+
+1. Servir la aplicación y, en `Application > Service Workers`, desinstalar el
+   worker y vaciar las cachés.
+2. En `Network`, bloquear la petición de `data/exercises.es.json`.
+3. Recargar y comprobar que el worker se instala y activa igualmente.
+4. En `Cache Storage`, verificar que están los siete archivos del shell y que el
+   catálogo no está.
+5. Cortar la conexión y recargar: la aplicación debe abrirse offline. El
+   catálogo puede quedarse sin resultados, pero la sesión, el diario y las
+   rutinas guardadas deben seguir disponibles.
+6. Restaurar la conexión y recargar: el catálogo vuelve a estar disponible.
+
+Si en cambio se bloquea un archivo del shell (`app.js`, `styles.css`,
+`core.js`...), la instalación debe fallar: el shell es obligatorio y una PWA a
+medias sería peor que ninguna.
+
+### Aviso de revisión profesional (QA-CONTENT-001)
+
+1. Abrir el selector de ejercicio y buscar un ejercicio importado del dataset.
+2. Comprobar que su tarjeta muestra `Sin revisión profesional todavía`. Hoy el
+   importador marca todo el dataset como `pending_professional_review`, así que
+   el aviso debe aparecer en todas las tarjetas del catálogo.
+3. Comprobar que los ejercicios personales no pasan por esta lista y, por tanto,
+   nunca llevan el aviso. Cuando una entrada del dataset deje de estar
+   pendiente, su tarjeta debe dejar de mostrarlo.
+4. Abrir `Ver indicaciones en español`: debe seguir apareciendo la advertencia
+   de que el texto no es consejo médico.
+
+### Mapa muscular (QA-MAP-001)
+
+1. En Ajustes, pulsar `Cargar demo` para tener historial suficiente.
+2. Volver al Diario: la tarjeta `Cobertura muscular` debe mostrar dos figuras
+   (frontal y posterior) y el resumen `Esta semana · N series efectivas en X de
+   21 zonas`.
+3. Comprobar que el color solo aparece en las zonas con **series directas**, y
+   que las zonas con implicación secundaria y sin trabajo directo llevan trama
+   discontinua, no color.
+4. Abrir `Ver detalle por zona`: las columnas `Series directas` y `Con
+   implicación` deben ser independientes y no sumarse en ningún total.
+5. Cambiar a `Sesión` y a `Mes`: solo debe cambiar el mapa. El periodo del
+   bloque `Evolución por ejercicio` no puede moverse. Y al revés: cambiar el
+   periodo del Diario no debe alterar el del mapa.
+6. Registrar una serie de calentamiento y otra de aproximación en un ejercicio
+   nuevo: el mapa no debe moverse. Registrar una efectiva: sí.
+7. Crear un ejercicio personal que no exista en el catálogo, registrar una serie
+   efectiva y finalizar: bajo el mapa debe aparecer cuántas series no se reparten
+   y el nombre de ese ejercicio. No debe repartirse a ninguna zona.
+8. Hacer cardio: no debe pintar ningún músculo.
+9. Con el tema claro y con el oscuro, comprobar que los cuatro tramos de la
+   leyenda se distinguen entre sí y del fondo.
+10. Con lector de pantalla, comprobar que cada figura se anuncia enumerando el
+    trabajo directo, y que la tabla por zona es legible como alternativa.
+11. A 390 px de ancho: sin desplazamiento horizontal, las tres pestañas de
+    periodo en una sola fila y la leyenda en dos líneas como mucho.
+
+Una prueba automatizada cubre el reparto (`el volumen por músculo separa trabajo
+directo de implicación y solo cuenta series efectivas`), pero la lectura visual
+de los tramos y la trama hay que confirmarla en el navegador.
+
+### Días ocupados al crear una rutina (QA-ROUTINE-002)
+
+Regresión encontrada el 5 de septiembre de 2026 probando la app en el móvil de
+un amigo: creamos una rutina y, al intentar crear la segunda, el botón verde
+`Crear rutina` "no funcionaba".
+
+La causa no era el botón. Los días que ya ocupa otra rutina se pintan
+deshabilitados, y lo único que lo explicaba era un `title`, **que en un móvil no
+existe porque no hay puntero que se pose encima**. El usuario tocaba el día, no
+pasaba nada, pulsaba Crear y recibía "Selecciona al menos un día" cuando creía
+haberlos seleccionado.
+
+1. Crear una rutina que ocupe lunes y miércoles.
+2. Abrir `Crear nueva rutina` otra vez: bajo el selector de días debe leerse
+   `Lunes, Miércoles los ocupa <nombre>. Elige otro día o libera ese primero.`
+3. Comprobar que esos dos días se ven tachados, con borde discontinuo y en gris,
+   no solo desvaídos.
+4. Tocarlos: no deben seleccionarse. Con lector de pantalla deben anunciarse
+   como `Lunes, ocupado por <nombre>`.
+5. Pulsar `Crear rutina` sin elegir día: el aviso debe nombrar los días ocupados
+   y su rutina, y la vista debe desplazarse hasta el selector de días.
+6. Elegir un día libre y crear: debe funcionar.
+7. Repetir el recorrido dentro de una rutina, en `Crear entrenamiento diferente`:
+   ese selector tiene la misma ayuda bajo los días.
+8. Alternar `Fuerza` y `Cardio` antes de crear, en los dos sentidos: no debe
+   bloquear el envío del formulario.
+
+### Tema oscuro por defecto (QA-THEME-001)
+
+1. Con el móvil en tema claro, abrir la app por primera vez: debe aparecer en
+   **oscuro**.
+2. En `Ajustes > Apariencia`, elegir `Claro`: debe respetarse y sobrevivir a una
+   recarga.
+3. Elegir `Automático`: entonces sí debe seguir al sistema.
+4. Con una copia anterior que tuviera `Automático` guardado del valor por
+   defecto antiguo, abrir la app: debe migrar a oscuro una sola vez. Si después
+   se elige `Automático` a propósito, no puede volver a migrarse.
 
 ### Exportación (QA-EXPORT-001)
 

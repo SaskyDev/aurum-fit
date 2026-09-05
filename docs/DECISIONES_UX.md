@@ -1,25 +1,9 @@
-# Referencias de experiencia de uso
+# Decisiones de experiencia de uso
 
-Este documento recoge patrones útiles sin copiar identidad visual, recursos de
-marca, código ni una interfaz completa de terceros. Las imágenes de referencia
-elegidas por Alex siguen siendo la meta visual principal de Aurum Fit.
+Lo que hemos decidido nosotros y por qué. Lo que viene de mirar Brenzo está en
+`REFERENCIA_BRENZO.md`; aquí solo queda lo que ya es nuestro.
 
-## Brenzo
-
-Fuentes oficiales revisadas:
-
-- https://brenzo.app/
-- https://brenzo.app/ayuda
-- https://apps.apple.com/ca/app/brenzo-workout-planner/id6770596076
-
-Patrones observados que encajan con Aurum Fit:
-
-- uso cómodo con una mano y controles grandes durante el entrenamiento;
-- confirmar una serie con muy pocos pasos;
-- mostrar o reutilizar como referencia los valores del entrenamiento anterior;
-- colocar el temporizador de descanso dentro del flujo del ejercicio;
-- separar creación de rutinas, entrenamiento activo, historial y progreso;
-- funcionamiento local/offline para no depender de cobertura en el gimnasio.
+Actualizado: 5 de septiembre de 2026.
 
 ## Decisiones aplicadas
 
@@ -43,6 +27,10 @@ Patrones observados que encajan con Aurum Fit:
   comprobar en móvil que no compitan con el desplazamiento o el gesto de volver.
 - El autocompletado de valores anteriores debe seguir siendo una ayuda explícita;
   nunca puede registrar como realizado algo que el usuario no haya confirmado.
+  Hoy los valores anteriores aparecen como sugerencia en el campo, no rellenos.
+  Brenzo sí los rellena. Queda abierto si rellenarlos de verdad (guardar la serie
+  sigue siendo un acto explícito) o mantener la sugerencia; decidirlo mirando el
+  vídeo de referencia y probándolo entre series, no en abstracto.
 
 ## Iconografía
 

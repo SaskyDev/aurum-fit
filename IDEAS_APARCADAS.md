@@ -22,6 +22,7 @@ Cuando se retome habrá que decidir, con evidencia y límites de salud claros:
 - cómo evitar prometer prevención de lesiones o tratamiento.
 
 Prioridad vigente: Entrenamiento → Nutrición → Calentamiento y movilidad.
+El mapa muscular ya no forma parte de esta cola: ver `docs/MAPA_MUSCULAR.md`.
 
 ## Capacidades que requieren una app móvil real
 
@@ -45,17 +46,25 @@ pasos o actividades importadas y manuales.
 
 ## Mapa muscular
 
-Estado: siguiente capa visual de entrenamiento, después de estabilizar el modelo
-de ejercicios.
+Estado: **construido en su primera versión** el 5 de septiembre de 2026. Deja de
+estar aparcado. La especificación completa, las decisiones y lo que falta están
+en `docs/MAPA_MUSCULAR.md`.
 
-Base necesaria:
+Lo que se resolvió de lo que aquí estaba pendiente:
 
-- normalizar músculo principal y músculos secundarios por ejercicio;
-- decidir si el mapa representa una sesión, una semana o volumen acumulado;
-- diferenciar trabajo directo de implicación secundaria;
-- no presentar el mapa como diagnóstico, prevención de lesiones ni medida exacta
-  de activación muscular;
-- validar la legibilidad en móvil, daltonismo y navegación por teclado.
+- músculo principal y secundarios normalizados a 21 regiones propias que cubren
+  los 50 valores distintos del dataset;
+- el mapa representa un periodo elegible (sesión, semana o mes), con la semana
+  por defecto;
+- el trabajo directo y la implicación secundaria se muestran separados y no se
+  suman nunca;
+- no se presenta como diagnóstico, prevención de lesiones ni medida de
+  activación, y el aviso vive bajo el mapa;
+- legibilidad comprobada en móvil, paletas validadas para daltonismo y
+  alternativa en texto mediante la tabla por zona.
+
+Sigue abierto: asignar músculos a los ejercicios personales, llevar el mapa al
+resumen de fin de entrenamiento y la revisión profesional del mapeo.
 
 ## Imágenes, animaciones y vídeo de ejercicios
 

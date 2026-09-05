@@ -3,7 +3,13 @@ import fs from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 
-function loadServiceWorker({ oldCaches = [] } = {}) {
+const serviceWorkerSource = fs.readFileSync(new URL("../service-worker.js", import.meta.url), "utf8");
+const shellVersion = serviceWorkerSource.match(/const SHELL_VERSION = "(\d+)";/)[1];
+const shellAssetCount = serviceWorkerSource
+  .slice(serviceWorkerSource.indexOf("const SHELL_ASSETS"), serviceWorkerSource.indexOf("const OPTIONAL_ASSETS"))
+  .match(/\.\//g).length;
+
+function loadServiceWorker({ oldCaches = [], failingAssets = [] } = {}) {
   const source = fs.readFileSync(new URL("../service-worker.js", import.meta.url), "utf8");
   const listeners = {};
   const opened = [];
@@ -56,14 +62,19 @@ function loadServiceWorker({ oldCaches = [] } = {}) {
   };
   const fetch = async (request) => {
     fetched.push(request);
+    const url = String(request.url ?? "");
+    if (failingAssets.some((asset) => url.includes(asset))) {
+      return { ok: false, status: 404, clone() { return this; } };
+    }
     const intercepted = legacyWorker.intercept(request);
     if (intercepted) return intercepted;
-    const url = String(request.url ?? "");
+    const currentShell = request.mode === "navigate"
+      || request.destination === "document"
+      || url === "./"
+      || url.includes(`?v=${shellVersion}`);
     return {
       ok: true,
-      version: request.mode === "navigate" || request.destination === "document" || url === "./" || url.includes("?v=53")
-        ? "v53"
-        : "v9",
+      version: currentShell ? `v${shellVersion}` : "v9",
       clone() { return this; },
     };
   };
@@ -87,7 +98,7 @@ function loadServiceWorker({ oldCaches = [] } = {}) {
   return { listeners, opened, deleted, puts, fetched, legacyCacheHits, legacyWorker, navigations };
 }
 
-test("actualiza desde una caché v9 y precarga un shell coherente v53", async () => {
+test("actualiza desde una caché antigua y precarga un shell coherente", async () => {
   const worker = loadServiceWorker({ oldCaches: ["aurum-fit-shell-v1", "aurum-fit-shell-v9"] });
   let activation;
   worker.listeners.activate({ waitUntil: (promise) => { activation = promise; } });
@@ -98,13 +109,13 @@ test("actualiza desde una caché v9 y precarga un shell coherente v53", async ()
   let installation;
   worker.listeners.install({ waitUntil: (promise) => { installation = promise; } });
   await installation;
-  assert.equal(worker.fetched.length, 8);
-  assert.ok(worker.fetched.every((request) => request.url.includes("?v=53")));
+  assert.equal(worker.fetched.length, shellAssetCount + 1, "el shell más el catálogo opcional");
+  assert.ok(worker.fetched.every((request) => request.url.includes(`?v=${shellVersion}`)));
   assert.deepEqual(worker.legacyCacheHits, []);
-  assert.ok(worker.puts.every(({ response }) => response.version === "v53"));
+  assert.ok(worker.puts.every(({ response }) => response.version === `v${shellVersion}`));
 });
 
-test("la navegación antigua v9 converge a v53 tras reclamar el cliente", async () => {
+test("la navegación antigua converge a la versión actual tras reclamar el cliente", async () => {
   const worker = loadServiceWorker({ oldCaches: ["aurum-fit-shell-v9"] });
   const oldResponse = worker.legacyWorker.intercept({ url: "./" });
   assert.equal(oldResponse.version, "v9");
@@ -119,7 +130,7 @@ test("la navegación antigua v9 converge a v53 tras reclamar el cliente", async 
     respondWith: (promise) => { responsePromise = promise; },
   });
   const response = await responsePromise;
-  assert.equal(response.version, "v53");
+  assert.equal(response.version, `v${shellVersion}`);
   assert.deepEqual(worker.navigations, ["http://localhost:8000/"]);
 });
 test("prioriza la red para documentos y actualiza la caché activa", async () => {
@@ -134,12 +145,153 @@ test("prioriza la red para documentos y actualiza la caché activa", async () =>
   assert.equal(worker.puts.length, 1);
 });
 
+test("la instalación offline exige el shell pero tolera un catálogo caído", async () => {
+  const conCatalogoCaido = loadServiceWorker({ failingAssets: ["exercises.es.json"] });
+  let instalacion;
+  conCatalogoCaido.listeners.install({ waitUntil: (promise) => { instalacion = promise; } });
+  await instalacion;
+
+  const cacheado = conCatalogoCaido.puts.map(({ request }) => String(request));
+  assert.equal(cacheado.length, shellAssetCount);
+  assert.ok(cacheado.every((url) => url.includes(`?v=${shellVersion}`)));
+  assert.ok(!cacheado.some((url) => url.includes("exercises.es.json")));
+  assert.ok(cacheado.some((url) => url.includes("index.html")));
+
+  const conShellCaido = loadServiceWorker({ failingAssets: ["app.js"] });
+  let instalacionFallida;
+  conShellCaido.listeners.install({ waitUntil: (promise) => { instalacionFallida = promise; } });
+  await assert.rejects(instalacionFallida, /No se pudo precargar/);
+});
+
+test("la versión de caché está sincronizada en todo el shell", () => {
+  const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const htmlVersions = [...html.matchAll(/\?v=(\d+)/g)].map((match) => match[1]);
+  const appVersions = [...app.matchAll(/\?v=(\d+)/g)].map((match) => match[1]);
+
+  // Se comprueba que todas coincidan, no cuántas hay: añadir un recurso
+  // versionado es normal, servir dos versiones a la vez no.
+  assert.ok(htmlVersions.length >= 4, "index.html perdió referencias versionadas");
+  assert.ok(appVersions.length >= 2, "app.js perdió referencias versionadas");
+  assert.ok([...htmlVersions, ...appVersions].every((version) => version === shellVersion));
+});
+
+test("las confirmaciones usan un diálogo accesible propio y no window.confirm", () => {
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const styles = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+
+  assert.doesNotMatch(app, /window\.confirm\(/);
+  assert.match(app, /function confirmDialog\(message, \{/);
+  assert.match(app, /box\.setAttribute\("role", "alertdialog"\)/);
+  assert.match(app, /box\.setAttribute\("aria-modal", "true"\)/);
+  assert.match(app, /box\.setAttribute\("aria-labelledby", titleId\)/);
+  assert.match(app, /if \(event\.key === "Escape"\)/);
+  assert.match(app, /const focusable = \[cancelBtn, confirmBtn\]/);
+  assert.match(app, /previouslyFocused instanceof HTMLElement\) previouslyFocused\.focus\(\)/);
+  assert.match(styles, /\.dialog-overlay \{/);
+  assert.match(styles, /\.overlay-open \{ overflow: hidden; \}/);
+
+  const confirmaciones = app.match(/await confirmDialog\(/g) ?? [];
+  assert.equal(confirmaciones.length, 9);
+});
+
+test("el catálogo avisa de los ejercicios sin revisión profesional", () => {
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const styles = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+
+  assert.match(app, /entry\.reviewStatus === "pending_professional_review"/);
+  assert.match(app, /"catalog-review-pending", "Sin revisión profesional todavía"/);
+  assert.match(styles, /\.catalog-card \.catalog-review-pending \{/);
+});
+
+test("el mapa muscular vive en el Diario con periodo propio y alternativa en texto", () => {
+  const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+
+  const diario = html.slice(html.indexOf('id="diario"'), html.indexOf('id="comida"'));
+  assert.ok(diario.includes('id="muscleMapCard"'), "el mapa debe estar dentro del Diario");
+  assert.match(html, /data-muscle-period="session"[\s\S]*data-muscle-period="week"[\s\S]*data-muscle-period="month"/);
+  assert.match(html, /<button class="period-tab active" type="button" data-muscle-period="week"/);
+
+  // El Diario y el mapa comparten la clase .period-tab: si el selector vuelve a
+  // ser global, pulsar un periodo del mapa rompe el del Diario y al revés.
+  assert.doesNotMatch(app, /querySelectorAll\("\.period-tab"\)/);
+  assert.match(app, /querySelectorAll\("\[data-period\]"\)/);
+  assert.match(app, /querySelectorAll\("\[data-muscle-period\]"\)/);
+
+  // La escala de color deja dos tramos por debajo de 3:1 contra la superficie:
+  // la tabla y la leyenda son el desahogo obligatorio, no un adorno.
+  assert.ok(diario.includes('id="muscleMapRows"'), "falta la tabla por zona");
+  assert.ok(diario.includes('id="muscleMapLegend"'), "falta la leyenda");
+  assert.match(app, /svg\.setAttribute\(\s*"aria-label"/);
+  assert.match(app, /No mide activación muscular ni sustituye una valoración profesional/);
+});
+
+test("la figura anatómica cubre las dos vistas y conserva su atribución", async () => {
+  const { BODY_FIGURES } = await import("../body-paths.js");
+  const notices = fs.readFileSync(new URL("../THIRD_PARTY_NOTICES.md", import.meta.url), "utf8");
+  const source = fs.readFileSync(new URL("../body-paths.js", import.meta.url), "utf8");
+
+  // La geometría es de terceros bajo MIT. La atribución es obligatoria: si
+  // desaparece de THIRD_PARTY_NOTICES.md dejamos de cumplir la licencia.
+  assert.match(notices, /MuscleMap/);
+  assert.match(notices, /Melih Colpan/);
+  assert.match(notices, /MIT/);
+  assert.match(notices, /openGym/);
+  assert.match(source, /MuscleMap.*Melih Colpan/s);
+
+  ["male", "female"].forEach((figura) => {
+    ["front", "back"].forEach((vista) => {
+      const v = BODY_FIGURES[figura][vista];
+      assert.match(v.viewBox, /^[\d\s.-]+$/, `viewBox inválido en ${figura}/${vista}`);
+      assert.ok(v.inert.length, `${figura}/${vista} sin silueta`);
+      assert.ok(Object.keys(v.regions).length >= 12, `${figura}/${vista} con pocas regiones`);
+    });
+  });
+
+  // El dorsal y la espalda superior venían como una sola parte en la fuente y
+  // para nosotros son dos regiones con 81 y 88 ejercicios principales.
+  ["male", "female"].forEach((figura) => {
+    const back = BODY_FIGURES[figura].back.regions;
+    assert.ok(back.lats?.length, `faltan los dorsales en ${figura}`);
+    assert.ok(back.upper_back?.length, `falta la espalda superior en ${figura}`);
+  });
+
+  ["chest", "abs", "quads", "biceps", "obliques", "serratus"].forEach((region) => {
+    assert.ok(BODY_FIGURES.male.front.regions[region]?.length, `falta ${region} de frente`);
+  });
+  ["traps", "glutes", "hamstrings", "triceps", "lower_back", "calves"].forEach((region) => {
+    assert.ok(BODY_FIGURES.male.back.regions[region]?.length, `falta ${region} de espaldas`);
+  });
+});
+
+test("el shell precarga la figura y la app la importa", () => {
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  assert.match(serviceWorkerSource, /body-paths\.js\?v=\$\{SHELL_VERSION\}/);
+  assert.match(app, /import \{ BODY_FIGURES \} from "\.\/body-paths\.js\?v=\d+"/);
+  // 92 KB de trazos no pueden quedar fuera de la instalación offline.
+  assert.ok(
+    serviceWorkerSource.indexOf("body-paths.js") < serviceWorkerSource.indexOf("OPTIONAL_ASSETS"),
+    "la figura debe ser un recurso obligatorio del shell, no opcional",
+  );
+});
+
+test("los músculos se guardan en el ejercicio y no se recalculan al pintar", () => {
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  // El historial tiene que leerse sin conexión y sin catálogo: si el mapa
+  // cruzase contra el catálogo al renderizar, offline se quedaría en blanco.
+  assert.match(app, /exercise\.muscles = muscles/);
+  assert.match(app, /function backfillExerciseMuscles\(\)/);
+  assert.match(app, /backfillExerciseMuscles\(\);/);
+  assert.doesNotMatch(app, /computeMuscleVolume\(state, \{[^}]*catalog/);
+});
+
 test("el submit de serie conserva el bloqueo aunque renderice otro formulario", () => {
   const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
   assert.match(app, /const pendingSetSubmissions = new Set\(\)/);
   assert.match(app, /pendingSetSubmissions\.has\(key\)/);
   assert.match(app, /const submissionKey = `\$\{session\.id\}:\$\{sessionExercise\.id\}`/);
-  assert.match(app, /Serie guardada automáticamente\."\), submissionKey\)/);
+  assert.match(app, /\}, successMessage\), submissionKey\)/);
 });
 
 test("Importar deja el input fuera del foco y la actualización offline no silencia fallos online", () => {
@@ -482,4 +634,95 @@ test("Biblioteca permite archivar una rutina con gesto hacia la izquierda", () =
   assert.match(css, /\.routine-swipe-row/);
   assert.match(css, /\.routine-swipe-delete/);
   assert.match(css, /touch-action: pan-y/);
+});
+
+test("guardar una serie arranca el descanso, corregirla no", () => {
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+
+  assert.match(app, /function startRestAfterSet\(exerciseId\)/);
+  // Solo en series nuevas: corregir un número no es acabar de entrenar.
+  assert.match(app, /if \(!editingSetId && autoRestTimerEnabled\(\)\) startRestAfterSet\(sessionExercise\.id\);/);
+  // Y después de guardar, no antes: si fallara la validación no debe arrancar.
+  const submit = app.slice(app.indexOf("const saved = runOnce(submit"), app.indexOf("form.startEditing"));
+  assert.ok(
+    submit.indexOf("const saved") < submit.indexOf("startRestAfterSet"),
+    "el descanso no puede arrancar antes de saber si la serie se guardó",
+  );
+  assert.match(app, /Descanso de \$\{formatTimer\(restSeconds\)\} en marcha/);
+
+  // El descanso por defecto de Ajustes existía pero el temporizador lo ignoraba.
+  assert.match(app, /state\.owner\.preferences\?\.defaultRestSeconds/);
+  assert.doesNotMatch(app, /duration: 60, remaining: 60/);
+
+  // Es un ajuste, no una imposición: Brenzo lo ofrece como interruptor y aquí
+  // también, encendido por defecto.
+  const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  assert.match(html, /id="autoRestTimer" type="checkbox" role="switch"/);
+  assert.match(app, /autoRestTimer: true,/);
+  assert.match(app, /autoRestTimer: \$\("autoRestTimer"\)\.checked/);
+});
+
+test("la paleta del tema claro cumple el contraste y coincide con el código", async () => {
+  const { checkLightTheme, LIGHT_THEME } = await import("../scripts/check-theme-contrast.mjs");
+  const styles = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+
+  assert.deepEqual(checkLightTheme(), [], "la paleta del tema claro dejó de cumplir el contraste");
+
+  // El tema claro no es el oscuro con menos brillo: tiene sus propios tonos, y
+  // el comprobador solo sirve si los valores son los que se usan de verdad.
+  const bloque = styles.slice(styles.indexOf(':root[data-theme="light"] {'), styles.indexOf("* {"));
+  assert.ok(bloque.includes(`--canvas: ${LIGHT_THEME.canvas};`), "el lienzo claro no coincide");
+  assert.ok(bloque.includes(`--surface: ${LIGHT_THEME.surface};`), "la superficie clara no coincide");
+  assert.ok(bloque.includes(`--danger: ${LIGHT_THEME.danger};`), "el rojo de peligro no coincide");
+  Object.entries(LIGHT_THEME.accents).forEach(([nombre, { accent, ink }]) => {
+    assert.match(app, new RegExp(`${nombre}: \\{ accent: "${accent}", accentStrong: "${ink}", success: "${ink}"`),
+      `la paleta ${nombre} de app.js no coincide con la comprobada`);
+  });
+
+  // El acento como texto necesita su propio token: con el del relleno, los
+  // encabezados se quedaban en 4,15:1 sobre el lienzo.
+  assert.match(app, /--accent-ink", resolvedTheme === "light" \? palette\.accentStrong : palette\.accent/);
+  assert.doesNotMatch(styles, /color: var\(--accent\)/);
+});
+
+test("un día ocupado explica por qué, no se queda mudo", () => {
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+
+  // El bug: al crear una segunda rutina, los días que ya ocupa otra están
+  // deshabilitados y solo lo explicaba un `title`. En un móvil no hay puntero
+  // que se pose, así que el usuario tocaba el día, no pasaba nada, pulsaba
+  // Crear y le decía que no había elegido ninguno. El botón parecía roto.
+  assert.match(app, /function describeOccupiedWeekdays\(occupiedBy\)/);
+  assert.match(app, /occupiedBy\.get\(weekday\)\?\.routine\?\.name/);
+  assert.match(app, /input\.setAttribute\(\s*"aria-label"/);
+  assert.match(app, /wrapper\.classList\.toggle\("is-occupied", input\.disabled\)/);
+
+  // Ayuda visible bajo cada uno de los dos selectores de días.
+  assert.ok(html.includes('id="newRoutineWeekdaysHelp"'), "falta la ayuda al crear rutina");
+  assert.ok(html.includes('id="addRoutineDayWeekdaysHelp"'), "falta la ayuda al añadir día");
+  assert.match(app, /\$\("newRoutineWeekdaysHelp"\)/);
+  assert.match(app, /\$\("addRoutineDayWeekdaysHelp"\)/);
+
+  // Y el aviso de error nombra los días ocupados y su rutina.
+  assert.match(app, /Los días tachados no están libres: \$\{detalle\}/);
+  assert.match(app, /\$\("newRoutineWeekdays"\)\.scrollIntoView/);
+});
+
+test("la app arranca en oscuro aunque el móvil esté en claro", () => {
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+
+  // Por defecto oscuro siempre; el sistema deja de mandar salvo que la persona
+  // elija "Automático" a propósito desde Ajustes.
+  assert.match(app, /appearanceMode: "dark",/);
+  assert.doesNotMatch(app, /appearanceMode: "system",/);
+
+  // Migración única para quien ya tenía "system" guardado por ser el valor por
+  // defecto anterior. La marca evita repetirla si luego elige Automático.
+  assert.match(app, /const DARK_DEFAULT_VERSION = 1;/);
+  assert.match(app, /targetState\.meta\.darkDefaultVersion !== DARK_DEFAULT_VERSION/);
+  assert.match(app, /targetState\.meta\.darkDefaultVersion = DARK_DEFAULT_VERSION;/);
+  // Y tiene que persistir, no quedarse solo en memoria.
+  assert.match(app, /state = persistState\(localStorage, state\);/);
 });

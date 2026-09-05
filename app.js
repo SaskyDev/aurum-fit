@@ -1,5 +1,7 @@
 import {
   CARDIO_ACTIVITY_TYPES,
+  MUSCLE_INTENSITY_STEPS,
+  MUSCLE_REGIONS,
   addExerciseToRoutineDay,
   addExerciseToSession,
   addCardioToSession,
@@ -9,6 +11,7 @@ import {
   cardioDerivedMetrics,
   completeSession,
   cleanupPublishedData,
+  computeMuscleVolume,
   createRoutineWithWeekdays,
   deleteSet,
   duplicateSet,
@@ -18,6 +21,9 @@ import {
   loadAppState,
   PUBLIC_CLEANUP_VERSION,
   moveRoutineExercise,
+  muscleIntensity,
+  muscleRegionLabel,
+  normalizeCatalogMuscles,
   normalizeExerciseName,
   parseImportPayload,
   persistState,
@@ -36,14 +42,17 @@ import {
   startSessionFromRoutineDay,
   updateSet,
   validateLabelPhotoFile,
-} from "./core.js?v=53";
+} from "./core.js?v=65";
+import { BODY_FIGURES } from "./body-paths.js?v=65";
 
 const defaultTargets = { calories: 2200, protein: 170, steps: 10000 };
 const defaultPreferences = {
   accentColor: "lime",
-  appearanceMode: "system",
+  appearanceMode: "dark",
   effortScale: "rir",
   defaultRestSeconds: 60,
+  autoRestTimer: true,
+  mapFigure: "male",
 };
 const appearanceLabels = { system: "Automático", dark: "Oscuro", light: "Claro" };
 const accentLabels = {
@@ -62,13 +71,20 @@ const accentPalettes = {
   red: { accent: "#fb7185", accentStrong: "#f43f5e", success: "#fda4af", rgb: "251, 113, 133" },
   steel: { accent: "#e5e7eb", accentStrong: "#cbd5e1", success: "#f8fafc", rgb: "229, 231, 235" },
 };
+// Paleta del tema claro. `success` es el tono de TEXTO y `accent` el de
+// RELLENO: sobre el lienzo claro el tono del relleno se queda en 4,15:1 como
+// texto, así que el texto usa siempre el paso oscuro.
+// Paleta del tema claro. No es el neón del oscuro bajado de brillo: son sus
+// propios tonos, medidos contra blanco para que el texto de acento pase 4,5:1
+// y los rellenos con texto blanco encima pasen 4,5:1 también. El oliva
+// amarillento anterior cumplía el contraste pero ensuciaba toda la interfaz.
 const lightAccentPalettes = {
-  lime: { accent: "#587a00", accentStrong: "#426100", success: "#467000", rgb: "88, 122, 0" },
-  orange: { accent: "#b84c00", accentStrong: "#963d00", success: "#a84a00", rgb: "184, 76, 0" },
-  blue: { accent: "#0077a8", accentStrong: "#005f88", success: "#006b97", rgb: "0, 119, 168" },
-  violet: { accent: "#6d43c0", accentStrong: "#5833a4", success: "#6540ae", rgb: "109, 67, 192" },
-  red: { accent: "#bd3551", accentStrong: "#9f2942", success: "#ac304a", rgb: "189, 53, 81" },
-  steel: { accent: "#475569", accentStrong: "#334155", success: "#3f4d60", rgb: "71, 85, 105" },
+  lime: { accent: "#4d7c0f", accentStrong: "#3d6408", success: "#3d6408", rgb: "77, 124, 15" },
+  orange: { accent: "#b45309", accentStrong: "#92400e", success: "#92400e", rgb: "180, 83, 9" },
+  blue: { accent: "#0369a1", accentStrong: "#075985", success: "#075985", rgb: "3, 105, 161" },
+  violet: { accent: "#6d28d9", accentStrong: "#5b21b6", success: "#5b21b6", rgb: "109, 40, 217" },
+  red: { accent: "#be123c", accentStrong: "#9f1239", success: "#9f1239", rgb: "190, 18, 60" },
+  steel: { accent: "#475569", accentStrong: "#334155", success: "#334155", rgb: "71, 85, 105" },
 };
 const cardioActivityCatalog = [
   { type: "run", label: "Correr", family: "A pie", icon: "cardio-run", metric: "pace", fields: ["distance", "steps", "elevation", "heartRate", "calories"], help: "Distancia y tiempo; calculamos tu ritmo medio." },
@@ -123,6 +139,8 @@ function getPreferences(targetState = state) {
   return { ...defaultPreferences, ...(targetState.owner?.preferences ?? {}) };
 }
 
+const DARK_DEFAULT_VERSION = 1;
+
 function ensureUiState(targetState) {
   targetState.owner ??= {};
   targetState.owner.profile ??= { birthDate: null, heightCm: null, weightKg: null };
@@ -132,14 +150,34 @@ function ensureUiState(targetState) {
   targetState.owner.preferences.appearanceMode ??= defaultPreferences.appearanceMode;
   targetState.owner.preferences.effortScale ??= defaultPreferences.effortScale;
   targetState.owner.preferences.defaultRestSeconds ??= defaultPreferences.defaultRestSeconds;
+  targetState.owner.preferences.autoRestTimer ??= defaultPreferences.autoRestTimer;
+  targetState.owner.preferences.mapFigure ??= defaultPreferences.mapFigure;
   targetState.nutrition ??= { recipes: [], labels: [] };
   targetState.nutrition.recipes ??= [];
   targetState.nutrition.labels ??= [];
   targetState.meta ??= {};
+  // La app arranca siempre en oscuro, aunque el móvil esté en claro. Quien ya
+  // tenía guardado "system" lo tenía por ser el valor por defecto anterior, no
+  // por haberlo elegido, así que se migra una sola vez. La marca evita repetir
+  // la migración si después elige "Automático" a propósito.
+  if (targetState.meta.darkDefaultVersion !== DARK_DEFAULT_VERSION) {
+    if (targetState.owner.preferences.appearanceMode === "system") {
+      targetState.owner.preferences.appearanceMode = "dark";
+    }
+    targetState.meta.darkDefaultVersion = DARK_DEFAULT_VERSION;
+  }
   return targetState;
 }
 
+const estadoAntesDeNormalizar = JSON.stringify(state.owner?.preferences ?? null) + JSON.stringify(state.meta ?? null);
 ensureUiState(state);
+if (JSON.stringify(state.owner.preferences) + JSON.stringify(state.meta) !== estadoAntesDeNormalizar) {
+  try {
+    state = persistState(localStorage, state);
+  } catch {
+    // Si el almacenamiento falla, la preferencia se aplica igual en esta sesión.
+  }
+}
 
 const darkModeMedia = window.matchMedia("(prefers-color-scheme: dark)");
 
@@ -159,6 +197,9 @@ function applyThemePreferences(targetState = state) {
   root.dataset.theme = resolvedTheme;
   root.style.colorScheme = resolvedTheme;
   root.style.setProperty("--accent", palette.accent);
+  // El acento como texto necesita su propio tono: en claro, el del relleno se
+  // queda en 4,15:1 sobre el lienzo. En oscuro son el mismo color.
+  root.style.setProperty("--accent-ink", resolvedTheme === "light" ? palette.accentStrong : palette.accent);
   root.style.setProperty("--accent-strong", palette.accentStrong);
   root.style.setProperty("--success", palette.success);
   root.style.setProperty("--accent-rgb", palette.rgb);
@@ -640,7 +681,12 @@ function sessionElapsedSeconds(session, now = Date.now()) {
 
 function timerFor(exerciseId) {
   if (!restTimerStates.has(exerciseId)) {
-    restTimerStates.set(exerciseId, { duration: 60, remaining: 60, running: false, intervalId: null });
+    // El descanso por defecto de Ajustes es el punto de partida. Cada ejercicio
+    // puede desviarse con sus botones, y esa desviación se conserva mientras
+    // dure la sesión.
+    const duration = state.owner.preferences?.defaultRestSeconds
+      ?? defaultPreferences.defaultRestSeconds;
+    restTimerStates.set(exerciseId, { duration, remaining: duration, running: false, intervalId: null });
   }
   return restTimerStates.get(exerciseId);
 }
@@ -695,6 +741,23 @@ function toggleExerciseTimer(exerciseId) {
   renderExerciseTimer(exerciseId);
 }
 
+// Guardar una serie arranca el descanso solo. Es el gesto que más fricción
+// quita durante el entrenamiento y no registra nada por su cuenta, así que no
+// choca con la regla de que nada se dé por hecho sin confirmarlo.
+//
+// Corregir una serie ya guardada NO lo arranca: ahí no acabas de entrenar,
+// estás arreglando un número.
+function autoRestTimerEnabled() {
+  return (state.owner.preferences?.autoRestTimer ?? defaultPreferences.autoRestTimer) !== false;
+}
+
+function startRestAfterSet(exerciseId) {
+  stopExerciseTimer(exerciseId);
+  const timer = timerFor(exerciseId);
+  timer.remaining = timer.duration;
+  toggleExerciseTimer(exerciseId);
+}
+
 function setExerciseTimerDuration(exerciseId, seconds) {
   stopExerciseTimer(exerciseId);
   const timer = timerFor(exerciseId);
@@ -708,7 +771,7 @@ function createExerciseRestTimer(exerciseId) {
   root.dataset.restTimer = exerciseId;
   const heading = createElement("div", "exercise-timer-heading");
   const label = createElement("span", "eyebrow", "Descanso de este ejercicio");
-  const display = createElement("strong", "timer-display", "01:00");
+  const display = createElement("strong", "timer-display", formatTimer(timerFor(exerciseId).duration));
   display.dataset.restDisplay = "";
   heading.append(label, display);
   const controls = createElement("div", "timer-controls compact-timer-controls");
@@ -1396,6 +1459,8 @@ function renderSettings() {
   $("targetProtein").value = targets.protein;
   $("targetSteps").value = targets.steps;
   $("defaultRestSeconds").value = preferences.defaultRestSeconds;
+  $("autoRestTimer").checked = preferences.autoRestTimer !== false;
+  $("mapFigure").value = preferences.mapFigure ?? defaultPreferences.mapFigure;
   $("effortScale").value = preferences.effortScale;
   document.querySelectorAll('input[name="accentColor"]').forEach((input) => {
     input.checked = input.value === preferences.accentColor;
@@ -1409,7 +1474,8 @@ function renderSettings() {
   $("settingsAppearanceSummary").textContent =
     `${appearanceLabels[preferences.appearanceMode] ?? "Automático"} · ${accentLabels[preferences.accentColor] ?? "Lima"}`;
   $("settingsWorkoutSummary").textContent =
-    `${preferences.effortScale === "none" ? "Sin escala" : preferences.effortScale.toUpperCase()} · ${preferences.defaultRestSeconds} s`;
+    `${preferences.effortScale === "none" ? "Sin escala" : preferences.effortScale.toUpperCase()} · ${preferences.defaultRestSeconds} s`
+    + `${preferences.autoRestTimer === false ? "" : " · timer automático"}`;
   const demoSessions = state.training.sessions.filter((session) => session.isDemo).length;
   const demoDays = Object.values(state.legacy.days).filter((day) => day?.isDemo).length;
   $("demoDataSummary").textContent = demoSessions || demoDays
@@ -1557,6 +1623,11 @@ function attachCatalogMetadata(targetState, exerciseId, entry) {
   };
   exercise.category = entry.category;
   exercise.equipment = entry.equipment;
+  // El mapa muscular lee el historial, y el historial tiene que poder leerse
+  // sin conexión y sin catálogo. Por eso los músculos se copian al ejercicio
+  // en el momento de añadirlo, en lugar de volver a cruzarlos al pintar.
+  const muscles = normalizeCatalogMuscles(entry);
+  if (muscles.direct.length || muscles.secondary.length) exercise.muscles = muscles;
 }
 
 function routineDayValue(routineId, routineDayId) {
@@ -1603,7 +1674,7 @@ const weekdayShort = new Map([
   [1, "Lun"], [2, "Mar"], [3, "Mié"], [4, "Jue"], [5, "Vie"], [6, "Sáb"], [0, "Dom"],
 ]);
 
-function createWeekdaySelector({ name, selected = [], disabled = [], single = false }) {
+function createWeekdaySelector({ name, selected = [], disabled = [], single = false, occupiedBy = new Map() }) {
   const fragment = document.createDocumentFragment();
   weekdayOptions.forEach(({ value, label }) => {
     const weekday = Number(value);
@@ -1615,11 +1686,37 @@ function createWeekdaySelector({ name, selected = [], disabled = [], single = fa
     input.checked = selected.includes(weekday);
     input.disabled = disabled.includes(weekday);
     const visual = createElement("span", "", weekdayShort.get(weekday));
-    visual.title = input.disabled ? `${label}: ocupado` : label;
+    // El nombre accesible dice por qué está bloqueado. `title` no basta: en un
+    // móvil no hay puntero que se pose encima, así que un día deshabilitado se
+    // vive como un botón roto.
+    const ocupante = occupiedBy.get(weekday)?.routine?.name ?? null;
+    visual.title = input.disabled
+      ? `${label}: ocupado${ocupante ? ` por ${ocupante}` : ""}`
+      : label;
+    input.setAttribute(
+      "aria-label",
+      input.disabled ? `${label}, ocupado${ocupante ? ` por ${ocupante}` : ""}` : label,
+    );
+    wrapper.classList.toggle("is-occupied", input.disabled);
     wrapper.append(input, visual);
     fragment.appendChild(wrapper);
   });
   return fragment;
+}
+
+// Texto visible bajo el selector: qué días están bloqueados y por qué rutina.
+function describeOccupiedWeekdays(occupiedBy) {
+  const entradas = [...occupiedBy.entries()].sort((a, b) => a[0] - b[0]);
+  if (!entradas.length) return "";
+  const porRutina = new Map();
+  entradas.forEach(([weekday, ocupante]) => {
+    const nombre = ocupante?.routine?.name ?? "otra rutina";
+    if (!porRutina.has(nombre)) porRutina.set(nombre, []);
+    porRutina.get(nombre).push(weekdayName(weekday));
+  });
+  return [...porRutina.entries()]
+    .map(([nombre, dias]) => `${dias.join(", ")} ${dias.length > 1 ? "los ocupa" : "lo ocupa"} ${nombre}`)
+    .join(" · ");
 }
 
 function selectedWeekdays(containerId) {
@@ -1679,11 +1776,17 @@ function syncAddRoutineCardioVisibility() {
 }
 
 function renderNewRoutineWeekdays() {
-  const occupied = [...weekdayAssignments({ includeDemo: false }).keys()];
+  const occupiedBy = weekdayAssignments({ includeDemo: false });
   $("newRoutineWeekdays").replaceChildren(createWeekdaySelector({
     name: "new-routine-weekdays",
-    disabled: occupied,
+    disabled: [...occupiedBy.keys()],
+    occupiedBy,
   }));
+  const ayuda = $("newRoutineWeekdaysHelp");
+  const detalle = describeOccupiedWeekdays(occupiedBy);
+  ayuda.textContent = detalle
+    ? `${detalle}. Elige otro día o libera ese primero.`
+    : "Elige uno o varios días para repetir la rutina.";
 }
 
 function weekdayName(value) {
@@ -2303,12 +2406,17 @@ function renderRoutineManager() {
     .sort((left, right) => left.order - right.order)
     .forEach((routineDay, index) => detailDays.appendChild(createRoutineDayCard(selectedRoutine, routineDay, index)));
   if (!detailDays.children.length) renderEmpty(detailDays, "Añade el primer día", "Selecciona abajo uno de los días disponibles.");
-  const occupied = [...weekdayAssignments({ includeDemo: Boolean(selectedRoutine.isDemo) }).keys()];
+  const occupiedBy = weekdayAssignments({ includeDemo: Boolean(selectedRoutine.isDemo) });
   $("addRoutineDayWeekdays").replaceChildren(createWeekdaySelector({
     name: "add-routine-day-weekday",
-    disabled: occupied,
+    disabled: [...occupiedBy.keys()],
     single: true,
+    occupiedBy,
   }));
+  const ayudaDias = describeOccupiedWeekdays(occupiedBy);
+  $("addRoutineDayWeekdaysHelp").textContent = ayudaDias
+    ? `${ayudaDias}. Elige otro día o libera ese primero.`
+    : "";
 }
 
 function renderRoutineExerciseOptions(query = "") {
@@ -2543,14 +2651,23 @@ function renderSetForm(session, sessionExercise, reference) {
       note: note.input.value,
     };
     const editingSetId = form.dataset.editingSetId;
+    const restSeconds = timerFor(sessionExercise.id).duration;
+    const successMessage = editingSetId
+      ? "Serie corregida y guardada."
+      : (autoRestTimerEnabled()
+        ? `Serie guardada. Descanso de ${formatTimer(restSeconds)} en marcha.`
+        : "Serie guardada automáticamente.");
     const saved = runOnce(submit, () => commit((next) => {
       if (editingSetId) {
         updateSet(next, session.id, sessionExercise.id, editingSetId, input);
       } else {
         addSetToExercise(next, session.id, sessionExercise.id, input);
       }
-    }, editingSetId ? "Serie corregida y guardada." : "Serie guardada automáticamente."), submissionKey);
-    if (saved) form.reset();
+    }, successMessage), submissionKey);
+    if (saved) {
+      form.reset();
+      if (!editingSetId && autoRestTimerEnabled()) startRestAfterSet(sessionExercise.id);
+    }
   });
 
   form.startEditing = (workoutSet) => {
@@ -3278,13 +3395,40 @@ function renderCatalogResults() {
   }
 }
 
+// Los ejercicios guardados antes de que existiera el mapa no llevan músculos.
+// En cuanto el catálogo está disponible se rellenan una sola vez, para que el
+// historial que ya tienes cuente desde el primer día. Los ejercicios propios
+// que no estén en el catálogo se quedan sin músculos a propósito: es mejor un
+// hueco declarado que una asignación inventada.
+function backfillExerciseMuscles() {
+  if (!catalog.length) return;
+  const porSourceId = new Map(catalog.map((entry) => [entry.sourceId, entry]));
+  const asignaciones = new Map();
+  state.training.exercises.forEach((exercise) => {
+    if (exercise.muscles) return;
+    const entry = (exercise.source?.sourceId && porSourceId.get(exercise.source.sourceId))
+      || catalogEntryForName(exercise.name);
+    if (!entry) return;
+    const muscles = normalizeCatalogMuscles(entry);
+    if (muscles.direct.length || muscles.secondary.length) asignaciones.set(exercise.id, muscles);
+  });
+  if (!asignaciones.size) return;
+  commit((next) => {
+    next.training.exercises.forEach((exercise) => {
+      const muscles = asignaciones.get(exercise.id);
+      if (muscles && !exercise.muscles) exercise.muscles = muscles;
+    });
+  }, null);
+}
+
 async function loadCatalog() {
   try {
-    const response = await fetch("./data/exercises.es.json?v=53", { cache: "no-cache" });
+    const response = await fetch("./data/exercises.es.json?v=65", { cache: "no-cache" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     if (!Array.isArray(payload.exercises)) throw new Error("Estructura no válida");
     catalog = payload.exercises;
+    backfillExerciseMuscles();
     renderCatalogFilters();
     renderCatalogResults();
     renderRoutineExerciseOptions();
@@ -3299,9 +3443,228 @@ async function loadCatalog() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Mapa muscular
+//
+// La figura anatómica vive en body-paths.js y viene de MuscleMap bajo licencia
+// MIT (ver THIRD_PARTY_NOTICES.md). Aquí solo se traduce nuestro volumen por
+// región a colores sobre sus trazos. El mapa cuenta series efectivas: no mide
+// activación muscular ni sustituye una valoración profesional.
+// ---------------------------------------------------------------------------
+
+// `abductors` no tiene forma propia en la figura: el glúteo medio es
+// precisamente el abductor de la cadera, así que comparte el trazo del glúteo.
+// Cuando dos regiones comparten forma, manda la de más volumen directo.
+const REGION_SHARED_SHAPE = { abductors: "glutes" };
+
+function figureFor(view) {
+  const figure = state.owner.preferences?.mapFigure === "female" ? "female" : "male";
+  return BODY_FIGURES[figure][view];
+}
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+let muscleMapPeriod = "week";
+
+function muscleShapeElement(d) {
+  const element = document.createElementNS(SVG_NS, "path");
+  element.setAttribute("d", d);
+  return element;
+}
+
+function renderMuscleFigure(view, volume) {
+  const figure = figureFor(view);
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("viewBox", figure.viewBox);
+  svg.setAttribute("class", "muscle-figure");
+  svg.setAttribute("role", "img");
+
+  // La implicación secundaria se marca con rayado, no con un quinto color: es
+  // otra cosa, no más de lo mismo. Sobre trazos anatómicos finos una línea
+  // discontinua se lee como ruido, así que el rayado va en el relleno.
+  const hatchId = `muscleHatch-${view}`;
+  const defs = document.createElementNS(SVG_NS, "defs");
+  const pattern = document.createElementNS(SVG_NS, "pattern");
+  pattern.id = hatchId;
+  pattern.setAttribute("patternUnits", "userSpaceOnUse");
+  pattern.setAttribute("width", "14");
+  pattern.setAttribute("height", "14");
+  pattern.setAttribute("patternTransform", "rotate(45)");
+  const hatchBg = document.createElementNS(SVG_NS, "rect");
+  hatchBg.setAttribute("width", "14");
+  hatchBg.setAttribute("height", "14");
+  hatchBg.setAttribute("class", "muscle-hatch-bg");
+  const hatchLine = document.createElementNS(SVG_NS, "line");
+  hatchLine.setAttribute("x1", "0");
+  hatchLine.setAttribute("y1", "0");
+  hatchLine.setAttribute("x2", "0");
+  hatchLine.setAttribute("y2", "14");
+  hatchLine.setAttribute("class", "muscle-hatch-line");
+  pattern.append(hatchBg, hatchLine);
+  defs.appendChild(pattern);
+  svg.appendChild(defs);
+
+  figure.inert.forEach((d) => {
+    const element = muscleShapeElement(d);
+    element.setAttribute("class", "muscle-body");
+    svg.appendChild(element);
+  });
+
+  // Una forma puede cubrir más de una región nuestra; se pinta con la que más
+  // trabajo directo tenga, y el título las nombra a todas.
+  const regionsByShape = new Map();
+  Object.keys(figure.regions).forEach((regionId) => regionsByShape.set(regionId, [regionId]));
+  Object.entries(REGION_SHARED_SHAPE).forEach(([regionId, shapeId]) => {
+    if (regionsByShape.has(shapeId)) regionsByShape.get(shapeId).push(regionId);
+  });
+
+  const trabajados = [];
+  regionsByShape.forEach((regionIds, shapeId) => {
+    const datos = regionIds.map((regionId) => ({
+      regionId,
+      ...(volume.byRegion[regionId] ?? { directSets: 0, secondarySets: 0 }),
+    }));
+    const principal = datos.reduce((mejor, item) => (item.directSets > mejor.directSets ? item : mejor));
+    const intensity = muscleIntensity(principal.directSets);
+    const secondarySets = Math.max(...datos.map((item) => item.secondarySets));
+    const onlySecondary = intensity === "none" && secondarySets > 0;
+    if (intensity !== "none") {
+      trabajados.push(`${muscleRegionLabel(principal.regionId)} (${principal.directSets})`);
+    }
+
+    const group = document.createElementNS(SVG_NS, "g");
+    group.setAttribute("class", `muscle-region intensity-${intensity}${onlySecondary ? " only-secondary" : ""}`);
+    if (onlySecondary) group.style.fill = `url(#${hatchId})`;
+    group.dataset.region = shapeId;
+    figure.regions[shapeId].forEach((d) => group.appendChild(muscleShapeElement(d)));
+    const title = document.createElementNS(SVG_NS, "title");
+    title.textContent = datos
+      .map((item) => `${muscleRegionLabel(item.regionId)}: ${item.directSets} series directas, ${item.secondarySets} con implicación`)
+      .join(". ");
+    group.appendChild(title);
+    svg.appendChild(group);
+  });
+
+  const viewLabel = view === "front" ? "Vista frontal" : "Vista posterior";
+  svg.setAttribute(
+    "aria-label",
+    trabajados.length
+      ? `${viewLabel}. Trabajo directo en ${trabajados.join(", ")}.`
+      : `${viewLabel}. Sin trabajo directo registrado en este periodo.`,
+  );
+  return svg;
+}
+
+function muscleMapRange() {
+  if (muscleMapPeriod === "session") {
+    const active = getActiveSession(state);
+    if (active) return { sessionId: active.id, label: "Sesión en curso" };
+    const last = [...state.training.sessions]
+      .filter((session) => session.status === "completed" && session.endedAt)
+      .sort((a, b) => b.endedAt.localeCompare(a.endedAt))[0];
+    return last
+      ? { sessionId: last.id, label: "Última sesión" }
+      : { sessionId: "sin-sesiones", label: "Última sesión" };
+  }
+  const start = periodStart(muscleMapPeriod);
+  return {
+    fromIso: start.toISOString(),
+    label: muscleMapPeriod === "week" ? "Esta semana" : "Este mes",
+  };
+}
+
+function renderMuscleMap() {
+  const figures = $("muscleMapFigures");
+  if (!figures) return;
+  const range = muscleMapRange();
+  const volume = computeMuscleVolume(state, range);
+
+  document.querySelectorAll("[data-muscle-period]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.musclePeriod === muscleMapPeriod);
+    button.setAttribute("aria-pressed", String(button.dataset.musclePeriod === muscleMapPeriod));
+  });
+
+  figures.replaceChildren(
+    renderMuscleFigure("front", volume),
+    renderMuscleFigure("back", volume),
+  );
+
+  const conTrabajo = MUSCLE_REGIONS.filter((region) => volume.byRegion[region.id].directSets > 0);
+  $("muscleMapSummary").textContent = volume.effectiveSets
+    ? `${range.label} · ${volume.effectiveSets} series efectivas en ${conTrabajo.length} de ${MUSCLE_REGIONS.length} zonas`
+    : `${range.label} · sin series efectivas todavía`;
+
+  const legend = $("muscleMapLegend");
+  const titulo = document.createElement("li");
+  titulo.className = "muscle-legend-title";
+  titulo.append(createElement("small", "", "Series directas:"));
+  legend.replaceChildren(titulo, ...MUSCLE_INTENSITY_STEPS.map((step) => {
+    const item = document.createElement("li");
+    item.className = `muscle-legend-item intensity-${step.id}`;
+    const swatch = createElement("span", "muscle-legend-swatch");
+    swatch.setAttribute("aria-hidden", "true");
+    const siguiente = MUSCLE_INTENSITY_STEPS[MUSCLE_INTENSITY_STEPS.indexOf(step) + 1];
+    const detail = step.id === "none"
+      ? "0"
+      : `${step.min}${siguiente ? `-${siguiente.min - 1}` : "+"}`;
+    item.append(swatch, createElement("small", "", detail));
+    item.title = step.labelEs;
+    return item;
+  }));
+  const implicacion = document.createElement("li");
+  implicacion.className = "muscle-legend-item";
+  const trama = createElement("span", "muscle-legend-swatch swatch-secondary");
+  trama.setAttribute("aria-hidden", "true");
+  implicacion.append(trama, createElement("small", "", "Solo implicación"));
+  legend.appendChild(implicacion);
+
+  const rows = $("muscleMapRows");
+  const filas = MUSCLE_REGIONS
+    .map((region) => ({ region, data: volume.byRegion[region.id] }))
+    .filter((item) => item.data.directSets > 0 || item.data.secondarySets > 0)
+    .sort((a, b) => (
+      b.data.directSets - a.data.directSets
+      || b.data.secondarySets - a.data.secondarySets
+      || a.region.labelEs.localeCompare(b.region.labelEs, "es")
+    ));
+  if (!filas.length) {
+    const empty = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 3;
+    cell.className = "muted";
+    cell.textContent = "Registra series efectivas para ver la cobertura.";
+    empty.appendChild(cell);
+    rows.replaceChildren(empty);
+  } else {
+    rows.replaceChildren(...filas.map(({ region, data }) => {
+      const row = document.createElement("tr");
+      const nombre = document.createElement("th");
+      nombre.scope = "row";
+      nombre.textContent = region.labelEs;
+      const directas = document.createElement("td");
+      directas.textContent = String(data.directSets);
+      const secundarias = document.createElement("td");
+      secundarias.textContent = String(data.secondarySets);
+      row.append(nombre, directas, secundarias);
+      return row;
+    }));
+  }
+
+  const aviso = $("muscleMapDisclaimer");
+  const sinMusculos = volume.unmappedSets
+    ? ` ${volume.unmappedSets} series no se reparten porque sus ejercicios no tienen músculos asignados: ${volume.unmappedExercises.slice(0, 3).join(", ")}.`
+    : "";
+  const sinPrincipal = volume.indirectOnlySets
+    ? ` ${volume.indirectOnlySets} series no colorean ninguna zona porque su ejercicio no tiene músculo principal: ${volume.indirectOnlyExercises.slice(0, 3).join(", ")}.`
+    : "";
+  aviso.textContent = "Cuenta tus series efectivas por zona. No mide activación muscular ni sustituye una valoración profesional."
+    + sinMusculos + sinPrincipal;
+}
+
 function render() {
   applyThemePreferences();
   renderDailyDashboard();
+  renderMuscleMap();
   renderFoods();
   renderNutritionLibrary();
   renderProgress();
@@ -3372,14 +3735,23 @@ document.querySelector(".brand")?.addEventListener("click", (event) => {
 syncTabFromHash();
 
 $("progressExerciseSelect").addEventListener("change", renderProgress);
-document.querySelectorAll(".period-tab").forEach((button) => {
+// Los selectores se acotan a su propio grupo: el Diario y el mapa muscular
+// tienen periodos independientes y comparten la clase .period-tab.
+document.querySelectorAll("[data-period]").forEach((button) => {
   button.addEventListener("click", () => {
     diaryPeriod = button.dataset.period;
-    document.querySelectorAll(".period-tab").forEach((item) => {
+    document.querySelectorAll("[data-period]").forEach((item) => {
       item.classList.toggle("active", item === button);
     });
     renderDailyDashboard();
     renderProgress();
+  });
+});
+
+document.querySelectorAll("[data-muscle-period]").forEach((button) => {
+  button.addEventListener("click", () => {
+    muscleMapPeriod = button.dataset.musclePeriod;
+    renderMuscleMap();
   });
 });
 
@@ -3509,6 +3881,21 @@ $("createRoutineForm").addEventListener("submit", (event) => {
   event.preventDefault();
   const name = $("routineName").value;
   const weekdays = selectedWeekdays("newRoutineWeekdays");
+  // Si no hay nada seleccionado, lo más probable es que haya intentado tocar un
+  // día ya ocupado: en el móvil no hay tooltip que lo explique y el botón se
+  // vive como roto. El aviso dice qué pasa y qué hacer.
+  if (!weekdays.length) {
+    const ocupados = weekdayAssignments({ includeDemo: false });
+    const detalle = describeOccupiedWeekdays(ocupados);
+    showNotice(
+      detalle
+        ? `Selecciona al menos un día. Los días tachados no están libres: ${detalle}.`
+        : "Selecciona al menos un día para la rutina.",
+      { error: true },
+    );
+    $("newRoutineWeekdays").scrollIntoView({ block: "center", behavior: "smooth" });
+    return;
+  }
   const selectedColor = document.querySelector('input[name="routineAccentColor"]:checked')?.value ?? "auto";
   const selectedType = document.querySelector('input[name="routineDayType"]:checked')?.value ?? "strength";
   const selectedCardioType = document.querySelector('input[name="cardioActivityType"]:checked')?.value ?? "run";
@@ -3744,6 +4131,8 @@ $("settingsForm").addEventListener("submit", (event) => {
       appearanceMode: selectedAppearance,
       effortScale: $("effortScale").value || defaultPreferences.effortScale,
       defaultRestSeconds: numberValue("defaultRestSeconds") || defaultPreferences.defaultRestSeconds,
+      autoRestTimer: $("autoRestTimer").checked,
+      mapFigure: $("mapFigure").value === "female" ? "female" : "male",
     };
   }, "Ajustes y objetivos guardados.");
   if (saved) setSettingsView("menu");

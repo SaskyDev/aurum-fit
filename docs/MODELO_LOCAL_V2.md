@@ -1,6 +1,7 @@
 # Modelo local v2
 
 Fecha: 24 de julio de 2026.
+Última revisión: 5 de septiembre de 2026.
 
 ## Objetivo del incremento
 
@@ -46,7 +47,7 @@ estado v2
 ├── legacy
 │   └── days (copia compatible del prototipo)
 ├── training
-│   ├── exercises
+│   ├── exercises  (name, source, category, equipment, muscles)
 │   ├── routines
 │   │   └── days
 │   │       └── exercises
@@ -83,6 +84,23 @@ Al iniciar desde un día, la sesión copia:
 Por eso añadir o reordenar ejercicios posteriormente en la rutina no puede
 reescribir el pasado.
 
+## Músculos del ejercicio
+
+Desde el 5 de septiembre de 2026 cada ejercicio puede llevar:
+
+```js
+muscles: { direct: ["chest"], secondary: ["triceps", "shoulders"] }
+```
+
+Se copian del catálogo al añadir el ejercicio, con el vocabulario propio de 21
+regiones. Viven en el ejercicio y no se recalculan al pintar, porque el historial
+tiene que poder leerse sin conexión y sin catálogo, y porque un ejercicio que
+desaparezca de una futura versión del dataset no puede perder su historial.
+
+El campo es opcional: un ejercicio personal que no esté en el catálogo se queda
+sin músculos y sus series se declaran como no repartidas. Es compatible hacia
+atrás y no cambia `schemaVersion`. Ver `docs/MAPA_MUSCULAR.md`.
+
 ## Reglas de seguridad
 
 - La serie es la unidad guardada y tiene estado `completed`.
@@ -109,6 +127,9 @@ reescribir el pasado.
   entidades reales. `meta.demoSeedVersion` identifica la semilla cargada.
 - La foto de una etiqueta se reduce antes de guardarse y se rechaza si sigue
   siendo demasiado grande para el almacenamiento local.
+- El trabajo directo y la implicación secundaria de un músculo nunca se suman ni
+  se ponderan: son dos recuentos separados.
+- Solo las series efectivas cuentan como volumen en el mapa muscular.
 - El estado del temporizador es efímero: no altera la rutina, las series ni el
   historial, y se pausa al cambiar de ejercicio.
 

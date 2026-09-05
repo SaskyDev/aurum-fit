@@ -21,9 +21,10 @@
         } catch {}
       })();
     </script>
-    <link rel="manifest" href="manifest.json?v=53" />
-    <link rel="apple-touch-icon" href="icon.svg?v=53" />
-    <link rel="stylesheet" href="styles.css?v=53" />
+    <link rel="manifest" href="manifest.json?v=65" />
+    <link rel="icon" type="image/svg+xml" href="icon.svg?v=65" />
+    <link rel="apple-touch-icon" href="icon.svg?v=65" />
+    <link rel="stylesheet" href="styles.css?v=65" />
   </head>
   <body>
     <main>
@@ -91,6 +92,32 @@
           <ol id="dashboardWorkoutExercises" class="today-exercise-list"></ol>
           <button id="dashboardStartWorkoutBtn" class="button button-accent button-large" type="button">Empezar entrenamiento</button>
         </article>
+        <section id="muscleMapCard" class="muscle-map surface color-panel color-panel-teal" aria-labelledby="muscleMapTitle">
+          <div class="section-heading compact">
+            <div>
+              <p class="eyebrow">Cobertura muscular</p>
+              <h3 id="muscleMapTitle">Qué estás entrenando</h3>
+            </div>
+            <span id="muscleMapSummary" class="muted">Sin series efectivas todavía</span>
+          </div>
+          <div class="period-tabs" role="group" aria-label="Periodo del mapa muscular">
+            <button class="period-tab" type="button" data-muscle-period="session" aria-pressed="false">Sesión</button>
+            <button class="period-tab active" type="button" data-muscle-period="week" aria-pressed="true">Semana</button>
+            <button class="period-tab" type="button" data-muscle-period="month" aria-pressed="false">Mes</button>
+          </div>
+          <div id="muscleMapFigures" class="muscle-map-figures"></div>
+          <ul id="muscleMapLegend" class="muscle-map-legend"></ul>
+          <details class="muscle-map-detail">
+            <summary>Ver detalle por zona</summary>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Zona</th><th>Series directas</th><th>Con implicación</th></tr></thead>
+                <tbody id="muscleMapRows"></tbody>
+              </table>
+            </div>
+          </details>
+          <p id="muscleMapDisclaimer" class="muted"></p>
+        </section>
         <section class="diary-progress surface color-panel color-panel-violet" aria-labelledby="exerciseProgressTitle">
           <div class="section-heading compact">
             <div>
@@ -302,7 +329,7 @@
                   <fieldset class="weekday-fieldset">
                     <legend>¿Qué días se repite?</legend>
                     <div id="newRoutineWeekdays" class="weekday-selector" aria-label="Días de la nueva rutina"></div>
-                    <small>Los días ocupados por una rutina real no se pueden repetir.</small>
+                    <small id="newRoutineWeekdaysHelp">Los días ocupados por otra rutina aparecen tachados y no se pueden elegir.</small>
                   </fieldset>
                   <button class="button button-accent button-large" type="submit">Crear rutina</button>
                 </form>
@@ -358,6 +385,7 @@
               <label class="routine-day-type-select">Tipo<select id="addRoutineDayType"><option value="strength">Fuerza</option><option value="cardio">Cardio</option></select></label>
               <label id="addRoutineCardioTypeLabel" class="routine-day-type-select" hidden>Actividad<select id="addRoutineCardioType"></select></label>
               <div id="addRoutineDayWeekdays" class="weekday-selector compact-weekdays" aria-label="Nuevo día de entrenamiento"></div>
+              <small id="addRoutineDayWeekdaysHelp" class="muted"></small>
               <button class="button button-secondary" type="submit">Crear variante</button>
             </form>
           </section>
@@ -574,6 +602,19 @@
               <div class="settings-section-heading"><div><p class="eyebrow">Entrenamiento</p><h3 id="settingsWorkoutTitle">Preferencias de sesión</h3></div></div>
               <div class="form-grid compact-form-grid">
                 <label>Descanso por defecto <span>seg</span><input id="defaultRestSeconds" type="number" min="15" max="900" step="15" inputmode="numeric" /></label>
+                <label class="settings-toggle">
+                  <span>
+                    <strong>Timer automático</strong>
+                    <small class="muted">Inicia el descanso al guardar una serie</small>
+                  </span>
+                  <input id="autoRestTimer" type="checkbox" role="switch" />
+                </label>
+                <label>Figura del mapa muscular
+                  <select id="mapFigure">
+                    <option value="male">Hombre</option>
+                    <option value="female">Mujer</option>
+                  </select>
+                </label>
                 <label>Escala de esfuerzo
                   <select id="effortScale">
                     <option value="rir">RIR</option>
@@ -613,6 +654,6 @@
 
     </main>
 
-    <script type="module" src="app.js?v=53"></script>
+    <script type="module" src="app.js?v=65"></script>
   </body>
 </html>
