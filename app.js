@@ -42,7 +42,8 @@ import {
   startSessionFromRoutineDay,
   updateSet,
   validateLabelPhotoFile,
-} from "./core.js?v=58";
+} from "./core.js?v=59";
+import { BODY_FIGURES } from "./body-paths.js?v=59";
 
 const defaultTargets = { calories: 2200, protein: 170, steps: 10000 };
 const defaultPreferences = {
@@ -51,6 +52,7 @@ const defaultPreferences = {
   effortScale: "rir",
   defaultRestSeconds: 60,
   autoRestTimer: true,
+  mapFigure: "male",
 };
 const appearanceLabels = { system: "Automático", dark: "Oscuro", light: "Claro" };
 const accentLabels = {
@@ -140,6 +142,7 @@ function ensureUiState(targetState) {
   targetState.owner.preferences.effortScale ??= defaultPreferences.effortScale;
   targetState.owner.preferences.defaultRestSeconds ??= defaultPreferences.defaultRestSeconds;
   targetState.owner.preferences.autoRestTimer ??= defaultPreferences.autoRestTimer;
+  targetState.owner.preferences.mapFigure ??= defaultPreferences.mapFigure;
   targetState.nutrition ??= { recipes: [], labels: [] };
   targetState.nutrition.recipes ??= [];
   targetState.nutrition.labels ??= [];
@@ -1427,6 +1430,7 @@ function renderSettings() {
   $("targetSteps").value = targets.steps;
   $("defaultRestSeconds").value = preferences.defaultRestSeconds;
   $("autoRestTimer").checked = preferences.autoRestTimer !== false;
+  $("mapFigure").value = preferences.mapFigure ?? defaultPreferences.mapFigure;
   $("effortScale").value = preferences.effortScale;
   document.querySelectorAll('input[name="accentColor"]').forEach((input) => {
     input.checked = input.value === preferences.accentColor;
@@ -3352,7 +3356,7 @@ function backfillExerciseMuscles() {
 
 async function loadCatalog() {
   try {
-    const response = await fetch("./data/exercises.es.json?v=58", { cache: "no-cache" });
+    const response = await fetch("./data/exercises.es.json?v=59", { cache: "no-cache" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     if (!Array.isArray(payload.exercises)) throw new Error("Estructura no válida");
@@ -3375,163 +3379,21 @@ async function loadCatalog() {
 // ---------------------------------------------------------------------------
 // Mapa muscular
 //
-// Cuerpo estilizado, no lámina anatómica: se declara como diagrama para no
-// prometer una precisión de activación que no tenemos. La geometría sale de un
-// esqueleto de articulaciones (scripts/generate-muscle-map.mjs), así que el
-// músculo y la silueta no pueden desalinearse al retocar una postura.
+// La figura anatómica vive en body-paths.js y viene de MuscleMap bajo licencia
+// MIT (ver THIRD_PARTY_NOTICES.md). Aquí solo se traduce nuestro volumen por
+// región a colores sobre sus trazos. El mapa cuenta series efectivas: no mide
+// activación muscular ni sustituye una valoración profesional.
 // ---------------------------------------------------------------------------
 
-const BODY_VIEWBOX = "0 0 150 280";
+// `abductors` no tiene forma propia en la figura: el glúteo medio es
+// precisamente el abductor de la cadera, así que comparte el trazo del glúteo.
+// Cuando dos regiones comparten forma, manda la de más volumen directo.
+const REGION_SHARED_SHAPE = { abductors: "glutes" };
 
-const BODY_SILHOUETTE = [
-  "M75 4L82 7L87 14L88 24L85 33L80 39L75 41L70 39L65 33L62 24L63 14L68 7Z",
-  "M75 39L85 44L96 51L105 60L108 72L104 88L99 98L96 118L97 132L100 146L95 162L85 170L75 172L65 170L55 162L50 146L53 132L54 118L51 98L46 88L42 72L45 60L54 51L65 44Z",
-  "M46 74L55 80L51 116L38 120L36 96L39 78Z",
-  "M104 74L95 80L99 116L112 120L114 96L111 78Z",
-  "M38 120L51 118L46 150L41 174L28 172L30 146Z",
-  "M112 120L99 118L104 150L109 174L122 172L120 146Z",
-  "M28 172L41 174L40 188L42 198L37 199L35 190L34 200L29 200L28 190L25 197L21 194L22 182Z",
-  "M122 172L109 174L110 188L108 198L113 199L115 190L116 200L121 200L122 190L125 197L129 194L128 182Z",
-  "M55 164L75 168L75 214L70 222L59 222L50 196L51 172Z",
-  "M95 164L75 168L75 214L80 222L91 222L100 196L99 172Z",
-  "M59 222L70 222L70 242L68 260L59 260L56 242Z",
-  "M91 222L80 222L80 242L82 260L91 260L94 242Z",
-  "M59 258L68 258L71 268L62 273L50 273L51 264Z",
-  "M91 258L82 258L79 268L88 273L100 273L99 264Z",
-];
-
-const MUSCLE_SHAPES = {
-  front: {
-    neck: [
-      "M68 38L72 40L74 52L70 53L66 46Z",
-      "M82 38L78 40L76 52L80 53L84 46Z",
-    ],
-    traps: [
-      "M66 42L74 46L74 55L55 60L50 55Z",
-      "M84 42L76 46L76 55L95 60L100 55Z",
-    ],
-    shoulders: [
-      "M54 55L46 58L41 68L41 82L48 88L54 78L56 64Z",
-      "M96 55L104 58L109 68L109 82L102 88L96 78L94 64Z",
-    ],
-    chest: [
-      "M56 61L74 58L74 72L55 75Z",
-      "M55 75L74 72L74 88L64 92L54 85L52 78Z",
-      "M94 61L76 58L76 72L95 75Z",
-      "M95 75L76 72L76 88L86 92L96 85L98 78Z",
-    ],
-    serratus: [
-      "M53 88L60 92L58 98L52 94Z",
-      "M54 99L61 102L59 108L53 105Z",
-      "M97 88L90 92L92 98L98 94Z",
-      "M96 99L89 102L91 108L97 105Z",
-    ],
-    abs: [
-      "M63 92L74 92L74 102L64 102Z",
-      "M64.2 103L74 103L74 113L65.2 113Z",
-      "M65.4 114L74 114L74 124L66.4 124Z",
-      "M66.6 125L74 125L74 136L67.6 136Z",
-      "M87 92L76 92L76 102L86 102Z",
-      "M85.8 103L76 103L76 113L84.8 113Z",
-      "M84.6 114L76 114L76 124L83.6 124Z",
-      "M83.4 125L76 125L76 136L82.4 136Z",
-    ],
-    obliques: [
-      "M57 96L64 100L64 128L59 136L54 118Z",
-      "M93 96L86 100L86 128L91 136L96 118Z",
-    ],
-    biceps: [
-      "M43 78L53 82L49 112L41 114L39 94Z",
-      "M107 78L97 82L101 112L109 114L111 94Z",
-    ],
-    forearms: [
-      "M34 124L46 126L42 150L33 148Z",
-      "M32 150L42 152L39 172L30 170Z",
-      "M116 124L104 126L108 150L117 148Z",
-      "M118 150L108 152L111 172L120 170Z",
-    ],
-    hip_flexors: [
-      "M63 146L74 148L74 162L65 160Z",
-      "M87 146L76 148L76 162L85 160Z",
-    ],
-    abductors: [
-      "M56 156L63 159L62 176L55 170Z",
-      "M94 156L87 159L88 176L95 170Z",
-    ],
-    quads: [
-      "M54 166L65 166L64 210L59 218L52 194Z",
-      "M66 166L73 170L72 214L65 213Z",
-      "M70 194L75 196L74 220L69 217Z",
-      "M96 166L85 166L86 210L91 218L98 194Z",
-      "M84 166L77 170L78 214L85 213Z",
-      "M80 194L75 196L76 220L81 217Z",
-    ],
-    adductors: [
-      "M71 168L75 170L75 196L69 192Z",
-      "M79 168L75 170L75 196L81 192Z",
-    ],
-    tibialis: [
-      "M62 230L69 232L68 256L62 256Z",
-      "M88 230L81 232L82 256L88 256Z",
-    ],
-  },
-  back: {
-    neck: [
-      "M67 38L75 39L75 52L67 52Z",
-      "M83 38L75 39L75 52L83 52Z",
-    ],
-    traps: [
-      "M66 42L75 45L75 62L54 60L50 54Z",
-      "M54 62L75 64L75 84L57 80Z",
-      "M84 42L75 45L75 62L96 60L100 54Z",
-      "M96 62L75 64L75 84L93 80Z",
-    ],
-    shoulders: [
-      "M54 55L46 58L41 68L41 82L48 88L54 78L56 64Z",
-      "M96 55L104 58L109 68L109 82L102 88L96 78L94 64Z",
-    ],
-    upper_back: [
-      "M58 82L74 84L74 98L59 96Z",
-      "M92 82L76 84L76 98L91 96Z",
-    ],
-    lats: [
-      "M52 80L64 92L65 116L58 130L49 108L48 88Z",
-      "M98 80L86 92L85 116L92 130L101 108L102 88Z",
-    ],
-    lower_back: [
-      "M64 110L74 112L74 136L65 134Z",
-      "M86 110L76 112L76 136L85 134Z",
-    ],
-    triceps: [
-      "M37 78L47 82L44 114L36 112L35 92Z",
-      "M113 78L103 82L106 114L114 112L115 92Z",
-    ],
-    forearms: [
-      "M34 124L46 126L42 150L33 148Z",
-      "M32 150L42 152L39 172L30 170Z",
-      "M116 124L104 126L108 150L117 148Z",
-      "M118 150L108 152L111 172L120 170Z",
-    ],
-    glutes: [
-      "M57 144L74 148L74 170L63 176L54 164Z",
-      "M93 144L76 148L76 170L87 176L96 164Z",
-    ],
-    hamstrings: [
-      "M54 172L63 172L62 212L57 220L51 198Z",
-      "M64 172L73 176L72 216L64 214Z",
-      "M96 172L87 172L88 212L93 220L99 198Z",
-      "M86 172L77 176L78 216L86 214Z",
-    ],
-    calves: [
-      "M59 228L66 230L65 250L60 248Z",
-      "M67 230L72 230L71 250L66 250Z",
-      "M62 252L70 252L69 262L63 262Z",
-      "M91 228L84 230L85 250L90 248Z",
-      "M83 230L78 230L79 250L84 250Z",
-      "M88 252L80 252L81 262L87 262Z",
-    ],
-  },
-};
+function figureFor(view) {
+  const figure = state.owner.preferences?.mapFigure === "female" ? "female" : "male";
+  return BODY_FIGURES[figure][view];
+}
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -3544,29 +3406,74 @@ function muscleShapeElement(d) {
 }
 
 function renderMuscleFigure(view, volume) {
+  const figure = figureFor(view);
   const svg = document.createElementNS(SVG_NS, "svg");
-  svg.setAttribute("viewBox", BODY_VIEWBOX);
+  svg.setAttribute("viewBox", figure.viewBox);
   svg.setAttribute("class", "muscle-figure");
   svg.setAttribute("role", "img");
 
-  BODY_SILHOUETTE.forEach((d) => {
+  // La implicación secundaria se marca con rayado, no con un quinto color: es
+  // otra cosa, no más de lo mismo. Sobre trazos anatómicos finos una línea
+  // discontinua se lee como ruido, así que el rayado va en el relleno.
+  const hatchId = `muscleHatch-${view}`;
+  const defs = document.createElementNS(SVG_NS, "defs");
+  const pattern = document.createElementNS(SVG_NS, "pattern");
+  pattern.id = hatchId;
+  pattern.setAttribute("patternUnits", "userSpaceOnUse");
+  pattern.setAttribute("width", "14");
+  pattern.setAttribute("height", "14");
+  pattern.setAttribute("patternTransform", "rotate(45)");
+  const hatchBg = document.createElementNS(SVG_NS, "rect");
+  hatchBg.setAttribute("width", "14");
+  hatchBg.setAttribute("height", "14");
+  hatchBg.setAttribute("class", "muscle-hatch-bg");
+  const hatchLine = document.createElementNS(SVG_NS, "line");
+  hatchLine.setAttribute("x1", "0");
+  hatchLine.setAttribute("y1", "0");
+  hatchLine.setAttribute("x2", "0");
+  hatchLine.setAttribute("y2", "14");
+  hatchLine.setAttribute("class", "muscle-hatch-line");
+  pattern.append(hatchBg, hatchLine);
+  defs.appendChild(pattern);
+  svg.appendChild(defs);
+
+  figure.inert.forEach((d) => {
     const element = muscleShapeElement(d);
     element.setAttribute("class", "muscle-body");
     svg.appendChild(element);
   });
 
+  // Una forma puede cubrir más de una región nuestra; se pinta con la que más
+  // trabajo directo tenga, y el título las nombra a todas.
+  const regionsByShape = new Map();
+  Object.keys(figure.regions).forEach((regionId) => regionsByShape.set(regionId, [regionId]));
+  Object.entries(REGION_SHARED_SHAPE).forEach(([regionId, shapeId]) => {
+    if (regionsByShape.has(shapeId)) regionsByShape.get(shapeId).push(regionId);
+  });
+
   const trabajados = [];
-  Object.entries(MUSCLE_SHAPES[view]).forEach(([regionId, shapes]) => {
-    const region = volume.byRegion[regionId] ?? { directSets: 0, secondarySets: 0 };
-    const intensity = muscleIntensity(region.directSets);
-    const onlySecondary = intensity === "none" && region.secondarySets > 0;
-    if (intensity !== "none") trabajados.push(`${muscleRegionLabel(regionId)} (${region.directSets})`);
+  regionsByShape.forEach((regionIds, shapeId) => {
+    const datos = regionIds.map((regionId) => ({
+      regionId,
+      ...(volume.byRegion[regionId] ?? { directSets: 0, secondarySets: 0 }),
+    }));
+    const principal = datos.reduce((mejor, item) => (item.directSets > mejor.directSets ? item : mejor));
+    const intensity = muscleIntensity(principal.directSets);
+    const secondarySets = Math.max(...datos.map((item) => item.secondarySets));
+    const onlySecondary = intensity === "none" && secondarySets > 0;
+    if (intensity !== "none") {
+      trabajados.push(`${muscleRegionLabel(principal.regionId)} (${principal.directSets})`);
+    }
+
     const group = document.createElementNS(SVG_NS, "g");
     group.setAttribute("class", `muscle-region intensity-${intensity}${onlySecondary ? " only-secondary" : ""}`);
-    group.dataset.region = regionId;
-    shapes.forEach((d) => group.appendChild(muscleShapeElement(d)));
+    if (onlySecondary) group.style.fill = `url(#${hatchId})`;
+    group.dataset.region = shapeId;
+    figure.regions[shapeId].forEach((d) => group.appendChild(muscleShapeElement(d)));
     const title = document.createElementNS(SVG_NS, "title");
-    title.textContent = `${muscleRegionLabel(regionId)}: ${region.directSets} series directas, ${region.secondarySets} con implicación`;
+    title.textContent = datos
+      .map((item) => `${muscleRegionLabel(item.regionId)}: ${item.directSets} series directas, ${item.secondarySets} con implicación`)
+      .join(". ");
     group.appendChild(title);
     svg.appendChild(group);
   });
@@ -4143,6 +4050,7 @@ $("settingsForm").addEventListener("submit", (event) => {
       effortScale: $("effortScale").value || defaultPreferences.effortScale,
       defaultRestSeconds: numberValue("defaultRestSeconds") || defaultPreferences.defaultRestSeconds,
       autoRestTimer: $("autoRestTimer").checked,
+      mapFigure: $("mapFigure").value === "female" ? "female" : "male",
     };
   }, "Ajustes y objetivos guardados.");
   if (saved) setSettingsView("menu");

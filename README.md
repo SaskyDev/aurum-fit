@@ -52,9 +52,9 @@ Nutrición sobre un modelo local versionado, sin cuentas ni backend.
 - Catálogo de 1.317 ejercicios buscables por nombre, zona muscular y equipo,
   deduplicado y sin medios de Gym Visual; muestra cuatro resultados al inicio y
   permite ampliar la lista de forma voluntaria.
-- Mapa muscular en el Diario: colorea por zona las series efectivas de la
-  semana, la sesión o el mes, separando el trabajo directo de la implicación
-  secundaria y sin sumarlos nunca.
+- Mapa muscular anatómico en el Diario, con figura de hombre o de mujer: colorea
+  por zona las series efectivas de la semana, la sesión o el mes, separando el
+  trabajo directo de la implicación secundaria y sin sumarlos nunca.
 - Aviso `Sin revisión profesional todavía` en las tarjetas del catálogo cuyo
   contenido siga pendiente de revisión.
 - Confirmaciones propias y accesibles en lugar del diálogo del navegador: foco
@@ -123,11 +123,10 @@ Conviene subir la versión en cualquier cambio de `index.html`, `styles.css`,
 `app.js`, `core.js` o del catálogo, para que la PWA instalada no sirva una
 mezcla de versiones. Las pruebas fallan si alguna referencia se queda atrás.
 
-La figura del mapa muscular se genera desde un esqueleto de articulaciones:
+La escala de color del mapa muscular se comprueba con:
 
 ```bash
-node scripts/generate-muscle-map.mjs           # imprime el bloque para app.js
-node scripts/generate-muscle-map.mjs --check    # falla si app.js se desvió
+node scripts/check-muscle-palette.mjs
 ```
 
 Documentación:

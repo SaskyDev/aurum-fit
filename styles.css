@@ -4278,12 +4278,10 @@ th {
 .muscle-region.intensity-medium > :not(title) { fill: var(--muscle-medium); }
 .muscle-region.intensity-high > :not(title) { fill: var(--muscle-high); }
 
-.muscle-region.only-secondary > :not(title) {
-  stroke: var(--muscle-secondary-ink);
-  stroke-width: 1;
-  stroke-dasharray: 2.5 2;
-  stroke-opacity: .8;
-}
+.muscle-hatch-bg { fill: var(--muscle-none); }
+.muscle-hatch-line { stroke: var(--muscle-secondary-ink); stroke-width: 3; stroke-opacity: .55; }
+
+.muscle-region.only-secondary > :not(title) { fill: inherit; }
 
 .muscle-map-legend {
   list-style: none;
@@ -4317,8 +4315,12 @@ th {
 .muscle-legend-item.intensity-high .muscle-legend-swatch { background: var(--muscle-high); }
 
 .muscle-legend-swatch.swatch-secondary {
-  background: var(--muscle-none);
-  border: 1.4px dashed var(--muscle-secondary-ink);
+  background:
+    repeating-linear-gradient(
+      45deg,
+      var(--muscle-secondary-ink) 0 2px,
+      var(--muscle-none) 2px 5px
+    );
 }
 
 @media (prefers-reduced-motion: reduce) {

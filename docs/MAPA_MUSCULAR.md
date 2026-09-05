@@ -49,8 +49,10 @@ de progreso inventados.
 Por eso:
 
 - el **color** solo codifica series directas;
-- la **implicación secundaria** se marca con trama, no con un quinto color, y se
-  lee como lo que es: otra cosa, no más de lo mismo;
+- la **implicación secundaria** se marca con un rayado, no con un quinto color, y
+  se lee como lo que es: otra cosa, no más de lo mismo. Sobre trazos anatómicos
+  finos una línea discontinua se leía como ruido, así que la textura va en el
+  relleno;
 - la tabla por zona muestra las dos columnas separadas y nunca un total mezclado.
 
 Solo cuentan las **series efectivas**: calentamiento y aproximación preparan, no
@@ -114,47 +116,53 @@ ejercicios de cardio, y un burpee es el caso típico. Sus series no colorean
 ninguna zona, así que el aviso las cuenta aparte en lugar de dejarlas
 desaparecer entre el total de series efectivas y un mapa apagado.
 
-## Geometría
+## La figura
 
-Dos cuerpos facetados, frontal y posterior, con **cada músculo como polígono
-propio**: pectoral en dos haces, recto abdominal en cuatro filas por lado,
-cuádriceps en vasto lateral, recto femoral y vasto medial, isquiotibiales en dos
-vientres, gemelos en dos cabezas, deltoides, dorsales en ala, trapecio en dos
-porciones. Son setenta polígonos, y la mitad es el espejo de la otra.
+Geometría anatómica real, cuatro vistas (hombre y mujer × frontal y posterior),
+derivada de **MuscleMap** de Melih Colpan bajo **licencia MIT**. Llegó al
+proyecto a través de openGym, que convirtió el Swift original a datos de
+trazado. La atribución completa está en `THIRD_PARTY_NOTICES.md` y **es
+obligatoria**: la prueba `la figura anatómica cubre las dos vistas y conserva su
+atribución` falla si desaparece.
 
-La figura ha pasado por tres versiones, y las dos primeras se descartaron por el
-mismo motivo: no parecían un cuerpo.
+> El código propio de openGym es AGPL v3 y **no** se ha usado. Solo se tomó la
+> geometría, que es la parte cubierta por la MIT de MuscleMap. Esa distinción
+> importa: incorporar código AGPL obligaría a publicar Aurum Fit entero bajo
+> AGPL, incluida la versión servida por web.
 
-1. **Cápsulas sobre un esqueleto de articulaciones.** No distinguía el
-   cuádriceps del aductor: el mapa perdía justo la información que lo hace útil.
-2. **Polígonos con proporciones rectas.** Torso de lados paralelos, hombros que
-   no sobresalían y músculos rectangulares. Leía como una armadura por placas.
-3. **La actual.** Lo que cambió no fueron los músculos sino las proporciones:
-   cintura en V, deltoides coronando el hombro como punto más ancho del cuerpo,
-   brazos colgando separados del tronco con su propio contorno, y vientres
-   afilados de cinco o seis vértices en lugar de rectángulos.
+### Por qué se abandonó el dibujo propio
 
-La lección, por si hay una cuarta: en una figura anatómica el realismo está en la
-silueta y en el afilado de cada vientre, no en el número de polígonos.
+Hubo tres intentos de dibujar la figura a mano, y los tres se quedaron lejos:
+cápsulas sobre un esqueleto, polígonos con proporciones rectas y polígonos con
+cintura en V. Cada uno mejoraba al anterior y ninguno parecía un cuerpo.
 
-Sigue sin ser una lámina anatómica, y no pretende serlo. Alcanzar ese nivel
-exigiría un dibujo encargado o con licencia comercial verificable, que es la
-misma decisión pendiente que bloquea las imágenes de ejercicios.
+La conclusión, por si vuelve a plantearse: **escribir coordenadas no es
+dibujar**. Una lámina anatómica creíble necesita criterio de proporción y de
+trazo que no sale de teclear pares de números, y el mapa entero dependía de esa
+única pieza. Cambiarla por un activo con licencia verificable resolvió en una
+sesión lo que tres iteraciones no habían conseguido.
 
-El estilo facetado (polígonos de líneas rectas) es deliberado: **se declara como
-diagrama y no finge ser una lámina anatómica**, que es exactamente lo que este
-documento exige no prometer. Y es dibujo propio: no entra arte de terceros, ni
-de Brenzo ni de ningún atlas con licencia dudosa.
+### Qué se cambió respecto a la fuente
 
-```bash
-node scripts/generate-muscle-map.mjs           # imprime el bloque para app.js
-node scripts/generate-muscle-map.mjs --json     # vuelca la geometría
-node scripts/generate-muscle-map.mjs --check    # falla si app.js se desvió
-```
+- Los nombres de las partes pasaron a nuestras 21 regiones: `deltoids` es
+  `shoulders`, `gluteal` es `glutes`, `hamstring` es `hamstrings`.
+- `upper-back` venía como **una sola parte** y para nosotros son **dos
+  regiones**, con 81 y 88 ejercicios principales. Se separó por área medida con
+  `getBBox`: los dos trazos grandes son las alas del dorsal, los pequeños los
+  casquetes de la espalda superior. No se decidió a ojo.
+- Cabeza, pelo, manos, pies, rodillas y tobillos son silueta inerte: nunca se
+  colorean porque no son músculos que se entrenen.
+- `abductors` no tiene forma propia. Comparte el trazo del glúteo, porque el
+  glúteo medio **es** el abductor de la cadera. Cuando dos regiones comparten
+  forma, se pinta con la de más trabajo directo y el título nombra a las dos.
 
-El script define solo el lado izquierdo de cada músculo par y espeja el otro, así
-que un retoque no puede dejar los dos lados distintos. Editar las coordenadas a
-mano en `app.js` rompe esa garantía, y `--check` lo detecta.
+### Figura de hombre o de mujer
+
+Ajuste en `Ajustes > Preferencias de sesión`. Las cuatro vistas viajan en el
+shell, así que cambiar de figura no descarga nada ni necesita conexión.
+
+`body-paths.js` pesa 92 KB y es un recurso **obligatorio** del shell, no
+opcional: sin él no hay mapa, y el mapa tiene que funcionar sin conexión.
 
 ## Color
 

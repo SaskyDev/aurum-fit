@@ -3,9 +3,11 @@ import fs from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 
-const shellVersion = fs
-  .readFileSync(new URL("../service-worker.js", import.meta.url), "utf8")
-  .match(/const SHELL_VERSION = "(\d+)";/)[1];
+const serviceWorkerSource = fs.readFileSync(new URL("../service-worker.js", import.meta.url), "utf8");
+const shellVersion = serviceWorkerSource.match(/const SHELL_VERSION = "(\d+)";/)[1];
+const shellAssetCount = serviceWorkerSource
+  .slice(serviceWorkerSource.indexOf("const SHELL_ASSETS"), serviceWorkerSource.indexOf("const OPTIONAL_ASSETS"))
+  .match(/\.\//g).length;
 
 function loadServiceWorker({ oldCaches = [], failingAssets = [] } = {}) {
   const source = fs.readFileSync(new URL("../service-worker.js", import.meta.url), "utf8");
@@ -107,7 +109,7 @@ test("actualiza desde una caché antigua y precarga un shell coherente", async (
   let installation;
   worker.listeners.install({ waitUntil: (promise) => { installation = promise; } });
   await installation;
-  assert.equal(worker.fetched.length, 8);
+  assert.equal(worker.fetched.length, shellAssetCount + 1, "el shell más el catálogo opcional");
   assert.ok(worker.fetched.every((request) => request.url.includes(`?v=${shellVersion}`)));
   assert.deepEqual(worker.legacyCacheHits, []);
   assert.ok(worker.puts.every(({ response }) => response.version === `v${shellVersion}`));
@@ -150,7 +152,7 @@ test("la instalación offline exige el shell pero tolera un catálogo caído", a
   await instalacion;
 
   const cacheado = conCatalogoCaido.puts.map(({ request }) => String(request));
-  assert.equal(cacheado.length, 7);
+  assert.equal(cacheado.length, shellAssetCount);
   assert.ok(cacheado.every((url) => url.includes(`?v=${shellVersion}`)));
   assert.ok(!cacheado.some((url) => url.includes("exercises.es.json")));
   assert.ok(cacheado.some((url) => url.includes("index.html")));
@@ -225,34 +227,53 @@ test("el mapa muscular vive en el Diario con periodo propio y alternativa en tex
   assert.match(app, /No mide activación muscular ni sustituye una valoración profesional/);
 });
 
-test("la geometría del mapa la genera el script y cubre las dos vistas", () => {
+test("la figura anatómica cubre las dos vistas y conserva su atribución", async () => {
+  const { BODY_FIGURES } = await import("../body-paths.js");
+  const notices = fs.readFileSync(new URL("../THIRD_PARTY_NOTICES.md", import.meta.url), "utf8");
+  const source = fs.readFileSync(new URL("../body-paths.js", import.meta.url), "utf8");
+
+  // La geometría es de terceros bajo MIT. La atribución es obligatoria: si
+  // desaparece de THIRD_PARTY_NOTICES.md dejamos de cumplir la licencia.
+  assert.match(notices, /MuscleMap/);
+  assert.match(notices, /Melih Colpan/);
+  assert.match(notices, /MIT/);
+  assert.match(notices, /openGym/);
+  assert.match(source, /MuscleMap.*Melih Colpan/s);
+
+  ["male", "female"].forEach((figura) => {
+    ["front", "back"].forEach((vista) => {
+      const v = BODY_FIGURES[figura][vista];
+      assert.match(v.viewBox, /^[\d\s.-]+$/, `viewBox inválido en ${figura}/${vista}`);
+      assert.ok(v.inert.length, `${figura}/${vista} sin silueta`);
+      assert.ok(Object.keys(v.regions).length >= 12, `${figura}/${vista} con pocas regiones`);
+    });
+  });
+
+  // El dorsal y la espalda superior venían como una sola parte en la fuente y
+  // para nosotros son dos regiones con 81 y 88 ejercicios principales.
+  ["male", "female"].forEach((figura) => {
+    const back = BODY_FIGURES[figura].back.regions;
+    assert.ok(back.lats?.length, `faltan los dorsales en ${figura}`);
+    assert.ok(back.upper_back?.length, `falta la espalda superior en ${figura}`);
+  });
+
+  ["chest", "abs", "quads", "biceps", "obliques", "serratus"].forEach((region) => {
+    assert.ok(BODY_FIGURES.male.front.regions[region]?.length, `falta ${region} de frente`);
+  });
+  ["traps", "glutes", "hamstrings", "triceps", "lower_back", "calves"].forEach((region) => {
+    assert.ok(BODY_FIGURES.male.back.regions[region]?.length, `falta ${region} de espaldas`);
+  });
+});
+
+test("el shell precarga la figura y la app la importa", () => {
   const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
-  const generador = fs.readFileSync(new URL("../scripts/generate-muscle-map.mjs", import.meta.url), "utf8");
-
-  // La figura son más de setenta polígonos y la mitad es el espejo de la otra.
-  // Si alguien los edita a mano en app.js, los dos lados dejan de coincidir.
-  assert.match(generador, /const mirror = \(points\)/);
-  assert.match(generador, /const pair = \(points\)/);
-  assert.match(app, /const BODY_SILHOUETTE = \[/);
-  assert.match(app, /const MUSCLE_SHAPES = \{/);
-
-  const bloque = app.slice(app.indexOf("const MUSCLE_SHAPES"), app.indexOf("const SVG_NS"));
-  const regiones = [...bloque.matchAll(/^    ([a-z_]+): \[/gm)].map((match) => match[1]);
-  const corte = regiones.indexOf("neck", 1);
-  const front = regiones.slice(0, corte);
-  const back = regiones.slice(corte);
-
-  ["chest", "quads", "abs", "biceps", "obliques", "serratus"].forEach((region) => {
-    assert.ok(front.includes(region), `falta ${region} en la vista frontal`);
-  });
-  ["traps", "lats", "glutes", "hamstrings", "triceps", "lower_back"].forEach((region) => {
-    assert.ok(back.includes(region), `falta ${region} en la vista posterior`);
-  });
-
-  // Polígonos, no cápsulas: el estilo facetado se declara como diagrama y no
-  // finge ser una lámina anatómica.
-  const poligonos = [...bloque.matchAll(/"M[\d.]+ [\d.]+(?:L[\d.]+ [\d.]+)+Z"/g)];
-  assert.ok(poligonos.length >= 60, `se esperaban más polígonos, hay ${poligonos.length}`);
+  assert.match(serviceWorkerSource, /body-paths\.js\?v=\$\{SHELL_VERSION\}/);
+  assert.match(app, /import \{ BODY_FIGURES \} from "\.\/body-paths\.js\?v=\d+"/);
+  // 92 KB de trazos no pueden quedar fuera de la instalación offline.
+  assert.ok(
+    serviceWorkerSource.indexOf("body-paths.js") < serviceWorkerSource.indexOf("OPTIONAL_ASSETS"),
+    "la figura debe ser un recurso obligatorio del shell, no opcional",
+  );
 });
 
 test("los músculos se guardan en el ejercicio y no se recalculan al pintar", () => {

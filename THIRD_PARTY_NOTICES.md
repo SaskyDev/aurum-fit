@@ -1,5 +1,44 @@
 # Third-party notices
 
+## MuscleMap — figura del mapa muscular
+
+Los trazos anatómicos de `body-paths.js` derivan de MuscleMap, de Melih Colpan.
+
+Source: https://github.com/melihcolpan/MuscleMap
+
+Llegaron a este proyecto a través de openGym (Copyright (C) 2026 Duarte Santos,
+https://github.com/opengym), que convirtió el Swift original de MuscleMap a
+datos de trazado y publicó esa conversión declarando su procedencia MIT. El
+código propio de openGym es AGPL v3 y **no** se ha usado aquí: solo la geometría,
+que es la parte cubierta por la licencia MIT de MuscleMap.
+
+Sobre esa geometría hemos cambiado los nombres de las partes a nuestras regiones,
+separado el dorsal de la espalda superior, y marcado cabeza, pelo, manos, pies,
+rodillas y tobillos como silueta inerte. El detalle está en `body-paths.js` y en
+`docs/MAPA_MUSCULAR.md`.
+
+Copyright (c) 2026 Melih Colpan
+
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
 ## exercises-dataset
 
 Source: https://github.com/hasaneyldrm/exercises-dataset
