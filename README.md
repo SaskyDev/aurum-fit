@@ -132,12 +132,5 @@ node scripts/check-muscle-palette.mjs    # escala del mapa muscular y daltonismo
 node scripts/check-theme-contrast.mjs    # contraste de la paleta del tema claro
 ```
 
-Documentación:
-
-- `docs/MODELO_LOCAL_V2.md`
-- `docs/MAPA_MUSCULAR.md`
-- `docs/REFERENCIA_VIDEO_BRENZO.md`
-- `docs/IMPORTACION_CATALOGO.md`
-- `docs/SISTEMA_VISUAL.md`
-- `docs/REFERENCIAS_UX.md`
-- `docs/PRUEBAS_MANUALES.md`
+Documentación: el índice con qué es cada documento y cuándo se toca está en
+`docs/README.md`. Las reglas de trabajo del repositorio, en `CLAUDE.md`.

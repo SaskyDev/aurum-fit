@@ -1,6 +1,7 @@
 # Sistema visual
 
 Fecha: 24 de julio de 2026.
+Última revisión: 5 de septiembre de 2026.
 
 ## Auditoría de la interfaz anterior
 

@@ -1,6 +1,7 @@
 # Mapa muscular
 
 Fecha del primer incremento: 5 de septiembre de 2026.
+Última revisión: 5 de septiembre de 2026.
 
 ## Qué es y qué no es
 
@@ -205,12 +206,11 @@ falla si alguien las quita.
 - La tabla por zona es la alternativa textual completa.
 - La trama de implicación secundaria es codificación no cromática.
 - `prefers-reduced-motion` desactiva la transición de color.
-- La miniatura compacta no dibuja la trama: a ese tamaño es ruido.
 
 ## Sobre la referencia
 
 El mapa nace de lo que Alex vio en Brenzo. La lectura de sus fuentes oficiales
-(`docs/REFERENCIAS_UX.md`) confirma que allí conviven dos cosas distintas:
+(`docs/REFERENCIA_BRENZO.md`) confirma que allí conviven dos cosas distintas:
 
 - **volumen y distribución del trabajo por grupo muscular**, que es lo que hemos
   construido;
