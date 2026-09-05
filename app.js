@@ -42,8 +42,8 @@ import {
   startSessionFromRoutineDay,
   updateSet,
   validateLabelPhotoFile,
-} from "./core.js?v=59";
-import { BODY_FIGURES } from "./body-paths.js?v=59";
+} from "./core.js?v=63";
+import { BODY_FIGURES } from "./body-paths.js?v=63";
 
 const defaultTargets = { calories: 2200, protein: 170, steps: 10000 };
 const defaultPreferences = {
@@ -71,13 +71,20 @@ const accentPalettes = {
   red: { accent: "#fb7185", accentStrong: "#f43f5e", success: "#fda4af", rgb: "251, 113, 133" },
   steel: { accent: "#e5e7eb", accentStrong: "#cbd5e1", success: "#f8fafc", rgb: "229, 231, 235" },
 };
+// Paleta del tema claro. `success` es el tono de TEXTO y `accent` el de
+// RELLENO: sobre el lienzo claro el tono del relleno se queda en 4,15:1 como
+// texto, así que el texto usa siempre el paso oscuro.
+// Paleta del tema claro. No es el neón del oscuro bajado de brillo: son sus
+// propios tonos, medidos contra blanco para que el texto de acento pase 4,5:1
+// y los rellenos con texto blanco encima pasen 4,5:1 también. El oliva
+// amarillento anterior cumplía el contraste pero ensuciaba toda la interfaz.
 const lightAccentPalettes = {
-  lime: { accent: "#587a00", accentStrong: "#426100", success: "#467000", rgb: "88, 122, 0" },
-  orange: { accent: "#b84c00", accentStrong: "#963d00", success: "#a84a00", rgb: "184, 76, 0" },
-  blue: { accent: "#0077a8", accentStrong: "#005f88", success: "#006b97", rgb: "0, 119, 168" },
-  violet: { accent: "#6d43c0", accentStrong: "#5833a4", success: "#6540ae", rgb: "109, 67, 192" },
-  red: { accent: "#bd3551", accentStrong: "#9f2942", success: "#ac304a", rgb: "189, 53, 81" },
-  steel: { accent: "#475569", accentStrong: "#334155", success: "#3f4d60", rgb: "71, 85, 105" },
+  lime: { accent: "#4d7c0f", accentStrong: "#3d6408", success: "#3d6408", rgb: "77, 124, 15" },
+  orange: { accent: "#b45309", accentStrong: "#92400e", success: "#92400e", rgb: "180, 83, 9" },
+  blue: { accent: "#0369a1", accentStrong: "#075985", success: "#075985", rgb: "3, 105, 161" },
+  violet: { accent: "#6d28d9", accentStrong: "#5b21b6", success: "#5b21b6", rgb: "109, 40, 217" },
+  red: { accent: "#be123c", accentStrong: "#9f1239", success: "#9f1239", rgb: "190, 18, 60" },
+  steel: { accent: "#475569", accentStrong: "#334155", success: "#334155", rgb: "71, 85, 105" },
 };
 const cardioActivityCatalog = [
   { type: "run", label: "Correr", family: "A pie", icon: "cardio-run", metric: "pace", fields: ["distance", "steps", "elevation", "heartRate", "calories"], help: "Distancia y tiempo; calculamos tu ritmo medio." },
@@ -170,6 +177,9 @@ function applyThemePreferences(targetState = state) {
   root.dataset.theme = resolvedTheme;
   root.style.colorScheme = resolvedTheme;
   root.style.setProperty("--accent", palette.accent);
+  // El acento como texto necesita su propio tono: en claro, el del relleno se
+  // queda en 4,15:1 sobre el lienzo. En oscuro son el mismo color.
+  root.style.setProperty("--accent-ink", resolvedTheme === "light" ? palette.accentStrong : palette.accent);
   root.style.setProperty("--accent-strong", palette.accentStrong);
   root.style.setProperty("--success", palette.success);
   root.style.setProperty("--accent-rgb", palette.rgb);
@@ -3356,7 +3366,7 @@ function backfillExerciseMuscles() {
 
 async function loadCatalog() {
   try {
-    const response = await fetch("./data/exercises.es.json?v=59", { cache: "no-cache" });
+    const response = await fetch("./data/exercises.es.json?v=63", { cache: "no-cache" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     if (!Array.isArray(payload.exercises)) throw new Error("Estructura no válida");

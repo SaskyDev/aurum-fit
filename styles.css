@@ -17,6 +17,7 @@
   --set-row-bg: linear-gradient(180deg, rgba(25, 31, 26, .98), rgba(14, 19, 15, .98));
   --set-form-bg: linear-gradient(180deg, rgba(28, 36, 30, .84), rgba(14, 19, 15, .94));
   --accent: #c7f464;
+  --accent-ink: #c7f464;
   --accent-strong: #a7df2f;
   --accent-rgb: 199, 244, 100;
   --on-accent: #0b0f0d;
@@ -29,6 +30,9 @@
   --radius-md: 16px;
   --radius-lg: 24px;
   --shadow: 0 18px 48px rgba(0, 0, 0, 0.38);
+  --progress-track: rgba(255, 255, 255, .12);
+  --steps-ink: #38bdf8;
+  --macro-fat-ink: #bc7cff;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -41,11 +45,13 @@
 :root[data-theme="light"] {
   color-scheme: light;
   --ink: #11160f;
-  --ink-soft: #5e6a5a;
-  --canvas: #eef3ea;
-  --surface: #fbfdf8;
-  --surface-muted: #e3eadf;
-  --line: #cfdbc9;
+  --ink-soft: #55614f;
+  /* El lienzo tiene que ser claramente más oscuro que las tarjetas o no hay
+     elevación: antes se diferenciaban 1,13:1 y todo se leía plano. */
+  --canvas: #e6ece0;
+  --surface: #ffffff;
+  --surface-muted: #eef1e9;
+  --line: #b3c4aa;
   --night: #ffffff;
   --night-soft: #edf4e8;
   --surface-raised: #f6faf2;
@@ -56,9 +62,13 @@
   --glass-highlight: rgba(255, 255, 255, .9);
   --set-row-bg: linear-gradient(180deg, #ffffff, #f5f8f3);
   --set-form-bg: linear-gradient(180deg, #ffffff, #f3f7f1);
-  --danger: #c63f32;
+  --danger: #b3261e;
   --danger-soft: #fbe5e1;
-  --shadow: 0 18px 44px rgba(38, 51, 40, .12);
+  --shadow: 0 18px 44px rgba(38, 51, 40, .16);
+  --progress-track: #dbe3d4;
+  --orange: #b45309;
+  --steps-ink: #0369a1;
+  --macro-fat-ink: #6d28d9;
 }
 
 * {
@@ -168,7 +178,7 @@ h3 {
   place-items: center;
   border-radius: 13px;
   background: var(--night);
-  color: var(--accent);
+  color: var(--accent-ink);
   font-size: 1.25rem;
   font-weight: 900;
 }
@@ -188,7 +198,7 @@ h3 {
 }
 
 .eyebrow-light {
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 
 .top-actions {
@@ -588,16 +598,17 @@ main {
 }
 
 :root[data-theme="light"] .surface {
-  background:
-    radial-gradient(circle at 92% 8%, rgba(var(--accent-rgb), .04), transparent 28%),
-    linear-gradient(180deg, rgba(255, 255, 255, .95), rgba(246, 250, 242, .98));
+  background: var(--surface);
+  box-shadow:
+    0 1px 2px rgba(38, 51, 40, .06),
+    0 6px 16px rgba(38, 51, 40, .07);
 }
 
 :root[data-theme="light"] .surface.color-panel {
-  border-color: rgba(var(--panel-accent-rgb), .2);
+  border-color: var(--line);
   background:
-    linear-gradient(135deg, rgba(var(--panel-accent-rgb), .13), transparent 38%),
-    linear-gradient(180deg, rgba(255, 255, 255, .97), rgba(244, 249, 240, .98));
+    linear-gradient(180deg, rgba(var(--panel-accent-rgb), .1) 0 3px, transparent 3px),
+    var(--surface);
 }
 
 .color-panel-lime { --panel-accent-rgb: 199, 244, 100; }
@@ -635,15 +646,15 @@ main {
 .timeline-list { display: grid; gap: .7rem; margin: 0; padding: 0; list-style: none; }
 .timeline-item { display: grid; grid-template-columns: 7rem 1fr; gap: .75rem; align-items: baseline; padding: .75rem 0; border-bottom: 1px solid var(--line); }
 .timeline-item:last-child { border-bottom: 0; }
-.timeline-date { color: var(--accent); font-size: .82rem; font-variant-numeric: tabular-nums; }
+.timeline-date { color: var(--accent-ink); font-size: .82rem; font-variant-numeric: tabular-nums; }
 .timeline-content { color: var(--ink); }
 .timeline-item small { grid-column: 2; }
 .timeline-empty { color: var(--ink-soft); padding: .5rem 0; }
 .timeline-no-realizado .timeline-date { color: var(--danger); }
 .timeline-extra .timeline-date { color: var(--orange); }
-.timeline-completado .timeline-date { color: var(--accent); }
+.timeline-completado .timeline-date { color: var(--accent-ink); }
 .daily-editor { margin-top: 1rem; }
-.daily-editor summary { cursor: pointer; color: var(--accent); font-weight: 700; }
+.daily-editor summary { cursor: pointer; color: var(--accent-ink); font-weight: 700; }
 .daily-editor .surface { margin-top: .75rem; }
 
 .diary-progress {
@@ -867,9 +878,44 @@ textarea {
 .macro-list { display: grid; gap: var(--space-4); }
 .macro-list > div { display: grid; gap: 8px; }
 .macro-list span { display: flex; justify-content: space-between; gap: var(--space-3); font-size: .85rem; }
-.macro-list progress { width: 100%; height: 10px; accent-color: var(--accent); }
-.macro-list > div:nth-child(2) progress { accent-color: var(--orange); }
-.macro-list > div:nth-child(3) progress { accent-color: #bc7cff; }
+.macro-list progress { width: 100%; height: 10px; }
+
+
+
+
+/* Barras de progreso.
+
+   Antes se dejaban al estilo por defecto del navegador y solo se les daba
+   `accent-color`, que colorea el relleno pero no el canal. El canal lo pintaba
+   Chromium con su gris oscuro, así que en tema claro las barras salían con la
+   parte vacía casi negra. Aquí se controlan las dos partes. */
+progress {
+  appearance: none;
+  border: 0;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--progress-track);
+}
+
+progress::-webkit-progress-bar {
+  border-radius: 999px;
+  background: var(--progress-track);
+}
+
+progress::-webkit-progress-value {
+  border-radius: 999px;
+  background: var(--progress-fill, var(--accent));
+}
+
+progress::-moz-progress-bar {
+  border-radius: 999px;
+  background: var(--progress-fill, var(--accent));
+}
+
+.daily-metric-calories progress { --progress-fill: var(--orange); }
+.daily-metric-steps progress { --progress-fill: var(--steps-ink); }
+.macro-list > div:nth-child(2) progress { --progress-fill: var(--orange); }
+.macro-list > div:nth-child(3) progress { --progress-fill: var(--macro-fat-ink); }
 
 .chip {
   min-height: 44px;
@@ -1100,7 +1146,7 @@ textarea {
   margin: var(--space-3) 0;
   border: 0;
   background: transparent;
-  color: var(--accent);
+  color: var(--accent-ink);
   cursor: pointer;
   font-size: .78rem;
   font-weight: 900;
@@ -1400,7 +1446,7 @@ textarea {
 
 .routine-overview-card:hover,
 .free-routine-card:hover { border-color: rgba(var(--accent-rgb), .55); }
-.routine-icon { display: grid; width: 52px; height: 52px; place-items: center; border: 1px solid rgba(var(--accent-rgb), .45); border-radius: 15px; background: rgba(var(--accent-rgb), .1); color: var(--accent); font-size: 1.35rem; font-weight: 900; }
+.routine-icon { display: grid; width: 52px; height: 52px; place-items: center; border: 1px solid rgba(var(--accent-rgb), .45); border-radius: 15px; background: rgba(var(--accent-rgb), .1); color: var(--accent-ink); font-size: 1.35rem; font-weight: 900; }
 .routine-icon-free { color: var(--orange); border-color: rgba(255, 159, 28, .45); background: rgba(255, 159, 28, .1); }
 .routine-overview-copy { display: grid; gap: 5px; }
 .routine-overview-copy strong { font-size: 1.05rem; }
@@ -1408,16 +1454,16 @@ textarea {
 .create-routine-card small,
 .free-routine-card small,
 .add-routine-day small { display: block; color: var(--ink-soft); font-size: .78rem; }
-.routine-card-chevron { color: var(--accent); font-size: 2rem; }
+.routine-card-chevron { color: var(--accent-ink); font-size: 2rem; }
 .routine-weekday-pills { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 3px; }
 .routine-weekday-pills span,
-.weekday-badge { border: 1px solid rgba(var(--accent-rgb), .45); border-radius: 999px; padding: 3px 6px; color: var(--accent); font-size: .65rem; font-weight: 850; }
+.weekday-badge { border: 1px solid rgba(var(--accent-rgb), .45); border-radius: 999px; padding: 3px 6px; color: var(--accent-ink); font-size: .65rem; font-weight: 850; }
 .routine-focus-tag {
   justify-self: start;
   border-radius: 999px;
   padding: 5px 9px;
   background: rgba(var(--accent-rgb), .13);
-  color: var(--accent);
+  color: var(--accent-ink);
   font-size: .66rem;
   font-weight: 950;
   letter-spacing: .12em;
@@ -1471,6 +1517,46 @@ textarea {
   --routine-accent: #e5e7eb;
   --routine-accent-rgb: 229, 231, 235;
 }
+
+/* ---------------------------------------------------------------------------
+   Colores de rutina en tema claro
+
+   Los del modo oscuro son neones pensados sobre negro: sobre blanco se quedan
+   entre 1,2:1 y 2,2:1 de contraste, y con ellos se pintan el nombre del plan
+   del día, su flecha, los puntos del calendario y los bordes de las tarjetas.
+   Estos equivalentes están medidos entre 4,99:1 y 7,10:1.
+--------------------------------------------------------------------------- */
+:root[data-theme="light"] .routine-accent-lime,
+:root[data-theme="light"] .routine-theme-pull {
+  --routine-accent: #3d6408;
+  --routine-accent-rgb: 61, 100, 8;
+}
+:root[data-theme="light"] .routine-accent-orange,
+:root[data-theme="light"] .routine-theme-arms,
+:root[data-theme="light"] .routine-theme-cardio {
+  --routine-accent: #92400e;
+  --routine-accent-rgb: 146, 64, 14;
+}
+:root[data-theme="light"] .routine-accent-blue,
+:root[data-theme="light"] .routine-theme-lower {
+  --routine-accent: #0369a1;
+  --routine-accent-rgb: 3, 105, 161;
+}
+:root[data-theme="light"] .routine-accent-violet,
+:root[data-theme="light"] .routine-theme-full {
+  --routine-accent: #6d28d9;
+  --routine-accent-rgb: 109, 40, 217;
+}
+:root[data-theme="light"] .routine-accent-red,
+:root[data-theme="light"] .routine-theme-push {
+  --routine-accent: #be123c;
+  --routine-accent-rgb: 190, 18, 60;
+}
+:root[data-theme="light"] .routine-accent-steel {
+  --routine-accent: #475569;
+  --routine-accent-rgb: 71, 85, 105;
+}
+
 .routine-overview-card[class*="routine-theme-"],
 .routine-spotlight[class*="routine-theme-"] {
   border-color: rgba(var(--routine-accent-rgb), .28);
@@ -1553,7 +1639,7 @@ textarea {
 .create-routine-card { margin-top: var(--space-4); overflow: hidden; }
 .create-routine-card > summary { display: flex; align-items: center; gap: var(--space-3); min-height: 82px; padding: var(--space-4) var(--space-5); cursor: pointer; list-style: none; }
 .create-routine-card > summary::-webkit-details-marker { display: none; }
-.create-routine-plus { display: grid; width: 48px; height: 48px; place-items: center; border: 1px solid var(--line); border-radius: 50%; color: var(--accent); font-size: 1.7rem; }
+.create-routine-plus { display: grid; width: 48px; height: 48px; place-items: center; border: 1px solid var(--line); border-radius: 50%; color: var(--accent-ink); font-size: 1.7rem; }
 .create-routine-form { display: grid; gap: var(--space-4); padding: var(--space-5); border-top: 1px solid var(--line); background: var(--surface-raised); }
 .weekday-fieldset { margin: 0; padding: 0; border: 0; }
 .weekday-fieldset legend { margin-bottom: var(--space-3); color: var(--ink); font-size: .8rem; font-weight: 850; }
@@ -1562,7 +1648,7 @@ textarea {
 .weekday-choice { display: block; }
 .weekday-choice input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .weekday-choice span { display: grid; min-height: 46px; place-items: center; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink-soft); cursor: pointer; font-size: .72rem; font-weight: 850; }
-.weekday-choice input:checked + span { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+.weekday-choice input:checked + span { border-color: var(--accent-ink); background: var(--accent); color: var(--on-accent); }
 .weekday-choice input:disabled + span { cursor: not-allowed; opacity: .32; text-decoration: line-through; }
 .routine-color-fieldset { display: grid; gap: var(--space-2); margin: 0; padding: 0; border: 0; }
 .routine-color-fieldset legend { margin-bottom: var(--space-2); color: var(--ink); font-size: .8rem; font-weight: 850; }
@@ -1588,7 +1674,7 @@ textarea {
   border-color: rgba(var(--accent-rgb), .65);
   background: rgba(var(--accent-rgb), .13);
 }
-.routine-type-picker input:checked + span strong { color: var(--accent); }
+.routine-type-picker input:checked + span strong { color: var(--accent-ink); }
 .cardio-activity-fieldset {
   display: grid;
   gap: var(--space-3);
@@ -1711,7 +1797,7 @@ textarea {
 .routine-detail-header { display: flex; align-items: center; gap: var(--space-4); margin-bottom: var(--space-4); padding: var(--space-5); }
 .routine-detail-header h2 { margin: 4px 0; }
 .add-routine-day { display: grid; grid-template-columns: minmax(200px, .8fr) minmax(320px, 1.4fr) auto; gap: var(--space-4); align-items: center; margin-top: var(--space-4); padding: var(--space-4) var(--space-5); }
-.routine-day-icon { display: inline-grid; color: var(--accent); place-items: center; }
+.routine-day-icon { display: inline-grid; color: var(--accent-ink); place-items: center; }
 .routine-day-icon .ui-icon { width: 20px; height: 20px; }
 
 .routine-create-form {
@@ -1746,7 +1832,7 @@ summary.routine-header {
 }
 
 summary.routine-header::-webkit-details-marker { display: none; }
-.routine-open-hint { color: var(--accent); font-size: .78rem; font-weight: 850; }
+.routine-open-hint { color: var(--accent-ink); font-size: .78rem; font-weight: 850; }
 .routine-card[open] .routine-open-hint::after { content: " · abierto"; color: var(--ink-soft); }
 
 .routine-header h3 {
@@ -1893,7 +1979,7 @@ summary.routine-header::-webkit-details-marker { display: none; }
   border: 1px solid rgba(var(--accent-rgb), .22);
   border-radius: 999px;
   background: rgba(var(--accent-rgb), .08);
-  color: var(--accent);
+  color: var(--accent-ink);
   font-size: .76rem;
   font-weight: 900;
   font-variant-numeric: tabular-nums;
@@ -1915,7 +2001,7 @@ summary.routine-header::-webkit-details-marker { display: none; }
 }
 
 .timer-display.timer-running {
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 
 .timer-controls {
@@ -1973,7 +2059,7 @@ summary.routine-header::-webkit-details-marker { display: none; }
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-4) var(--space-5);
-  color: var(--accent);
+  color: var(--accent-ink);
   cursor: pointer;
   list-style: none;
 }
@@ -2253,7 +2339,7 @@ summary.routine-header::-webkit-details-marker { display: none; }
   list-style: none;
 }
 .exercise-exception-summary::-webkit-details-marker { display: none; }
-.exercise-exception-summary::after { content: " +"; color: var(--accent); }
+.exercise-exception-summary::after { content: " +"; color: var(--accent-ink); }
 .exercise-exception-menu[open] .exercise-exception-summary::after { content: " −"; }
 .exercise-exception-actions { display: grid; gap: 7px; margin-top: 7px; padding: 9px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); text-align: left; }
 .exercise-exception-actions p { font-size: .72rem; line-height: 1.4; }
@@ -2423,7 +2509,7 @@ summary.routine-header::-webkit-details-marker { display: none; }
   border: 1px solid rgba(var(--accent-rgb), .28);
   border-radius: 999px;
   background: rgba(var(--accent-rgb), .09);
-  color: var(--accent);
+  color: var(--accent-ink);
   font-size: .74rem;
   font-weight: 900;
   text-align: center;
@@ -2483,7 +2569,7 @@ summary.routine-header::-webkit-details-marker { display: none; }
 .set-number.set-complete {
   border: 1px solid var(--accent-strong);
   background: rgba(var(--accent-rgb), .12);
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 
 .set-check-button { min-height: 50px; }
@@ -2559,7 +2645,7 @@ summary.routine-header::-webkit-details-marker { display: none; }
 
 .load-stepper-button:active {
   border-color: rgba(var(--accent-rgb), .48);
-  color: var(--accent);
+  color: var(--accent-ink);
   transform: translateY(1px);
 }
 
@@ -2614,7 +2700,7 @@ summary.routine-header::-webkit-details-marker { display: none; }
 .set-type-option:has(input:checked) {
   border-color: rgba(var(--accent-rgb), .55);
   background: rgba(var(--accent-rgb), .14);
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 
 .set-type-option.set-type-approach:has(input:checked) {
@@ -2842,7 +2928,7 @@ th {
 }
 
 .weekly-ring span {
-  color: var(--accent);
+  color: var(--accent-ink);
   font-size: .72rem;
   line-height: 1.3;
 }
@@ -2875,9 +2961,9 @@ th {
 .daily-metric strong { font-size: 1.3rem; }
 .daily-metric progress { width: 100%; height: 9px; }
 .daily-metric-calories > div { color: var(--orange); }
-.daily-metric-calories progress { accent-color: var(--orange); }
-.daily-metric-steps > div { color: #38bdf8; }
-.daily-metric-steps progress { accent-color: #38bdf8; }
+
+.daily-metric-steps > div { color: var(--steps-ink); }
+
 
 .today-plan {
   margin-top: var(--space-4);
@@ -2905,7 +2991,7 @@ th {
 }
 
 .today-plan-heading > span {
-  color: var(--accent);
+  color: var(--accent-ink);
   font-size: 2.4rem;
 }
 
@@ -2952,7 +3038,7 @@ th {
 .session-exercise-summary::-webkit-details-marker { display: none; }
 .session-exercise-summary div { display: grid; gap: 5px; }
 .session-exercise-summary small { color: var(--ink-soft); }
-.exercise-summary-status { color: var(--accent); font-size: .78rem; font-weight: 850; white-space: nowrap; }
+.exercise-summary-status { color: var(--accent-ink); font-size: .78rem; font-weight: 850; white-space: nowrap; }
 .session-exercise[open] { border-color: rgba(var(--accent-rgb), .52); }
 .session-exercise[open] > .session-exercise-summary { background: rgba(var(--accent-rgb), .05); }
 .set-area > .exercise-header,
@@ -3065,7 +3151,7 @@ th {
   cursor: pointer;
 }
 .minimal-icon-button:hover,
-.date-picker-button:hover { border-color: var(--accent); color: var(--accent); }
+.date-picker-button:hover { border-color: var(--accent-ink); color: var(--accent-ink); }
 .minimal-icon-button.bare-arrow-button {
   border: 0;
   border-radius: 0;
@@ -3076,7 +3162,7 @@ th {
 .minimal-icon-button.bare-arrow-button:hover,
 .minimal-icon-button.bare-arrow-button:focus-visible {
   background: transparent;
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 .date-picker-button input {
   position: absolute;
@@ -3113,7 +3199,7 @@ th {
 }
 .timeline-open:hover { background: rgba(var(--accent-rgb), .04); }
 .timeline-open small { grid-column: 2; }
-.timeline-chevron { grid-column: 3; grid-row: 1 / span 3; align-self: center; color: var(--accent); font-size: 1.6rem; }
+.timeline-chevron { grid-column: 3; grid-row: 1 / span 3; align-self: center; color: var(--accent-ink); font-size: 1.6rem; }
 
 .overlay-open { overflow: hidden; }
 .day-detail-overlay {
@@ -3210,7 +3296,7 @@ th {
   font-size: .68rem;
   font-weight: 850;
 }
-.routine-weekday-toggle[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+.routine-weekday-toggle[aria-pressed="true"] { border-color: var(--accent-ink); background: var(--accent); color: var(--on-accent); }
 .routine-weekday-toggle:disabled { cursor: not-allowed; opacity: .28; text-decoration: line-through; }
 .routine-icon .ui-icon { width: 26px; height: 26px; }
 .routine-icon-tone-2 { color: var(--orange); border-color: rgba(255,159,28,.48); background: rgba(255,159,28,.1); }
@@ -3254,7 +3340,7 @@ th {
 .settings-data-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 .label-values { color: var(--ink); font-size: .82rem; line-height: 1.5; }
 .label-editor { margin-top: var(--space-4); }
-.label-editor > summary { color: var(--accent); cursor: pointer; font-weight: 850; }
+.label-editor > summary { color: var(--accent-ink); cursor: pointer; font-weight: 850; }
 .compact-form { margin-top: var(--space-3); padding: var(--space-4); background: var(--surface-muted); }
 .photo-field span { line-height: 1.45; }
 .label-photo-preview { width: 100%; max-height: 240px; object-fit: contain; border: 1px solid var(--line); border-radius: var(--radius-sm); background: #fff; }
@@ -3358,7 +3444,7 @@ th {
   margin-bottom: var(--space-3);
   border: 0;
   background: transparent;
-  color: var(--accent);
+  color: var(--accent-ink);
   cursor: pointer;
   font-weight: 850;
 }
@@ -3442,7 +3528,7 @@ th {
 }
 
 .appearance-picker input:checked + span {
-  border-color: var(--accent);
+  border-color: var(--accent-ink);
   background: rgba(var(--accent-rgb), .12);
   box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), .18);
 }
@@ -3507,9 +3593,9 @@ th {
 }
 
 .accent-picker input:checked + span {
-  border-color: var(--accent);
+  border-color: var(--accent-ink);
   background: rgba(var(--accent-rgb), .12);
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 
 .accent-picker input:focus-visible + span {
@@ -3961,7 +4047,7 @@ th {
     border: 1px solid rgba(var(--accent-rgb), .3);
     border-radius: 999px;
     background: rgba(var(--accent-rgb), .1);
-    color: var(--accent);
+    color: var(--accent-ink);
   }
   .set-form-number::before { content: "Serie "; margin-right: 4px; }
   .set-field-load { grid-column: 1 / -1; grid-row: auto; }

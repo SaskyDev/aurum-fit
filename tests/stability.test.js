@@ -661,3 +661,27 @@ test("guardar una serie arranca el descanso, corregirla no", () => {
   assert.match(app, /autoRestTimer: true,/);
   assert.match(app, /autoRestTimer: \$\("autoRestTimer"\)\.checked/);
 });
+
+test("la paleta del tema claro cumple el contraste y coincide con el código", async () => {
+  const { checkLightTheme, LIGHT_THEME } = await import("../scripts/check-theme-contrast.mjs");
+  const styles = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+
+  assert.deepEqual(checkLightTheme(), [], "la paleta del tema claro dejó de cumplir el contraste");
+
+  // El tema claro no es el oscuro con menos brillo: tiene sus propios tonos, y
+  // el comprobador solo sirve si los valores son los que se usan de verdad.
+  const bloque = styles.slice(styles.indexOf(':root[data-theme="light"] {'), styles.indexOf("* {"));
+  assert.ok(bloque.includes(`--canvas: ${LIGHT_THEME.canvas};`), "el lienzo claro no coincide");
+  assert.ok(bloque.includes(`--surface: ${LIGHT_THEME.surface};`), "la superficie clara no coincide");
+  assert.ok(bloque.includes(`--danger: ${LIGHT_THEME.danger};`), "el rojo de peligro no coincide");
+  Object.entries(LIGHT_THEME.accents).forEach(([nombre, { accent, ink }]) => {
+    assert.match(app, new RegExp(`${nombre}: \\{ accent: "${accent}", accentStrong: "${ink}", success: "${ink}"`),
+      `la paleta ${nombre} de app.js no coincide con la comprobada`);
+  });
+
+  // El acento como texto necesita su propio token: con el del relleno, los
+  // encabezados se quedaban en 4,15:1 sobre el lienzo.
+  assert.match(app, /--accent-ink", resolvedTheme === "light" \? palette\.accentStrong : palette\.accent/);
+  assert.doesNotMatch(styles, /color: var\(--accent\)/);
+});

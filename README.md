@@ -123,10 +123,11 @@ Conviene subir la versión en cualquier cambio de `index.html`, `styles.css`,
 `app.js`, `core.js` o del catálogo, para que la PWA instalada no sirva una
 mezcla de versiones. Las pruebas fallan si alguna referencia se queda atrás.
 
-La escala de color del mapa muscular se comprueba con:
+Los colores se comprueban con:
 
 ```bash
-node scripts/check-muscle-palette.mjs
+node scripts/check-muscle-palette.mjs    # escala del mapa muscular y daltonismo
+node scripts/check-theme-contrast.mjs    # contraste de la paleta del tema claro
 ```
 
 Documentación:
