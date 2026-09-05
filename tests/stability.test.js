@@ -161,14 +161,16 @@ test("la instalación offline exige el shell pero tolera un catálogo caído", a
   await assert.rejects(instalacionFallida, /No se pudo precargar/);
 });
 
-test("la versión de caché está sincronizada en los seis puntos del shell", () => {
+test("la versión de caché está sincronizada en todo el shell", () => {
   const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
   const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
   const htmlVersions = [...html.matchAll(/\?v=(\d+)/g)].map((match) => match[1]);
   const appVersions = [...app.matchAll(/\?v=(\d+)/g)].map((match) => match[1]);
 
-  assert.equal(htmlVersions.length, 4);
-  assert.equal(appVersions.length, 2);
+  // Se comprueba que todas coincidan, no cuántas hay: añadir un recurso
+  // versionado es normal, servir dos versiones a la vez no.
+  assert.ok(htmlVersions.length >= 4, "index.html perdió referencias versionadas");
+  assert.ok(appVersions.length >= 2, "app.js perdió referencias versionadas");
   assert.ok([...htmlVersions, ...appVersions].every((version) => version === shellVersion));
 });
 
@@ -198,6 +200,60 @@ test("el catálogo avisa de los ejercicios sin revisión profesional", () => {
   assert.match(app, /entry\.reviewStatus === "pending_professional_review"/);
   assert.match(app, /"catalog-review-pending", "Sin revisión profesional todavía"/);
   assert.match(styles, /\.catalog-card \.catalog-review-pending \{/);
+});
+
+test("el mapa muscular vive en el Diario con periodo propio y alternativa en texto", () => {
+  const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+
+  const diario = html.slice(html.indexOf('id="diario"'), html.indexOf('id="comida"'));
+  assert.ok(diario.includes('id="muscleMapCard"'), "el mapa debe estar dentro del Diario");
+  assert.match(html, /data-muscle-period="session"[\s\S]*data-muscle-period="week"[\s\S]*data-muscle-period="month"/);
+  assert.match(html, /<button class="period-tab active" type="button" data-muscle-period="week"/);
+
+  // El Diario y el mapa comparten la clase .period-tab: si el selector vuelve a
+  // ser global, pulsar un periodo del mapa rompe el del Diario y al revés.
+  assert.doesNotMatch(app, /querySelectorAll\("\.period-tab"\)/);
+  assert.match(app, /querySelectorAll\("\[data-period\]"\)/);
+  assert.match(app, /querySelectorAll\("\[data-muscle-period\]"\)/);
+
+  // La escala de color deja dos tramos por debajo de 3:1 contra la superficie:
+  // la tabla y la leyenda son el desahogo obligatorio, no un adorno.
+  assert.ok(diario.includes('id="muscleMapRows"'), "falta la tabla por zona");
+  assert.ok(diario.includes('id="muscleMapLegend"'), "falta la leyenda");
+  assert.match(app, /svg\.setAttribute\(\s*"aria-label"/);
+  assert.match(app, /No mide activación muscular ni sustituye una valoración profesional/);
+});
+
+test("la geometría del mapa sigue saliendo del esqueleto que la genera", () => {
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const generador = fs.readFileSync(new URL("../scripts/generate-muscle-map.mjs", import.meta.url), "utf8");
+
+  // Silueta y músculos comparten articulaciones. Si alguien retoca las
+  // coordenadas a mano en app.js, el músculo acaba flotando fuera del cuerpo.
+  assert.match(generador, /const J = \{/);
+  assert.match(app, /const BODY_SILHOUETTE = \[/);
+  assert.match(app, /const MUSCLE_SHAPES = \{/);
+
+  const regiones = [...app.matchAll(/^    ([a-z_]+): \[\{ t: "/gm)].map((match) => match[1]);
+  const front = regiones.slice(0, regiones.indexOf("neck", 1));
+  assert.ok(front.length >= 13, "la vista frontal perdió regiones");
+  ["chest", "quads", "abs", "biceps"].forEach((region) => {
+    assert.ok(front.includes(region), `falta ${region} en la vista frontal`);
+  });
+  ["traps", "lats", "glutes", "hamstrings", "triceps"].forEach((region) => {
+    assert.ok(regiones.includes(region), `falta ${region} en la vista posterior`);
+  });
+});
+
+test("los músculos se guardan en el ejercicio y no se recalculan al pintar", () => {
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  // El historial tiene que leerse sin conexión y sin catálogo: si el mapa
+  // cruzase contra el catálogo al renderizar, offline se quedaría en blanco.
+  assert.match(app, /exercise\.muscles = muscles/);
+  assert.match(app, /function backfillExerciseMuscles\(\)/);
+  assert.match(app, /backfillExerciseMuscles\(\);/);
+  assert.doesNotMatch(app, /computeMuscleVolume\(state, \{[^}]*catalog/);
 });
 
 test("el submit de serie conserva el bloqueo aunque renderice otro formulario", () => {

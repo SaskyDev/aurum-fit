@@ -604,6 +604,7 @@ main {
 .color-panel-orange { --panel-accent-rgb: 255, 159, 28; }
 .color-panel-blue { --panel-accent-rgb: 56, 189, 248; }
 .color-panel-violet { --panel-accent-rgb: 167, 139, 250; }
+.color-panel-teal { --panel-accent-rgb: 94, 205, 176; }
 
 .dashboard-grid {
   display: grid;
@@ -4196,4 +4197,121 @@ th {
 
 .dialog-actions .button {
   min-height: 44px;
+}
+
+/* ---------------------------------------------------------------------------
+   Mapa muscular
+
+   Escala secuencial de un solo tono (verde de la marca), no un arcoíris: la
+   intensidad es magnitud, y la luminosidad tiene que crecer de forma monótona
+   para que se lea igual con daltonismo. Los cuatro tramos se validaron con
+   scripts/check-muscle-palette.mjs (ver docs/MAPA_MUSCULAR.md): separación entre
+   tramos contiguos por encima del umbral en visión normal, deuteranopía y
+   tritanopía. La implicación secundaria NO es un quinto tramo: es otra cosa, y
+   se marca con trama en vez de con color para no competir con la escala.
+--------------------------------------------------------------------------- */
+:root {
+  --muscle-body: #232c25;
+  --muscle-none: #232c25;
+  --muscle-low: #3d5a2a;
+  --muscle-medium: #79ab3f;
+  --muscle-high: #c7f464;
+  --muscle-secondary-ink: #8aa39a;
+}
+
+:root[data-theme="light"] {
+  --muscle-body: #e2e7dd;
+  --muscle-none: #e2e7dd;
+  --muscle-low: #9cc93f;
+  --muscle-medium: #5f8a1a;
+  --muscle-high: #365008;
+  --muscle-secondary-ink: #5d7266;
+}
+
+/* El grupo de periodos del Diario tiene cuatro opciones; el del mapa, tres. */
+.muscle-map .period-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+.muscle-map-detail > summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
+.muscle-map-detail[open] > summary { margin-bottom: var(--space-2); }
+
+.muscle-map-figures {
+  display: flex;
+  justify-content: center;
+  gap: clamp(.5rem, 4vw, 2rem);
+  padding: .5rem 0 .25rem;
+}
+
+.muscle-figure {
+  width: 100%;
+  max-width: 184px;
+  height: auto;
+}
+
+.muscle-body { fill: var(--muscle-body); }
+
+.muscle-region > :not(title) { fill: var(--muscle-none); transition: fill .18s ease; }
+.muscle-region.intensity-low > :not(title) { fill: var(--muscle-low); }
+.muscle-region.intensity-medium > :not(title) { fill: var(--muscle-medium); }
+.muscle-region.intensity-high > :not(title) { fill: var(--muscle-high); }
+
+.muscle-region.only-secondary > :not(title) {
+  stroke: var(--muscle-secondary-ink);
+  stroke-width: 1.2;
+  stroke-dasharray: 2.5 2.5;
+  stroke-opacity: .7;
+}
+
+.muscle-map-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .3rem .75rem;
+  justify-content: center;
+  align-items: center;
+}
+
+.muscle-legend-title small { color: var(--ink-soft); font-weight: 600; }
+
+.muscle-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+}
+
+.muscle-legend-swatch {
+  width: 13px;
+  height: 13px;
+  border-radius: 4px;
+  background: var(--muscle-none);
+  flex: none;
+}
+
+.muscle-legend-item.intensity-low .muscle-legend-swatch { background: var(--muscle-low); }
+.muscle-legend-item.intensity-medium .muscle-legend-swatch { background: var(--muscle-medium); }
+.muscle-legend-item.intensity-high .muscle-legend-swatch { background: var(--muscle-high); }
+
+.muscle-legend-swatch.swatch-secondary {
+  background: var(--muscle-none);
+  border: 1.4px dashed var(--muscle-secondary-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .muscle-region > :not(title) { transition: none; }
+}
+
+@media (forced-colors: active) {
+  .muscle-region.intensity-low > :not(title),
+  .muscle-region.intensity-medium > :not(title),
+  .muscle-region.intensity-high > :not(title) { forced-color-adjust: none; }
 }

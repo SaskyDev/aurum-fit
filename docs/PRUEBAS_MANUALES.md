@@ -216,16 +216,16 @@ caché activa. El catálogo también se pide con la misma versión, por lo que e
 catálogo deduplicado de 1.317 ejercicios no puede reutilizar una respuesta
 antigua.
 
-La versión vive en seis sitios (`SHELL_VERSION` en `service-worker.js`, cuatro
-referencias `?v=` en `index.html` y dos en `app.js`). No se tocan a mano:
+La versión vive repartida entre `SHELL_VERSION` (`service-worker.js`) y las
+referencias `?v=` de `index.html` y `app.js`. No se tocan a mano:
 
 ```bash
 node scripts/bump-cache-version.mjs      # sincroniza todo con SHELL_VERSION
-node scripts/bump-cache-version.mjs 54   # sube los seis sitios a la v54
+node scripts/bump-cache-version.mjs 55   # sube la versión en todas partes
 ```
 
-La prueba `la versión de caché está sincronizada en los seis puntos del shell`
-falla si alguno se queda atrás.
+La prueba `la versión de caché está sincronizada en todo el shell`
+falla si alguna referencia se queda atrás.
 
 ### Importación, validación, búsqueda y navegación
 
@@ -317,6 +317,37 @@ medias sería peor que ninguna.
    pendiente, su tarjeta debe dejar de mostrarlo.
 4. Abrir `Ver indicaciones en español`: debe seguir apareciendo la advertencia
    de que el texto no es consejo médico.
+
+### Mapa muscular (QA-MAP-001)
+
+1. En Ajustes, pulsar `Cargar demo` para tener historial suficiente.
+2. Volver al Diario: la tarjeta `Cobertura muscular` debe mostrar dos figuras
+   (frontal y posterior) y el resumen `Esta semana · N series efectivas en X de
+   21 zonas`.
+3. Comprobar que el color solo aparece en las zonas con **series directas**, y
+   que las zonas con implicación secundaria y sin trabajo directo llevan trama
+   discontinua, no color.
+4. Abrir `Ver detalle por zona`: las columnas `Series directas` y `Con
+   implicación` deben ser independientes y no sumarse en ningún total.
+5. Cambiar a `Sesión` y a `Mes`: solo debe cambiar el mapa. El periodo del
+   bloque `Evolución por ejercicio` no puede moverse. Y al revés: cambiar el
+   periodo del Diario no debe alterar el del mapa.
+6. Registrar una serie de calentamiento y otra de aproximación en un ejercicio
+   nuevo: el mapa no debe moverse. Registrar una efectiva: sí.
+7. Crear un ejercicio personal que no exista en el catálogo, registrar una serie
+   efectiva y finalizar: bajo el mapa debe aparecer cuántas series no se reparten
+   y el nombre de ese ejercicio. No debe repartirse a ninguna zona.
+8. Hacer cardio: no debe pintar ningún músculo.
+9. Con el tema claro y con el oscuro, comprobar que los cuatro tramos de la
+   leyenda se distinguen entre sí y del fondo.
+10. Con lector de pantalla, comprobar que cada figura se anuncia enumerando el
+    trabajo directo, y que la tabla por zona es legible como alternativa.
+11. A 390 px de ancho: sin desplazamiento horizontal, las tres pestañas de
+    periodo en una sola fila y la leyenda en dos líneas como mucho.
+
+Una prueba automatizada cubre el reparto (`el volumen por músculo separa trabajo
+directo de implicación y solo cuenta series efectivas`), pero la lectura visual
+de los tramos y la trama hay que confirmarla en el navegador.
 
 ### Exportación (QA-EXPORT-001)
 

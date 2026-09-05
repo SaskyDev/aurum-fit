@@ -50,6 +50,9 @@ Nutrición sobre un modelo local versionado, sin cuentas ni backend.
 - Catálogo de 1.317 ejercicios buscables por nombre, zona muscular y equipo,
   deduplicado y sin medios de Gym Visual; muestra cuatro resultados al inicio y
   permite ampliar la lista de forma voluntaria.
+- Mapa muscular en el Diario: colorea por zona las series efectivas de la
+  semana, la sesión o el mes, separando el trabajo directo de la implicación
+  secundaria y sin sumarlos nunca.
 - Aviso `Sin revisión profesional todavía` en las tarjetas del catálogo cuyo
   contenido siga pendiente de revisión.
 - Confirmaciones propias y accesibles en lugar del diálogo del navegador: foco
@@ -74,7 +77,10 @@ Nutrición sobre un modelo local versionado, sin cuentas ni backend.
 - Lectura asistida de etiquetas mediante foto, solo cuando pueda validarse antes
   de guardar los valores.
 - Ampliación progresiva y revisada del catálogo.
-- Normalizar músculos principal/secundarios antes de construir el mapa muscular.
+- Logros a partir de hechos verificables: récord de peso, racha de días y
+  semanas entrenando, primera semana cubriendo las zonas principales.
+- Mapa muscular también en el resumen al finalizar el entrenamiento.
+- Poder asignar músculos a los ejercicios personales.
 - Definir licencias y presupuesto de rendimiento antes de añadir imágenes o
   animaciones de ejercicios.
 - Sincronización solo si la validación futura la necesita.
@@ -103,22 +109,29 @@ Para ejecutar las comprobaciones:
 node --test
 ```
 
-La versión de caché vive en seis sitios (`SHELL_VERSION` en `service-worker.js`,
-cuatro referencias `?v=` en `index.html` y dos en `app.js`). No se editan a mano:
+La versión de caché vive repartida entre `SHELL_VERSION` (`service-worker.js`) y
+las referencias `?v=` de `index.html` y `app.js`. No se editan a mano:
 
 ```bash
 node scripts/bump-cache-version.mjs      # sincroniza todo con SHELL_VERSION
-node scripts/bump-cache-version.mjs 54   # sube los seis sitios a la v54
+node scripts/bump-cache-version.mjs 55   # sube la versión en todas partes
 ```
 
 Conviene subir la versión en cualquier cambio de `index.html`, `styles.css`,
 `app.js`, `core.js` o del catálogo, para que la PWA instalada no sirva una
-mezcla de versiones. Las pruebas fallan si alguno de los seis sitios se queda
-atrás.
+mezcla de versiones. Las pruebas fallan si alguna referencia se queda atrás.
+
+La figura del mapa muscular se genera desde un esqueleto de articulaciones:
+
+```bash
+node scripts/generate-muscle-map.mjs           # imprime el bloque para app.js
+node scripts/generate-muscle-map.mjs --check    # falla si app.js se desvió
+```
 
 Documentación:
 
 - `docs/MODELO_LOCAL_V2.md`
+- `docs/MAPA_MUSCULAR.md`
 - `docs/IMPORTACION_CATALOGO.md`
 - `docs/SISTEMA_VISUAL.md`
 - `docs/REFERENCIAS_UX.md`

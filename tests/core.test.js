@@ -6,6 +6,7 @@ import {
   BACKUP_STORE_KEY,
   CARDIO_ACTIVITY_TYPES,
   LEGACY_STORE_KEY,
+  MUSCLE_REGIONS,
   STORE_KEY,
   addExerciseToRoutineDay,
   addExerciseToSession,
@@ -17,6 +18,7 @@ import {
   cardioDerivedMetrics,
   completeSession,
   cleanupPublishedData,
+  computeMuscleVolume,
   createEmptyState,
   createRoutine,
   createRoutineWithWeekdays,
@@ -27,10 +29,15 @@ import {
   loadAppState,
   moveRoutineDay,
   moveRoutineExercise,
+  muscleIntensity,
+  muscleRegionLabel,
+  normalizeCatalogMuscles,
+  normalizeMuscleName,
   parseImportPayload,
   persistState,
   removeExerciseFromRoutineDay,
   restoreLastDeletedSet,
+  sanitizeExerciseMuscles,
   replaceSessionExerciseForToday,
   removeDemoData,
   routineDayWeekdays,
@@ -937,4 +944,170 @@ test("una rutina real puede sustituir un día ocupado solo por la demostración"
   assert.equal(realRoutine.days[0].weekday, weekday);
   assert.equal(routineDayWeekdays(demoDay).includes(weekday), false);
   assert.equal(validateState(state), null);
+});
+
+test("el vocabulario muscular cubre el dataset entero sin valores sueltos", () => {
+  const catalog = JSON.parse(fs.readFileSync(new URL("../data/exercises.es.json", import.meta.url), "utf8"));
+  const sinMapear = new Set();
+  const cubiertas = new Set();
+
+  catalog.exercises.forEach((entry) => {
+    [entry.target, entry.muscleGroup, ...(entry.secondaryMuscles ?? [])].forEach((value) => {
+      if (!value) return;
+      const region = normalizeMuscleName(value);
+      if (region) {
+        cubiertas.add(region);
+        return;
+      }
+      // "cardiovascular system" se reconoce y se descarta a propósito: el
+      // cardio no pinta músculos.
+      if (String(value).toLowerCase() !== "cardiovascular system") sinMapear.add(value);
+    });
+  });
+
+  assert.deepEqual([...sinMapear], [], "el catálogo trae músculos que el mapa no sabe traducir");
+  assert.equal(cubiertas.size, MUSCLE_REGIONS.length, "hay regiones del mapa que ningún ejercicio alcanza");
+  MUSCLE_REGIONS.forEach((region) => {
+    assert.ok(region.views.length, `${region.id} no se dibuja en ninguna vista`);
+    assert.ok(muscleRegionLabel(region.id), `${region.id} no tiene nombre en español`);
+  });
+});
+
+test("un músculo no puede ser directo y secundario a la vez", () => {
+  const muscles = normalizeCatalogMuscles({
+    target: "pectorals",
+    muscleGroup: "chest",
+    secondaryMuscles: ["triceps", "shoulders", "upper chest", "triceps"],
+  });
+  assert.deepEqual(muscles.direct, ["chest"]);
+  assert.deepEqual(muscles.secondary, ["triceps", "shoulders"]);
+
+  assert.deepEqual(
+    normalizeCatalogMuscles({ target: "cardiovascular system", secondaryMuscles: ["calves"] }),
+    { direct: [], secondary: ["calves"] },
+  );
+  assert.equal(sanitizeExerciseMuscles({ direct: ["inventado"], secondary: [] }), null);
+  assert.deepEqual(
+    sanitizeExerciseMuscles({ direct: ["chest"], secondary: ["chest", "triceps", "inventado"] }),
+    { direct: ["chest"], secondary: ["triceps"] },
+  );
+});
+
+test("el volumen por músculo separa trabajo directo de implicación y solo cuenta series efectivas", () => {
+  const state = createEmptyState({ now: "2026-09-01T08:00:00.000Z" });
+  const session = startFreeSession(state, { now: "2026-09-01T09:00:00.000Z", id: "sesion-1" });
+  const press = addExerciseToSession(state, session.id, "Press de banca con barra", { now: "2026-09-01T09:01:00.000Z" });
+  state.training.exercises.find((item) => item.id === press.exerciseId).muscles = {
+    direct: ["chest"],
+    secondary: ["triceps", "shoulders"],
+  };
+
+  addSetToExercise(state, session.id, press.id, { reps: 10, weight: 60, setType: "warmup" }, { now: "2026-09-01T09:05:00.000Z", id: "s1" });
+  addSetToExercise(state, session.id, press.id, { reps: 8, weight: 80, setType: "approach" }, { now: "2026-09-01T09:10:00.000Z", id: "s2" });
+  addSetToExercise(state, session.id, press.id, { reps: 6, weight: 90, setType: "effective" }, { now: "2026-09-01T09:15:00.000Z", id: "s3" });
+  addSetToExercise(state, session.id, press.id, { reps: 6, weight: 90, setType: "effective" }, { now: "2026-09-01T09:20:00.000Z", id: "s4" });
+  completeSession(state, session.id, "2026-09-01T10:00:00.000Z");
+
+  const volumen = computeMuscleVolume(state, { fromIso: "2026-09-01T00:00:00.000Z" });
+  assert.equal(volumen.effectiveSets, 2, "calentamiento y aproximación no son volumen");
+  assert.equal(volumen.byRegion.chest.directSets, 2);
+  assert.equal(volumen.byRegion.chest.secondarySets, 0);
+  assert.equal(volumen.byRegion.triceps.directSets, 0);
+  assert.equal(volumen.byRegion.triceps.secondarySets, 2, "el tríceps se implica pero no se entrena directo");
+  assert.deepEqual(volumen.byRegion.chest.exercises, [{ name: "Press de banca con barra", sets: 2, kind: "direct" }]);
+  assert.equal(volumen.unmappedSets, 0);
+
+  const fuera = computeMuscleVolume(state, { fromIso: "2026-09-02T00:00:00.000Z" });
+  assert.equal(fuera.effectiveSets, 0, "el periodo debe excluir sesiones anteriores");
+});
+
+test("una sesión sin músculos conocidos se declara en lugar de desaparecer", () => {
+  const state = createEmptyState({ now: "2026-09-01T08:00:00.000Z" });
+  const session = startFreeSession(state, { now: "2026-09-01T09:00:00.000Z", id: "sesion-2" });
+  const propio = addExerciseToSession(state, session.id, "Invento personal", { now: "2026-09-01T09:01:00.000Z" });
+  addSetToExercise(state, session.id, propio.id, { reps: 10, weight: 20, setType: "effective" }, { now: "2026-09-01T09:05:00.000Z", id: "s5" });
+  completeSession(state, session.id, "2026-09-01T10:00:00.000Z");
+
+  const volumen = computeMuscleVolume(state, {});
+  assert.equal(volumen.effectiveSets, 1);
+  assert.equal(volumen.unmappedSets, 1);
+  assert.deepEqual(volumen.unmappedExercises, ["Invento personal"]);
+  assert.equal(volumen.byRegion.chest.directSets, 0);
+});
+
+test("las series que no colorean ninguna zona se declaran, no desaparecen", () => {
+  const state = createEmptyState({ now: "2026-09-01T08:00:00.000Z" });
+  const session = startFreeSession(state, { now: "2026-09-01T09:00:00.000Z", id: "sesion-3" });
+  const burpee = addExerciseToSession(state, session.id, "Burpee", { now: "2026-09-01T09:01:00.000Z" });
+  // El dataset marca así los ejercicios de cardio: implicación, sin principal.
+  state.training.exercises.find((item) => item.id === burpee.exerciseId).muscles = {
+    direct: [],
+    secondary: ["quads", "chest"],
+  };
+  addSetToExercise(state, session.id, burpee.id, { reps: 12, setType: "effective" }, { now: "2026-09-01T09:05:00.000Z", id: "s6" });
+  completeSession(state, session.id, "2026-09-01T10:00:00.000Z");
+
+  const volumen = computeMuscleVolume(state, {});
+  assert.equal(volumen.effectiveSets, 1);
+  assert.equal(volumen.indirectOnlySets, 1);
+  assert.deepEqual(volumen.indirectOnlyExercises, ["Burpee"]);
+  assert.equal(volumen.unmappedSets, 0, "sí tiene músculos, solo que ninguno principal");
+  assert.equal(volumen.byRegion.quads.directSets, 0);
+  assert.equal(volumen.byRegion.quads.secondarySets, 1);
+});
+
+test("el mapa por fechas incluye la sesión en curso", () => {
+  const state = createEmptyState({ now: "2026-09-01T08:00:00.000Z" });
+  const session = startFreeSession(state, { now: "2026-09-01T09:00:00.000Z", id: "sesion-4" });
+  const sentadilla = addExerciseToSession(state, session.id, "Sentadilla con barra", { now: "2026-09-01T09:01:00.000Z" });
+  state.training.exercises.find((item) => item.id === sentadilla.exerciseId).muscles = {
+    direct: ["glutes"],
+    secondary: ["quads"],
+  };
+  addSetToExercise(state, session.id, sentadilla.id, { reps: 5, weight: 100, setType: "effective" }, { now: "2026-09-01T09:10:00.000Z", id: "s7" });
+
+  // Lo que ya has hecho hoy es trabajo hecho: el mapa semanal del Diario tiene
+  // que moverse mientras entrenas, no solo al finalizar.
+  const volumen = computeMuscleVolume(state, { fromIso: "2026-09-01T00:00:00.000Z" });
+  assert.equal(volumen.byRegion.glutes.directSets, 1);
+  assert.equal(volumen.byRegion.quads.secondarySets, 1);
+});
+
+test("la intensidad del mapa usa tramos, no un gradiente inventado", () => {
+  assert.equal(muscleIntensity(0), "none");
+  assert.equal(muscleIntensity(1), "low");
+  assert.equal(muscleIntensity(4), "low");
+  assert.equal(muscleIntensity(5), "medium");
+  assert.equal(muscleIntensity(9), "medium");
+  assert.equal(muscleIntensity(10), "high");
+  assert.equal(muscleIntensity(40), "high");
+});
+
+test("la escala del mapa muscular es legible y coincide con la hoja de estilos", async () => {
+  const { MUSCLE_RAMPS, checkRamp } = await import("../scripts/check-muscle-palette.mjs");
+  const styles = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+
+  // El color codifica una cantidad: la escala tiene que seguir siendo monótona
+  // y separable con daltonismo aunque alguien "solo retoque un verde".
+  Object.entries(MUSCLE_RAMPS).forEach(([nombre, pasos]) => {
+    assert.deepEqual(checkRamp(nombre, pasos), [], `la escala ${nombre} dejó de ser legible`);
+  });
+
+  const bloque = (selector) => {
+    const inicio = styles.indexOf(selector);
+    assert.ok(inicio > -1, `no se encontró ${selector}`);
+    return styles.slice(inicio, styles.indexOf("}", inicio));
+  };
+  const oscuro = bloque("  --muscle-body: #232c25;");
+  const claro = bloque(":root[data-theme=\"light\"] {\n  --muscle-body:");
+  [["none", 0], ["low", 1], ["medium", 2], ["high", 3]].forEach(([tramo, indice]) => {
+    assert.ok(
+      oscuro.includes(`--muscle-${tramo}: ${MUSCLE_RAMPS.oscuro[indice]};`),
+      `el tramo ${tramo} oscuro de styles.css no coincide con la escala validada`,
+    );
+    assert.ok(
+      claro.includes(`--muscle-${tramo}: ${MUSCLE_RAMPS.claro[indice]};`),
+      `el tramo ${tramo} claro de styles.css no coincide con la escala validada`,
+    );
+  });
 });

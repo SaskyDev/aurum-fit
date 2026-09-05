@@ -58,6 +58,10 @@ No se usan imágenes, gradientes decorativos ni una marca difícil de renombrar.
 - `.dialog-overlay`, `.dialog-box`, `.dialog-title`, `.dialog-message` y
   `.dialog-actions`: confirmación propia y accesible que sustituye a
   `window.confirm`. El fondo de la aplicación se bloquea con `.overlay-open`.
+- `.muscle-map`, `.muscle-figure`, `.muscle-region` y `.muscle-map-legend`: mapa
+  muscular del Diario. Escala secuencial de un solo tono en cuatro tramos, con
+  paletas propias validadas para claro y oscuro, y trama en vez de color para la
+  implicación secundaria. Detalle completo en `docs/MAPA_MUSCULAR.md`.
 
 ## Confirmaciones destructivas
 
@@ -80,6 +84,15 @@ componente:
 El motivo es doble: `window.confirm` no es coherente con el sistema visual, y en
 una PWA instalada bloquea el hilo y aparece con el estilo del navegador, lo que
 rompe la sensación de aplicación.
+
+## Color como magnitud
+
+El mapa muscular es el primer componente que usa el color para codificar una
+cantidad y no un estado. La regla que se aplicó, y que vale para lo que venga
+después: magnitud significa **una sola tinta con la luminosidad creciendo de
+forma monótona**, nunca un arcoíris, y cada modo tiene sus propios pasos en lugar
+de voltear los del otro. Cuando los tramos oscuros no llegan a 3:1 contra la
+superficie, la leyenda y la tabla dejan de ser opcionales.
 
 ## Verificación visual
 

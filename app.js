@@ -1,5 +1,7 @@
 import {
   CARDIO_ACTIVITY_TYPES,
+  MUSCLE_INTENSITY_STEPS,
+  MUSCLE_REGIONS,
   addExerciseToRoutineDay,
   addExerciseToSession,
   addCardioToSession,
@@ -9,6 +11,7 @@ import {
   cardioDerivedMetrics,
   completeSession,
   cleanupPublishedData,
+  computeMuscleVolume,
   createRoutineWithWeekdays,
   deleteSet,
   duplicateSet,
@@ -18,6 +21,9 @@ import {
   loadAppState,
   PUBLIC_CLEANUP_VERSION,
   moveRoutineExercise,
+  muscleIntensity,
+  muscleRegionLabel,
+  normalizeCatalogMuscles,
   normalizeExerciseName,
   parseImportPayload,
   persistState,
@@ -36,7 +42,7 @@ import {
   startSessionFromRoutineDay,
   updateSet,
   validateLabelPhotoFile,
-} from "./core.js?v=53";
+} from "./core.js?v=55";
 
 const defaultTargets = { calories: 2200, protein: 170, steps: 10000 };
 const defaultPreferences = {
@@ -1557,6 +1563,11 @@ function attachCatalogMetadata(targetState, exerciseId, entry) {
   };
   exercise.category = entry.category;
   exercise.equipment = entry.equipment;
+  // El mapa muscular lee el historial, y el historial tiene que poder leerse
+  // sin conexión y sin catálogo. Por eso los músculos se copian al ejercicio
+  // en el momento de añadirlo, en lugar de volver a cruzarlos al pintar.
+  const muscles = normalizeCatalogMuscles(entry);
+  if (muscles.direct.length || muscles.secondary.length) exercise.muscles = muscles;
 }
 
 function routineDayValue(routineId, routineDayId) {
@@ -3278,13 +3289,40 @@ function renderCatalogResults() {
   }
 }
 
+// Los ejercicios guardados antes de que existiera el mapa no llevan músculos.
+// En cuanto el catálogo está disponible se rellenan una sola vez, para que el
+// historial que ya tienes cuente desde el primer día. Los ejercicios propios
+// que no estén en el catálogo se quedan sin músculos a propósito: es mejor un
+// hueco declarado que una asignación inventada.
+function backfillExerciseMuscles() {
+  if (!catalog.length) return;
+  const porSourceId = new Map(catalog.map((entry) => [entry.sourceId, entry]));
+  const asignaciones = new Map();
+  state.training.exercises.forEach((exercise) => {
+    if (exercise.muscles) return;
+    const entry = (exercise.source?.sourceId && porSourceId.get(exercise.source.sourceId))
+      || catalogEntryForName(exercise.name);
+    if (!entry) return;
+    const muscles = normalizeCatalogMuscles(entry);
+    if (muscles.direct.length || muscles.secondary.length) asignaciones.set(exercise.id, muscles);
+  });
+  if (!asignaciones.size) return;
+  commit((next) => {
+    next.training.exercises.forEach((exercise) => {
+      const muscles = asignaciones.get(exercise.id);
+      if (muscles && !exercise.muscles) exercise.muscles = muscles;
+    });
+  }, null);
+}
+
 async function loadCatalog() {
   try {
-    const response = await fetch("./data/exercises.es.json?v=53", { cache: "no-cache" });
+    const response = await fetch("./data/exercises.es.json?v=55", { cache: "no-cache" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     if (!Array.isArray(payload.exercises)) throw new Error("Estructura no válida");
     catalog = payload.exercises;
+    backfillExerciseMuscles();
     renderCatalogFilters();
     renderCatalogResults();
     renderRoutineExerciseOptions();
@@ -3299,9 +3337,242 @@ async function loadCatalog() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Mapa muscular
+//
+// Cuerpo estilizado, no lámina anatómica: se declara como diagrama para no
+// prometer una precisión de activación que no tenemos. La geometría sale de un
+// esqueleto de articulaciones (scripts/generate-muscle-map.mjs), así que el
+// músculo y la silueta no pueden desalinearse al retocar una postura.
+// ---------------------------------------------------------------------------
+
+const BODY_VIEWBOX = "0 0 120 250";
+
+const BODY_SILHOUETTE = [
+  { t: "e", cx: 60, cy: 17, rx: 10.5, ry: 12.5 },
+  { t: "r", x: 54.5, y: 25, w: 11, h: 14, rx: 5 },
+  { t: "p", d: "M41 47q19-8 38 0l-3 30q-2 16-4.5 24l-.5 14q-15 7-22 0l-.5-14q-2.5-8-4.5-24z" },
+  { t: "r", x: 46, y: 106, w: 28, h: 28, rx: 12 },
+  { t: "r", x: 30, y: 49.71, w: 13, h: 42.58, rx: 6.5, tr: "rotate(9.5 36.50 71.00)" },
+  { t: "r", x: 25.5, y: 91.89, w: 11, h: 36.22, rx: 5.5, tr: "rotate(6.3 31.00 110.00)" },
+  { t: "e", cx: 29, cy: 133, rx: 5, ry: 6 },
+  { t: "r", x: 42.5, y: 127.98, w: 17, h: 54.04, rx: 8.5, tr: "rotate(2.1 51.00 155.00)" },
+  { t: "r", x: 43.75, y: 182, w: 12.5, h: 46, rx: 6.25, tr: "rotate(0.0 50.00 205.00)" },
+  { t: "e", cx: 50, cy: 231, rx: 6.5, ry: 5 },
+  { t: "r", x: 77, y: 49.71, w: 13, h: 42.58, rx: 6.5, tr: "rotate(-9.5 83.50 71.00)" },
+  { t: "r", x: 83.5, y: 91.89, w: 11, h: 36.22, rx: 5.5, tr: "rotate(-6.3 89.00 110.00)" },
+  { t: "e", cx: 91, cy: 133, rx: 5, ry: 6 },
+  { t: "r", x: 60.5, y: 127.98, w: 17, h: 54.04, rx: 8.5, tr: "rotate(-2.1 69.00 155.00)" },
+  { t: "r", x: 63.75, y: 182, w: 12.5, h: 46, rx: 6.25, tr: "rotate(0.0 70.00 205.00)" },
+  { t: "e", cx: 70, cy: 231, rx: 6.5, ry: 5 },
+];
+
+const MUSCLE_SHAPES = {
+  front: {
+    neck: [{ t: "r", x: 55.5, y: 26, w: 9, h: 12, rx: 4 }],
+    shoulders: [{ t: "e", cx: 41.5, cy: 52, rx: 8, ry: 8 }, { t: "e", cx: 78.5, cy: 52, rx: 8, ry: 8 }],
+    chest: [{ t: "p", d: "M47 51q6-4 12-1.5v16q-7 3-13-1z" }, { t: "p", d: "M73 51q-6-4-12-1.5v16q7 3 13-1z" }],
+    serratus: [{ t: "p", d: "M46.5 69l3.5 1 .5 8-3.5-1z" }, { t: "p", d: "M73.5 69l-3.5 1-.5 8 3.5-1z" }],
+    biceps: [{ t: "r", x: 32.74, y: 55.71, w: 8.5, h: 24.7, rx: 4.25, tr: "rotate(9.5 36.99 68.06)" }, { t: "r", x: 78.76, y: 55.71, w: 8.5, h: 24.7, rx: 4.25, tr: "rotate(-9.5 83.01 68.06)" }],
+    forearms: [{ t: "r", x: 27.29, y: 95.51, w: 7.5, h: 28.25, rx: 3.75, tr: "rotate(6.3 31.04 109.64)" }, { t: "r", x: 85.21, y: 95.51, w: 7.5, h: 28.25, rx: 3.75, tr: "rotate(-6.3 88.96 109.64)" }],
+    abs: [{ t: "r", x: 53.5, y: 69, w: 13, h: 38, rx: 5 }],
+    obliques: [{ t: "p", d: "M52.5 74l-4 1.5-.5 22 4.5 4z" }, { t: "p", d: "M67.5 74l4 1.5.5 22-4.5 4z" }],
+    hip_flexors: [{ t: "r", x: 51.5, y: 108, w: 17, h: 11, rx: 5 }],
+    abductors: [{ t: "r", x: 48.95, y: 129.08, w: 5.5, h: 14.05, rx: 2.75, tr: "rotate(2.1 51.70 136.10)" }, { t: "r", x: 65.55, y: 129.08, w: 5.5, h: 14.05, rx: 2.75, tr: "rotate(-2.1 68.30 136.10)" }],
+    adductors: [{ t: "r", x: 52.48, y: 132.49, w: 5.5, h: 33.53, rx: 2.75, tr: "rotate(2.3 55.23 149.25)" }, { t: "r", x: 62.02, y: 132.49, w: 5.5, h: 33.53, rx: 2.75, tr: "rotate(-2.3 64.77 149.25)" }],
+    quads: [{ t: "r", x: 46.02, y: 131.22, w: 10, h: 46.47, rx: 5, tr: "rotate(2.1 51.02 154.46)" }, { t: "r", x: 63.98, y: 131.22, w: 10, h: 46.47, rx: 5, tr: "rotate(-2.1 68.98 154.46)" }],
+    tibialis: [{ t: "r", x: 47, y: 186.6, w: 6, h: 34.96, rx: 3, tr: "rotate(0.0 50.00 204.08)" }, { t: "r", x: 67, y: 186.6, w: 6, h: 34.96, rx: 3, tr: "rotate(0.0 70.00 204.08)" }],
+  },
+  back: {
+    neck: [{ t: "r", x: 55.5, y: 26, w: 9, h: 12, rx: 4 }],
+    traps: [{ t: "p", d: "M60 40l15 7-2 13-13 5-13-5-2-13z" }],
+    shoulders: [{ t: "e", cx: 41.5, cy: 52, rx: 8, ry: 8 }, { t: "e", cx: 78.5, cy: 52, rx: 8, ry: 8 }],
+    upper_back: [{ t: "r", x: 49, y: 61, w: 10, h: 15, rx: 4 }, { t: "r", x: 61, y: 61, w: 10, h: 15, rx: 4 }],
+    lats: [{ t: "p", d: "M48 64l-2.5 20 5 13 8.5-7-2-26z" }, { t: "p", d: "M72 64l2.5 20-5 13-8.5-7 2-26z" }],
+    lower_back: [{ t: "r", x: 53, y: 90, w: 14, h: 20, rx: 6 }],
+    triceps: [{ t: "r", x: 32.6, y: 54.85, w: 8.5, h: 28.1, rx: 4.25, tr: "rotate(9.5 36.85 68.90)" }, { t: "r", x: 78.9, y: 54.85, w: 8.5, h: 28.1, rx: 4.25, tr: "rotate(-9.5 83.15 68.90)" }],
+    forearms: [{ t: "r", x: 27.29, y: 95.51, w: 7.5, h: 28.25, rx: 3.75, tr: "rotate(6.3 31.04 109.64)" }, { t: "r", x: 85.21, y: 95.51, w: 7.5, h: 28.25, rx: 3.75, tr: "rotate(-6.3 88.96 109.64)" }],
+    glutes: [{ t: "r", x: 47.5, y: 110, w: 12, h: 22, rx: 8 }, { t: "r", x: 60.5, y: 110, w: 12, h: 22, rx: 8 }],
+    hamstrings: [{ t: "r", x: 45.42, y: 135.55, w: 11, h: 43.23, rx: 5.5, tr: "rotate(2.1 50.92 157.16)" }, { t: "r", x: 63.58, y: 135.55, w: 11, h: 43.23, rx: 5.5, tr: "rotate(-2.1 69.08 157.16)" }],
+    calves: [{ t: "r", x: 45.5, y: 184.76, w: 9, h: 30.36, rx: 4.5, tr: "rotate(0.0 50.00 199.94)" }, { t: "r", x: 65.5, y: 184.76, w: 9, h: 30.36, rx: 4.5, tr: "rotate(0.0 70.00 199.94)" }],
+  },
+};
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+let muscleMapPeriod = "week";
+
+function muscleShapeElement(shape) {
+  let element;
+  if (shape.t === "e") {
+    element = document.createElementNS(SVG_NS, "ellipse");
+    element.setAttribute("cx", shape.cx);
+    element.setAttribute("cy", shape.cy);
+    element.setAttribute("rx", shape.rx);
+    element.setAttribute("ry", shape.ry);
+  } else if (shape.t === "r") {
+    element = document.createElementNS(SVG_NS, "rect");
+    element.setAttribute("x", shape.x);
+    element.setAttribute("y", shape.y);
+    element.setAttribute("width", shape.w);
+    element.setAttribute("height", shape.h);
+    element.setAttribute("rx", shape.rx);
+  } else {
+    element = document.createElementNS(SVG_NS, "path");
+    element.setAttribute("d", shape.d);
+  }
+  if (shape.tr) element.setAttribute("transform", shape.tr);
+  return element;
+}
+
+function renderMuscleFigure(view, volume) {
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("viewBox", BODY_VIEWBOX);
+  svg.setAttribute("class", "muscle-figure");
+  svg.setAttribute("role", "img");
+
+  BODY_SILHOUETTE.forEach((shape) => {
+    const element = muscleShapeElement(shape);
+    element.setAttribute("class", "muscle-body");
+    svg.appendChild(element);
+  });
+
+  const trabajados = [];
+  Object.entries(MUSCLE_SHAPES[view]).forEach(([regionId, shapes]) => {
+    const region = volume.byRegion[regionId] ?? { directSets: 0, secondarySets: 0 };
+    const intensity = muscleIntensity(region.directSets);
+    const onlySecondary = intensity === "none" && region.secondarySets > 0;
+    if (intensity !== "none") trabajados.push(`${muscleRegionLabel(regionId)} (${region.directSets})`);
+    const group = document.createElementNS(SVG_NS, "g");
+    group.setAttribute("class", `muscle-region intensity-${intensity}${onlySecondary ? " only-secondary" : ""}`);
+    group.dataset.region = regionId;
+    shapes.forEach((shape) => group.appendChild(muscleShapeElement(shape)));
+    const title = document.createElementNS(SVG_NS, "title");
+    title.textContent = `${muscleRegionLabel(regionId)}: ${region.directSets} series directas, ${region.secondarySets} con implicación`;
+    group.appendChild(title);
+    svg.appendChild(group);
+  });
+
+  const viewLabel = view === "front" ? "Vista frontal" : "Vista posterior";
+  svg.setAttribute(
+    "aria-label",
+    trabajados.length
+      ? `${viewLabel}. Trabajo directo en ${trabajados.join(", ")}.`
+      : `${viewLabel}. Sin trabajo directo registrado en este periodo.`,
+  );
+  return svg;
+}
+
+function muscleMapRange() {
+  if (muscleMapPeriod === "session") {
+    const active = getActiveSession(state);
+    if (active) return { sessionId: active.id, label: "Sesión en curso" };
+    const last = [...state.training.sessions]
+      .filter((session) => session.status === "completed" && session.endedAt)
+      .sort((a, b) => b.endedAt.localeCompare(a.endedAt))[0];
+    return last
+      ? { sessionId: last.id, label: "Última sesión" }
+      : { sessionId: "sin-sesiones", label: "Última sesión" };
+  }
+  const start = periodStart(muscleMapPeriod);
+  return {
+    fromIso: start.toISOString(),
+    label: muscleMapPeriod === "week" ? "Esta semana" : "Este mes",
+  };
+}
+
+function renderMuscleMap() {
+  const figures = $("muscleMapFigures");
+  if (!figures) return;
+  const range = muscleMapRange();
+  const volume = computeMuscleVolume(state, range);
+
+  document.querySelectorAll("[data-muscle-period]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.musclePeriod === muscleMapPeriod);
+    button.setAttribute("aria-pressed", String(button.dataset.musclePeriod === muscleMapPeriod));
+  });
+
+  figures.replaceChildren(
+    renderMuscleFigure("front", volume),
+    renderMuscleFigure("back", volume),
+  );
+
+  const conTrabajo = MUSCLE_REGIONS.filter((region) => volume.byRegion[region.id].directSets > 0);
+  $("muscleMapSummary").textContent = volume.effectiveSets
+    ? `${range.label} · ${volume.effectiveSets} series efectivas en ${conTrabajo.length} de ${MUSCLE_REGIONS.length} zonas`
+    : `${range.label} · sin series efectivas todavía`;
+
+  const legend = $("muscleMapLegend");
+  const titulo = document.createElement("li");
+  titulo.className = "muscle-legend-title";
+  titulo.append(createElement("small", "", "Series directas:"));
+  legend.replaceChildren(titulo, ...MUSCLE_INTENSITY_STEPS.map((step) => {
+    const item = document.createElement("li");
+    item.className = `muscle-legend-item intensity-${step.id}`;
+    const swatch = createElement("span", "muscle-legend-swatch");
+    swatch.setAttribute("aria-hidden", "true");
+    const siguiente = MUSCLE_INTENSITY_STEPS[MUSCLE_INTENSITY_STEPS.indexOf(step) + 1];
+    const detail = step.id === "none"
+      ? "0"
+      : `${step.min}${siguiente ? `-${siguiente.min - 1}` : "+"}`;
+    item.append(swatch, createElement("small", "", detail));
+    item.title = step.labelEs;
+    return item;
+  }));
+  const implicacion = document.createElement("li");
+  implicacion.className = "muscle-legend-item";
+  const trama = createElement("span", "muscle-legend-swatch swatch-secondary");
+  trama.setAttribute("aria-hidden", "true");
+  implicacion.append(trama, createElement("small", "", "Solo implicación"));
+  legend.appendChild(implicacion);
+
+  const rows = $("muscleMapRows");
+  const filas = MUSCLE_REGIONS
+    .map((region) => ({ region, data: volume.byRegion[region.id] }))
+    .filter((item) => item.data.directSets > 0 || item.data.secondarySets > 0)
+    .sort((a, b) => (
+      b.data.directSets - a.data.directSets
+      || b.data.secondarySets - a.data.secondarySets
+      || a.region.labelEs.localeCompare(b.region.labelEs, "es")
+    ));
+  if (!filas.length) {
+    const empty = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 3;
+    cell.className = "muted";
+    cell.textContent = "Registra series efectivas para ver la cobertura.";
+    empty.appendChild(cell);
+    rows.replaceChildren(empty);
+  } else {
+    rows.replaceChildren(...filas.map(({ region, data }) => {
+      const row = document.createElement("tr");
+      const nombre = document.createElement("th");
+      nombre.scope = "row";
+      nombre.textContent = region.labelEs;
+      const directas = document.createElement("td");
+      directas.textContent = String(data.directSets);
+      const secundarias = document.createElement("td");
+      secundarias.textContent = String(data.secondarySets);
+      row.append(nombre, directas, secundarias);
+      return row;
+    }));
+  }
+
+  const aviso = $("muscleMapDisclaimer");
+  const sinMusculos = volume.unmappedSets
+    ? ` ${volume.unmappedSets} series no se reparten porque sus ejercicios no tienen músculos asignados: ${volume.unmappedExercises.slice(0, 3).join(", ")}.`
+    : "";
+  const sinPrincipal = volume.indirectOnlySets
+    ? ` ${volume.indirectOnlySets} series no colorean ninguna zona porque su ejercicio no tiene músculo principal: ${volume.indirectOnlyExercises.slice(0, 3).join(", ")}.`
+    : "";
+  aviso.textContent = "Cuenta tus series efectivas por zona. No mide activación muscular ni sustituye una valoración profesional."
+    + sinMusculos + sinPrincipal;
+}
+
 function render() {
   applyThemePreferences();
   renderDailyDashboard();
+  renderMuscleMap();
   renderFoods();
   renderNutritionLibrary();
   renderProgress();
@@ -3372,14 +3643,23 @@ document.querySelector(".brand")?.addEventListener("click", (event) => {
 syncTabFromHash();
 
 $("progressExerciseSelect").addEventListener("change", renderProgress);
-document.querySelectorAll(".period-tab").forEach((button) => {
+// Los selectores se acotan a su propio grupo: el Diario y el mapa muscular
+// tienen periodos independientes y comparten la clase .period-tab.
+document.querySelectorAll("[data-period]").forEach((button) => {
   button.addEventListener("click", () => {
     diaryPeriod = button.dataset.period;
-    document.querySelectorAll(".period-tab").forEach((item) => {
+    document.querySelectorAll("[data-period]").forEach((item) => {
       item.classList.toggle("active", item === button);
     });
     renderDailyDashboard();
     renderProgress();
+  });
+});
+
+document.querySelectorAll("[data-muscle-period]").forEach((button) => {
+  button.addEventListener("click", () => {
+    muscleMapPeriod = button.dataset.musclePeriod;
+    renderMuscleMap();
   });
 });
 

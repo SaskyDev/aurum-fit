@@ -1,4 +1,4 @@
-const SHELL_VERSION = "53";
+const SHELL_VERSION = "55";
 const CACHE_NAME = `aurum-fit-shell-v${SHELL_VERSION}`;
 // El shell (HTML/CSS/JS/iconos) es obligatorio: si falla, la instalación offline
 // debe fallar. El catálogo de ejercicios es pesado (varios MB) y no bloquea el

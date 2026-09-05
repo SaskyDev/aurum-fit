@@ -21,9 +21,10 @@
         } catch {}
       })();
     </script>
-    <link rel="manifest" href="manifest.json?v=53" />
-    <link rel="apple-touch-icon" href="icon.svg?v=53" />
-    <link rel="stylesheet" href="styles.css?v=53" />
+    <link rel="manifest" href="manifest.json?v=55" />
+    <link rel="icon" type="image/svg+xml" href="icon.svg?v=55" />
+    <link rel="apple-touch-icon" href="icon.svg?v=55" />
+    <link rel="stylesheet" href="styles.css?v=55" />
   </head>
   <body>
     <main>
@@ -91,6 +92,32 @@
           <ol id="dashboardWorkoutExercises" class="today-exercise-list"></ol>
           <button id="dashboardStartWorkoutBtn" class="button button-accent button-large" type="button">Empezar entrenamiento</button>
         </article>
+        <section id="muscleMapCard" class="muscle-map surface color-panel color-panel-teal" aria-labelledby="muscleMapTitle">
+          <div class="section-heading compact">
+            <div>
+              <p class="eyebrow">Cobertura muscular</p>
+              <h3 id="muscleMapTitle">Qué estás entrenando</h3>
+            </div>
+            <span id="muscleMapSummary" class="muted">Sin series efectivas todavía</span>
+          </div>
+          <div class="period-tabs" role="group" aria-label="Periodo del mapa muscular">
+            <button class="period-tab" type="button" data-muscle-period="session" aria-pressed="false">Sesión</button>
+            <button class="period-tab active" type="button" data-muscle-period="week" aria-pressed="true">Semana</button>
+            <button class="period-tab" type="button" data-muscle-period="month" aria-pressed="false">Mes</button>
+          </div>
+          <div id="muscleMapFigures" class="muscle-map-figures"></div>
+          <ul id="muscleMapLegend" class="muscle-map-legend"></ul>
+          <details class="muscle-map-detail">
+            <summary>Ver detalle por zona</summary>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Zona</th><th>Series directas</th><th>Con implicación</th></tr></thead>
+                <tbody id="muscleMapRows"></tbody>
+              </table>
+            </div>
+          </details>
+          <p id="muscleMapDisclaimer" class="muted"></p>
+        </section>
         <section class="diary-progress surface color-panel color-panel-violet" aria-labelledby="exerciseProgressTitle">
           <div class="section-heading compact">
             <div>
@@ -613,6 +640,6 @@
 
     </main>
 
-    <script type="module" src="app.js?v=53"></script>
+    <script type="module" src="app.js?v=55"></script>
   </body>
 </html>
