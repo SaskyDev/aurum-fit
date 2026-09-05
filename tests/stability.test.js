@@ -3,7 +3,11 @@ import fs from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 
-function loadServiceWorker({ oldCaches = [] } = {}) {
+const shellVersion = fs
+  .readFileSync(new URL("../service-worker.js", import.meta.url), "utf8")
+  .match(/const SHELL_VERSION = "(\d+)";/)[1];
+
+function loadServiceWorker({ oldCaches = [], failingAssets = [] } = {}) {
   const source = fs.readFileSync(new URL("../service-worker.js", import.meta.url), "utf8");
   const listeners = {};
   const opened = [];
@@ -56,14 +60,19 @@ function loadServiceWorker({ oldCaches = [] } = {}) {
   };
   const fetch = async (request) => {
     fetched.push(request);
+    const url = String(request.url ?? "");
+    if (failingAssets.some((asset) => url.includes(asset))) {
+      return { ok: false, status: 404, clone() { return this; } };
+    }
     const intercepted = legacyWorker.intercept(request);
     if (intercepted) return intercepted;
-    const url = String(request.url ?? "");
+    const currentShell = request.mode === "navigate"
+      || request.destination === "document"
+      || url === "./"
+      || url.includes(`?v=${shellVersion}`);
     return {
       ok: true,
-      version: request.mode === "navigate" || request.destination === "document" || url === "./" || url.includes("?v=53")
-        ? "v53"
-        : "v9",
+      version: currentShell ? `v${shellVersion}` : "v9",
       clone() { return this; },
     };
   };
@@ -87,7 +96,7 @@ function loadServiceWorker({ oldCaches = [] } = {}) {
   return { listeners, opened, deleted, puts, fetched, legacyCacheHits, legacyWorker, navigations };
 }
 
-test("actualiza desde una caché v9 y precarga un shell coherente v53", async () => {
+test("actualiza desde una caché antigua y precarga un shell coherente", async () => {
   const worker = loadServiceWorker({ oldCaches: ["aurum-fit-shell-v1", "aurum-fit-shell-v9"] });
   let activation;
   worker.listeners.activate({ waitUntil: (promise) => { activation = promise; } });
@@ -99,12 +108,12 @@ test("actualiza desde una caché v9 y precarga un shell coherente v53", async ()
   worker.listeners.install({ waitUntil: (promise) => { installation = promise; } });
   await installation;
   assert.equal(worker.fetched.length, 8);
-  assert.ok(worker.fetched.every((request) => request.url.includes("?v=53")));
+  assert.ok(worker.fetched.every((request) => request.url.includes(`?v=${shellVersion}`)));
   assert.deepEqual(worker.legacyCacheHits, []);
-  assert.ok(worker.puts.every(({ response }) => response.version === "v53"));
+  assert.ok(worker.puts.every(({ response }) => response.version === `v${shellVersion}`));
 });
 
-test("la navegación antigua v9 converge a v53 tras reclamar el cliente", async () => {
+test("la navegación antigua converge a la versión actual tras reclamar el cliente", async () => {
   const worker = loadServiceWorker({ oldCaches: ["aurum-fit-shell-v9"] });
   const oldResponse = worker.legacyWorker.intercept({ url: "./" });
   assert.equal(oldResponse.version, "v9");
@@ -119,7 +128,7 @@ test("la navegación antigua v9 converge a v53 tras reclamar el cliente", async 
     respondWith: (promise) => { responsePromise = promise; },
   });
   const response = await responsePromise;
-  assert.equal(response.version, "v53");
+  assert.equal(response.version, `v${shellVersion}`);
   assert.deepEqual(worker.navigations, ["http://localhost:8000/"]);
 });
 test("prioriza la red para documentos y actualiza la caché activa", async () => {
@@ -132,6 +141,63 @@ test("prioriza la red para documentos y actualiza la caché activa", async () =>
   const response = await responsePromise;
   assert.equal(response.ok, true);
   assert.equal(worker.puts.length, 1);
+});
+
+test("la instalación offline exige el shell pero tolera un catálogo caído", async () => {
+  const conCatalogoCaido = loadServiceWorker({ failingAssets: ["exercises.es.json"] });
+  let instalacion;
+  conCatalogoCaido.listeners.install({ waitUntil: (promise) => { instalacion = promise; } });
+  await instalacion;
+
+  const cacheado = conCatalogoCaido.puts.map(({ request }) => String(request));
+  assert.equal(cacheado.length, 7);
+  assert.ok(cacheado.every((url) => url.includes(`?v=${shellVersion}`)));
+  assert.ok(!cacheado.some((url) => url.includes("exercises.es.json")));
+  assert.ok(cacheado.some((url) => url.includes("index.html")));
+
+  const conShellCaido = loadServiceWorker({ failingAssets: ["app.js"] });
+  let instalacionFallida;
+  conShellCaido.listeners.install({ waitUntil: (promise) => { instalacionFallida = promise; } });
+  await assert.rejects(instalacionFallida, /No se pudo precargar/);
+});
+
+test("la versión de caché está sincronizada en los seis puntos del shell", () => {
+  const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const htmlVersions = [...html.matchAll(/\?v=(\d+)/g)].map((match) => match[1]);
+  const appVersions = [...app.matchAll(/\?v=(\d+)/g)].map((match) => match[1]);
+
+  assert.equal(htmlVersions.length, 4);
+  assert.equal(appVersions.length, 2);
+  assert.ok([...htmlVersions, ...appVersions].every((version) => version === shellVersion));
+});
+
+test("las confirmaciones usan un diálogo accesible propio y no window.confirm", () => {
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const styles = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+
+  assert.doesNotMatch(app, /window\.confirm\(/);
+  assert.match(app, /function confirmDialog\(message, \{/);
+  assert.match(app, /box\.setAttribute\("role", "alertdialog"\)/);
+  assert.match(app, /box\.setAttribute\("aria-modal", "true"\)/);
+  assert.match(app, /box\.setAttribute\("aria-labelledby", titleId\)/);
+  assert.match(app, /if \(event\.key === "Escape"\)/);
+  assert.match(app, /const focusable = \[cancelBtn, confirmBtn\]/);
+  assert.match(app, /previouslyFocused instanceof HTMLElement\) previouslyFocused\.focus\(\)/);
+  assert.match(styles, /\.dialog-overlay \{/);
+  assert.match(styles, /\.overlay-open \{ overflow: hidden; \}/);
+
+  const confirmaciones = app.match(/await confirmDialog\(/g) ?? [];
+  assert.equal(confirmaciones.length, 9);
+});
+
+test("el catálogo avisa de los ejercicios sin revisión profesional", () => {
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const styles = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+
+  assert.match(app, /entry\.reviewStatus === "pending_professional_review"/);
+  assert.match(app, /"catalog-review-pending", "Sin revisión profesional todavía"/);
+  assert.match(styles, /\.catalog-card \.catalog-review-pending \{/);
 });
 
 test("el submit de serie conserva el bloqueo aunque renderice otro formulario", () => {

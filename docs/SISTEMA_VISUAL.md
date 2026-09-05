@@ -53,6 +53,33 @@ No se usan imágenes, gradientes decorativos ni una marca difícil de renombrar.
 - `.exercise-rest-timer`: temporizador reducido dentro del único ejercicio abierto.
 - `.catalog-controls`: búsqueda progresiva y filtros de categoría, equipo y
   músculo para consultar 1.317 ejercicios sin mostrar el catálogo completo.
+- `.catalog-review-pending`: aviso breve `Sin revisión profesional todavía` en
+  las tarjetas del catálogo cuyo `reviewStatus` sigue pendiente.
+- `.dialog-overlay`, `.dialog-box`, `.dialog-title`, `.dialog-message` y
+  `.dialog-actions`: confirmación propia y accesible que sustituye a
+  `window.confirm`. El fondo de la aplicación se bloquea con `.overlay-open`.
+
+## Confirmaciones destructivas
+
+Las nueve confirmaciones de la aplicación usan `confirmDialog`, no el diálogo
+del navegador: borrar comida, quitar un ejercicio de un día de rutina, eliminar
+una rutina del plan, borrar una serie, descartar la sesión en curso, finalizar
+el entrenamiento, cargar la demo, quitar la demo e importar una copia. El
+componente:
+
+- se anuncia como `role="alertdialog"` con `aria-modal="true"` y describe título
+  y mensaje mediante `aria-labelledby` y `aria-describedby`;
+- atrapa el foco entre `Cancelar` y la acción principal, en ambos sentidos del
+  tabulador;
+- se cierra con `Escape` o pulsando fuera de la caja, y ambos caminos equivalen
+  a cancelar;
+- devuelve el foco al elemento que abrió la confirmación;
+- pinta la acción principal con `.button-danger` cuando la operación destruye
+  datos, y con `.button-primary` cuando no.
+
+El motivo es doble: `window.confirm` no es coherente con el sistema visual, y en
+una PWA instalada bloquea el hilo y aparece con el estilo del navegador, lo que
+rompe la sensación de aplicación.
 
 ## Verificación visual
 

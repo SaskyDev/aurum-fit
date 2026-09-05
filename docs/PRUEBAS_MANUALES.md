@@ -200,10 +200,10 @@ explícito `tests/*.test.js`.
    `aurum-fit-shell-v9` con la copia antigua de `index.html`, estilos, scripts y
    catálogo.
 2. Recargar con conexión y comprobar que la interfaz actual se muestra tras la
-   activación del worker nuevo, sin mezclar recursos v9 y v31.
-3. En `Application > Cache Storage`, verificar que queda
-   `aurum-fit-shell-v31` y que la caché v9 ha sido eliminada al activarse el
-   worker nuevo.
+   activación del worker nuevo, sin mezclar recursos antiguos y nuevos.
+3. En `Application > Cache Storage`, verificar que solo queda
+   `aurum-fit-shell-v<versión actual de SHELL_VERSION>` y que la caché v9 ha
+   sido eliminada al activarse el worker nuevo.
 4. Cortar la conexión, recargar y comprobar que la interfaz actual sigue
    disponible desde la caché, sin mezclar los archivos versionados antiguos.
 
@@ -211,10 +211,21 @@ La nueva precarga usa URLs versionadas y se escribe en una caché nueva antes de
 activar el worker. Tras `clients.claim()`, el worker navega una vez las ventanas
 que ya estaban abiertas; así no depende de que el código antiguo capture
 `controllerchange`. El documento se solicita primero a la red para no mostrar
-una interfaz vieja; si no hay conexión se usa el `index.html?v=31` de la caché
-activa. El catálogo también usa
-`exercises.es.json?v=31`, por lo que el catálogo deduplicado de 1.317 ejercicios
-no puede reutilizar una respuesta antigua.
+una interfaz vieja; si no hay conexión se usa el `index.html` versionado de la
+caché activa. El catálogo también se pide con la misma versión, por lo que el
+catálogo deduplicado de 1.317 ejercicios no puede reutilizar una respuesta
+antigua.
+
+La versión vive en seis sitios (`SHELL_VERSION` en `service-worker.js`, cuatro
+referencias `?v=` en `index.html` y dos en `app.js`). No se tocan a mano:
+
+```bash
+node scripts/bump-cache-version.mjs      # sincroniza todo con SHELL_VERSION
+node scripts/bump-cache-version.mjs 54   # sube los seis sitios a la v54
+```
+
+La prueba `la versión de caché está sincronizada en los seis puntos del shell`
+falla si alguno se queda atrás.
 
 ### Importación, validación, búsqueda y navegación
 
@@ -258,6 +269,54 @@ no puede reutilizar una respuesta antigua.
 6. En un ejercicio abierto, cambiar entre `Historial`, `Actual` y `Progreso`:
    Historial muestra todas las sesiones anteriores inmutables; Actual conserva
    el formulario y las series de hoy; Progreso muestra el gráfico del ejercicio.
+
+### Confirmaciones accesibles (QA-A11Y-001)
+
+1. Iniciar una sesión, guardar una serie y pulsar `Borrar`.
+2. Comprobar que aparece la confirmación propia de la aplicación, no la del
+   navegador, con título, mensaje y los botones `Cancelar` y `Borrar`.
+3. Sin tocar el ratón, pulsar `Tab` varias veces: el foco debe alternar solo
+   entre `Cancelar` y `Borrar`, sin salir a la página de detrás. Con
+   `Mayúsculas + Tab` debe recorrerlos en sentido contrario.
+4. Pulsar `Escape`: la confirmación se cierra, la serie sigue existiendo y el
+   foco vuelve al botón `Borrar` de esa serie.
+5. Repetir y pulsar fuera de la caja: debe comportarse como `Cancelar`.
+6. Repetir y confirmar: la serie se borra y sigue apareciendo `Deshacer`.
+7. Comprobar que el fondo no se desplaza mientras la confirmación está abierta.
+8. Con un lector de pantalla, comprobar que el diálogo se anuncia con su título
+   y su mensaje al abrirse.
+9. Repetir el paso 1 en `Descartar sesión`, `Finalizar entrenamiento`, `Quitar
+   ejercicio`, `Eliminar rutina`, `Borrar comida`, `Cargar demo`, `Quitar demo`
+   e `Importar`: ninguna debe abrir el diálogo del navegador.
+
+### Instalación offline con el catálogo caído (QA-PWA-002)
+
+1. Servir la aplicación y, en `Application > Service Workers`, desinstalar el
+   worker y vaciar las cachés.
+2. En `Network`, bloquear la petición de `data/exercises.es.json`.
+3. Recargar y comprobar que el worker se instala y activa igualmente.
+4. En `Cache Storage`, verificar que están los siete archivos del shell y que el
+   catálogo no está.
+5. Cortar la conexión y recargar: la aplicación debe abrirse offline. El
+   catálogo puede quedarse sin resultados, pero la sesión, el diario y las
+   rutinas guardadas deben seguir disponibles.
+6. Restaurar la conexión y recargar: el catálogo vuelve a estar disponible.
+
+Si en cambio se bloquea un archivo del shell (`app.js`, `styles.css`,
+`core.js`...), la instalación debe fallar: el shell es obligatorio y una PWA a
+medias sería peor que ninguna.
+
+### Aviso de revisión profesional (QA-CONTENT-001)
+
+1. Abrir el selector de ejercicio y buscar un ejercicio importado del dataset.
+2. Comprobar que su tarjeta muestra `Sin revisión profesional todavía`. Hoy el
+   importador marca todo el dataset como `pending_professional_review`, así que
+   el aviso debe aparecer en todas las tarjetas del catálogo.
+3. Comprobar que los ejercicios personales no pasan por esta lista y, por tanto,
+   nunca llevan el aviso. Cuando una entrada del dataset deje de estar
+   pendiente, su tarjeta debe dejar de mostrarlo.
+4. Abrir `Ver indicaciones en español`: debe seguir apareciendo la advertencia
+   de que el texto no es consejo médico.
 
 ### Exportación (QA-EXPORT-001)
 

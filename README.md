@@ -50,6 +50,12 @@ Nutrición sobre un modelo local versionado, sin cuentas ni backend.
 - Catálogo de 1.317 ejercicios buscables por nombre, zona muscular y equipo,
   deduplicado y sin medios de Gym Visual; muestra cuatro resultados al inicio y
   permite ampliar la lista de forma voluntaria.
+- Aviso `Sin revisión profesional todavía` en las tarjetas del catálogo cuyo
+  contenido siga pendiente de revisión.
+- Confirmaciones propias y accesibles en lugar del diálogo del navegador: foco
+  atrapado, cierre con `Escape` y devolución del foco al elemento anterior.
+- Instalación offline que exige el shell pero tolera que el catálogo de 2,8 MB
+  falle: la aplicación sigue siendo utilizable sin conexión.
 - Limpieza versionada de datos ficticios que conserva rutinas, sesiones,
   comidas, recetas y objetivos reales ya guardados en el dispositivo.
 - Ajustes locales de perfil y objetivos manuales de calorías, proteína y pasos.
@@ -96,6 +102,19 @@ Para ejecutar las comprobaciones:
 ```bash
 node --test
 ```
+
+La versión de caché vive en seis sitios (`SHELL_VERSION` en `service-worker.js`,
+cuatro referencias `?v=` en `index.html` y dos en `app.js`). No se editan a mano:
+
+```bash
+node scripts/bump-cache-version.mjs      # sincroniza todo con SHELL_VERSION
+node scripts/bump-cache-version.mjs 54   # sube los seis sitios a la v54
+```
+
+Conviene subir la versión en cualquier cambio de `index.html`, `styles.css`,
+`app.js`, `core.js` o del catálogo, para que la PWA instalada no sirva una
+mezcla de versiones. Las pruebas fallan si alguno de los seis sitios se queda
+atrás.
 
 Documentación:
 
