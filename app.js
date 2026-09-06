@@ -42,8 +42,8 @@ import {
   startSessionFromRoutineDay,
   updateSet,
   validateLabelPhotoFile,
-} from "./core.js?v=68";
-import { BODY_FIGURES } from "./body-paths.js?v=68";
+} from "./core.js?v=69";
+import { BODY_FIGURES } from "./body-paths.js?v=69";
 
 const defaultTargets = { calories: 2200, protein: 170, steps: 10000 };
 const defaultPreferences = {
@@ -185,6 +185,15 @@ if (JSON.stringify(state.owner.preferences) + JSON.stringify(state.meta) !== est
 }
 
 const darkModeMedia = window.matchMedia("(prefers-color-scheme: dark)");
+const reducedMotionMedia = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+// prefers-reduced-motion en CSS no cubre scrollTo ni scrollIntoView: ahí el
+// "smooth" se decide en JS y se salta la preferencia del sistema. Quien pide
+// menos movimiento seguía viendo la página deslizarse en cada cambio de pestaña.
+// Se consulta en cada llamada, no se cachea: la preferencia cambia en caliente.
+function scrollBehavior() {
+  return reducedMotionMedia.matches ? "auto" : "smooth";
+}
 
 function applyThemePreferences(targetState = state) {
   const preferences = getPreferences(targetState);
@@ -2137,7 +2146,7 @@ function openPlannedWorkout(dateKey) {
   selectedPlannedWorkout = { date: dateKey, ...scheduled };
   selectedRoutineId = null;
   renderRoutineManager();
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  window.scrollTo({ top: 0, behavior: scrollBehavior() });
 }
 
 function renderPlannedWorkoutPanel() {
@@ -2163,7 +2172,7 @@ function renderPlannedWorkoutPanel() {
     selectedPlannedWorkout = null;
     routinePlannerView = "library";
     renderRoutineManager();
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.scrollTo({ top: 0, behavior: scrollBehavior() });
   };
 }
 
@@ -2480,7 +2489,7 @@ function renderRoutineManager() {
     card.addEventListener("click", () => {
       selectedRoutineId = routine.id;
       renderRoutineManager();
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      window.scrollTo({ top: 0, behavior: scrollBehavior() });
     });
     swipeRow.append(remove, card);
     attachRoutineSwipe(swipeRow, card);
@@ -2806,7 +2815,10 @@ function attachSetSwipe(row, foreground, { onDuplicate, onDelete }) {
   let dragging = false;
   let pointerId = null;
   const reset = () => {
-    row.classList.remove("swiping-left", "swiping-right");
+    // Quitar is-dragging ANTES de devolver el transform: así la transición ya
+    // está activa cuando cambia el valor y la vuelta se anima. Al revés la fila
+    // volvería de golpe. Mismo orden que close() en el swipe de rutinas.
+    row.classList.remove("swiping-left", "swiping-right", "is-dragging");
     foreground.style.transform = "";
   };
   const finish = () => {
@@ -2825,6 +2837,9 @@ function attachSetSwipe(row, foreground, { onDuplicate, onDelete }) {
     currentX = 0;
     dragging = true;
     pointerId = event.pointerId;
+    // Desde el primer píxel, no desde los 12 de swiping-left/right: si la clase
+    // llegara con el umbral de color, el arranque del gesto seguiría con retardo.
+    row.classList.add("is-dragging");
     foreground.setPointerCapture?.(event.pointerId);
   });
   foreground.addEventListener("pointermove", (event) => {
@@ -3532,7 +3547,7 @@ function backfillExerciseMuscles() {
 
 async function loadCatalog() {
   try {
-    const response = await fetch("./data/exercises.es.json?v=68", { cache: "no-cache" });
+    const response = await fetch("./data/exercises.es.json?v=69", { cache: "no-cache" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     if (!Array.isArray(payload.exercises)) throw new Error("Estructura no válida");
@@ -3826,7 +3841,7 @@ function showTab(tabId, { updateUrl = true } = {}) {
   if (updateUrl && window.location.hash !== `#${tabId}`) {
     window.history.pushState({}, "", `#${tabId}`);
   }
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  window.scrollTo({ top: 0, behavior: scrollBehavior() });
 }
 
 function syncTabFromHash() {
@@ -3964,7 +3979,7 @@ $("plannedExtraWorkoutBtn").addEventListener("click", () => {
   selectedRoutineId = null;
   routinePlannerView = "library";
   renderRoutineManager();
-  $("startFreeSessionBtn").scrollIntoView({ behavior: "smooth", block: "center" });
+  $("startFreeSessionBtn").scrollIntoView({ behavior: scrollBehavior(), block: "center" });
   $("startFreeSessionBtn").focus({ preventScroll: true });
   showNotice("Entrenamiento libre listo: puedes empezar y añadir ejercicios solo para esta sesión.");
 });
@@ -4011,7 +4026,7 @@ $("createRoutineForm").addEventListener("submit", (event) => {
         : "Selecciona al menos un día para la rutina.",
       { error: true },
     );
-    $("newRoutineWeekdays").scrollIntoView({ block: "center", behavior: "smooth" });
+    $("newRoutineWeekdays").scrollIntoView({ block: "center", behavior: scrollBehavior() });
     return;
   }
   const selectedColor = document.querySelector('input[name="routineAccentColor"]:checked')?.value ?? "auto";
@@ -4090,7 +4105,7 @@ $("startFreeSessionBtn").addEventListener("click", (event) => {
 $("continueSessionBtn").addEventListener("click", () => {
   trainingView = "session";
   renderTraining();
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  window.scrollTo({ top: 0, behavior: scrollBehavior() });
 });
 
 ["cardioDistanceKm", "cardioDuration", "cardioPoolLengthM"].forEach((id) => {
@@ -4127,7 +4142,7 @@ $("cardioSessionForm").addEventListener("submit", (event) => {
 $("backToRoutinesBtn").addEventListener("click", () => {
   trainingView = "routines";
   renderTraining();
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  window.scrollTo({ top: 0, behavior: scrollBehavior() });
 });
 
 async function confirmDiscardActiveSession() {
@@ -4221,7 +4236,7 @@ $("settingsCloseBtn").addEventListener("click", () => {
 document.querySelectorAll("[data-open-settings]").forEach((button) => {
   button.addEventListener("click", () => {
     setSettingsView(button.dataset.openSettings);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.scrollTo({ top: 0, behavior: scrollBehavior() });
   });
 });
 

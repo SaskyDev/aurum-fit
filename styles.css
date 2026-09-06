@@ -694,11 +694,6 @@ main {
 
 .timeline-month > .timeline-list { padding-bottom: var(--space-2); }
 
-@media (prefers-reduced-motion: reduce) {
-  .timeline-year > summary::after,
-  .timeline-month > summary::after { transition: none; }
-}
-
 .timeline-list { display: grid; gap: .7rem; margin: 0; padding: 0; list-style: none; }
 .timeline-item { display: grid; grid-template-columns: 4.2rem 1fr; gap: .75rem; align-items: baseline; padding: .7rem 0; border-bottom: 1px solid var(--line); }
 .timeline-item:last-child { border-bottom: 0; }
@@ -935,9 +930,6 @@ textarea {
 .macro-list > div { display: grid; gap: 8px; }
 .macro-list span { display: flex; justify-content: space-between; gap: var(--space-3); font-size: .85rem; }
 .macro-list progress { width: 100%; height: 10px; }
-
-
-
 
 /* Barras de progreso.
 
@@ -2511,6 +2503,14 @@ summary.routine-header::-webkit-details-marker { display: none; }
 .swipe-set-row.swiping-right .set-row-content { border-color: rgba(var(--accent-rgb), .5); }
 .swipe-set-row.swiping-left .set-row-content { border-color: rgba(255, 140, 122, .6); }
 
+/* Durante el arrastre la fila va clavada al dedo. Sin esto, la transición de
+   transform de arriba interpola cada pointermove durante 160 ms y la fila
+   persigue al cursor con retardo: se siente rota, no suave. Al soltar se quita
+   is-dragging y la vuelta sí se anima. Es el mismo patrón que .routine-swiping.
+   Si alguien "simplifica" quitando esta regla, el bug vuelve y no salta en
+   ninguna prueba visual: hay que arrastrar para notarlo. */
+.swipe-set-row.is-dragging .set-row-content { transition-duration: 0ms; }
+
 .set-swipe-action {
   position: absolute;
   inset-block: 0;
@@ -3027,7 +3027,6 @@ th {
 .daily-metric-calories > div { color: var(--orange); }
 
 .daily-metric-steps > div { color: var(--steps-ink); }
-
 
 .today-plan {
   margin-top: var(--space-4);
@@ -4278,30 +4277,24 @@ th {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  html {
-    scroll-behavior: auto;
-  }
+  /* Comodín a propósito, no por pereza. Esto era una lista de cinco selectores
+     escritos a mano, así que cada animación nueva nacía sin proteger salvo que
+     alguien se acordara de añadirla a la lista: settings-slide, el swipe de
+     series y las tarjetas de cardio llevaban meses fuera. Con el comodín hay
+     que acordarse de lo contrario —excluir algo—, y eso se nota al escribirlo.
 
-  .notice {
-    animation: none;
-  }
+     .01ms en vez de 0 para que animationend y transitionend sigan disparando:
+     cualquier código que espere el final de una animación se quedaría colgado.
 
-  body,
-  .tab,
-  .tab .ui-icon,
-  .tab-liquid-indicator,
-  .appearance-picker span {
-    transition-duration: 0.01ms;
-  }
-
-  .tabs.is-switching .tab-liquid-indicator > span {
-    animation: none;
-  }
-
-  .tabs.is-switching .tab-liquid-indicator,
-  .tabs.is-switching .tab.active .ui-icon,
-  .tabs.is-switching .tab.active .tab-label {
-    animation: none;
+     Ojo: esto NO alcanza a scrollTo ni scrollIntoView, que se piden desde JS.
+     De eso se encarga scrollBehavior() en app.js. */
+  *,
+  *::before,
+  *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 
@@ -4480,10 +4473,6 @@ th {
     );
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .muscle-region > :not(title) { transition: none; }
-}
-
 @media (forced-colors: active) {
   .muscle-region.intensity-low > :not(title),
   .muscle-region.intensity-medium > :not(title),
@@ -4543,7 +4532,3 @@ th {
   transform: translateX(20px);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .settings-toggle input[type="checkbox"],
-  .settings-toggle input[type="checkbox"]::after { transition: none; }
-}
