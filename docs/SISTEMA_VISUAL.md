@@ -59,6 +59,8 @@ No se usan imágenes, gradientes decorativos ni una marca difícil de renombrar.
 - `.dialog-overlay`, `.dialog-box`, `.dialog-title`, `.dialog-message` y
   `.dialog-actions`: confirmación propia y accesible que sustituye a
   `window.confirm`. El fondo de la aplicación se bloquea con `.overlay-open`.
+- `.timeline-year` y `.timeline-month`: el diario reciente plegado por año y
+  mes. Solo aparecen los días con algo que contar.
 - `.muscle-map`, `.muscle-figure`, `.muscle-region` y `.muscle-map-legend`: mapa
   muscular del Diario. Escala secuencial de un solo tono en cuatro tramos, con
   paletas propias validadas para claro y oscuro, y trama en vez de color para la
@@ -85,6 +87,28 @@ componente:
 El motivo es doble: `window.confirm` no es coherente con el sistema visual, y en
 una PWA instalada bloquea el hilo y aparece con el estilo del navegador, lo que
 rompe la sensación de aplicación.
+
+## Listas largas
+
+Dos sitios crecían sin límite y hacían la pantalla del Diario interminable: el
+diario reciente imprimía **un día por cada fecha del calendario** desde el primer
+registro, vacíos incluidos, y el histórico por ejercicio volcaba todas las
+sesiones. Con dos meses de datos de ejemplo, el Diario medía casi catorce
+pantallas de alto.
+
+Las dos reglas que salieron de ahí:
+
+- **Nada de días vacíos.** Una fila solo existe si ese día tiene algo: series,
+  pasos, comidas, una nota o un plan asignado.
+- **Agrupar y plegar antes que paginar.** El diario se pliega en año y mes, con
+  el mes en curso abierto; el resto llega colapsado con su resumen (`Agosto ·
+  31 días · 23 entrenamientos`). Lo que la persona despliega se recuerda para
+  que un repintado no se lo cierre.
+- **Ampliar a petición** donde agrupar no encaja. El histórico por ejercicio
+  muestra ocho sesiones y un botón para ver todas, el mismo patrón que ya usaba
+  el catálogo de ejercicios.
+
+Resultado medido: de 11.617 px a 3.811 px de alto.
 
 ## Color como magnitud
 

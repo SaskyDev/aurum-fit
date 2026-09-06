@@ -726,3 +726,43 @@ test("la app arranca en oscuro aunque el móvil esté en claro", () => {
   // Y tiene que persistir, no quedarse solo en memoria.
   assert.match(app, /state = persistState\(localStorage, state\);/);
 });
+
+test("el diario reciente se agrupa por año y mes en vez de ser una lista infinita", () => {
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+
+  // Antes imprimía un día por cada fecha del calendario desde el primer
+  // registro, vacíos incluidos: con dos meses de uso medía catorce pantallas.
+  assert.match(app, /function renderDiaryTimeline\(targets\)/);
+  assert.match(app, /const hasContent = Boolean\(/);
+  assert.match(app, /if \(!hasContent\) return;/);
+  assert.match(app, /createElement\("details", "timeline-year"\)/);
+  assert.match(app, /createElement\("details", "timeline-month"\)/);
+
+  // Abrir un mes no puede perderse en el siguiente repintado.
+  assert.match(app, /const diaryOpenGroups = new Set\(\)/);
+  assert.match(app, /diaryOpenGroups\.add\(clave\)/);
+
+  // El histórico por ejercicio se amplía a petición, como el catálogo.
+  assert.ok(html.includes('id="exerciseProgressMore"'), "falta el botón de ampliar el histórico");
+  assert.match(app, /const PROGRESS_ROWS_STEP = 8;/);
+  assert.match(app, /exerciseProgressExpanded \? ordenados : ordenados\.slice\(0, PROGRESS_ROWS_STEP\)/);
+  // Y se reinicia al cambiar de ejercicio o de periodo, para no dejar 200
+  // filas abiertas al saltar a otro ejercicio.
+  const cambios = app.match(/exerciseProgressExpanded = false;/g) ?? [];
+  assert.ok(cambios.length >= 2, "el histórico debe replegarse al cambiar de ejercicio y de periodo");
+});
+
+test("el mapa muscular respeta la separación del resto de bloques del Diario", () => {
+  const styles = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+  const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+
+  // Era el único bloque del Diario sin margen ni relleno propios.
+  const mapa = styles.slice(styles.indexOf(".muscle-map {"), styles.indexOf(".muscle-map .period-tabs"));
+  assert.match(mapa, /margin-top: var\(--space-4\)/);
+  assert.match(mapa, /padding: var\(--space-5\)/);
+
+  // El bloque del diario reciente deja de llevar el tinte naranja.
+  assert.match(html, /<div class="timeline-block surface">/);
+  assert.doesNotMatch(html, /timeline-block[^>]*color-panel-orange/);
+});
