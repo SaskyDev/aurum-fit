@@ -205,7 +205,16 @@ falla si alguien las quita.
 - Cada región lleva `<title>` con sus series directas y con implicación.
 - La tabla por zona es la alternativa textual completa.
 - La trama de implicación secundaria es codificación no cromática.
-- `prefers-reduced-motion` desactiva la transición de color.
+- `prefers-reduced-motion` neutraliza toda animación de la app mediante un
+  comodín en `styles.css`; el mapa no necesita regla propia (ver `MOTION.md`).
+
+> **Aviso para quien lea el CSS del mapa:** `.muscle-region` declara
+> `transition: fill .18s`, pero **esa transición no llega a ejecutarse nunca**.
+> `renderMuscleMap()` rehace las figuras enteras con `replaceChildren()` en cada
+> render, así que cada región nace ya con su clase de intensidad final y no hay
+> valor anterior desde el que transicionar. Las regiones cambian de color de
+> golpe. Si algún día se quiere que el color entre progresivamente, hay que
+> reutilizar los nodos entre renders, no retocar la transición.
 
 ## Sobre la referencia
 
