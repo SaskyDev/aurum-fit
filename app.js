@@ -42,8 +42,8 @@ import {
   startSessionFromRoutineDay,
   updateSet,
   validateLabelPhotoFile,
-} from "./core.js?v=65";
-import { BODY_FIGURES } from "./body-paths.js?v=65";
+} from "./core.js?v=68";
+import { BODY_FIGURES } from "./body-paths.js?v=68";
 
 const defaultTargets = { calories: 2200, protein: 170, steps: 10000 };
 const defaultPreferences = {
@@ -127,6 +127,11 @@ let selectedPlannedWorkout = null;
 let settingsView = "menu";
 const pendingSetSubmissions = new Set();
 const restTimerStates = new Map();
+// Qué años y meses del diario están desplegados, para que renderizar de nuevo
+// no cierre lo que la persona acaba de abrir.
+const diaryOpenGroups = new Set();
+const PROGRESS_ROWS_STEP = 8;
+let exerciseProgressExpanded = false;
 const noticeTimers = new Map();
 let sessionElapsedIntervalId = null;
 let navAnimationTimer = null;
@@ -1047,6 +1052,155 @@ function sessionMatchesScheduledDay(session, scheduled, date, { completedOnly = 
     && session.source.routineDayId === scheduled.routineDay.id;
 }
 
+// Un día del diario reciente. Devuelve también si tiene algo que contar: sin
+// esto la lista imprime todos los días del calendario desde el primer registro,
+// vacíos incluidos, y la página no termina nunca.
+function createTimelineDayItem(date, targets) {
+  const day = state.legacy.days[date] ?? { foods: [], workouts: [] };
+  const totals = dayTotals(day);
+  const sessions = state.training.sessions.filter(
+    (session) => session.status === "completed" && dateKeyFromIso(session.endedAt) === date,
+  );
+  const scheduled = scheduledDayForDate(date);
+  const completedScheduled = scheduled && sessions.some((session) => (
+    sessionMatchesScheduledDay(session, scheduled, date, { completedOnly: true })
+  ));
+  const isPast = date < today;
+  const trainingStatus = sessions.length
+    ? scheduled
+      ? completedScheduled ? "Completado" : "Extra · plan pendiente"
+      : "Extra"
+    : scheduled
+      ? isPast ? "No realizado" : "Planificado"
+      : "Descanso";
+  const steps = Number(day.steps) || 0;
+  const hasContent = Boolean(
+    sessions.length || steps || totals.calories || (day.foods ?? []).length || day.notes || scheduled,
+  );
+
+  // Dentro de un mes, repetir el objetivo en cada fila alargaba la línea hasta
+  // ocupar tres renglones. El objetivo ya está arriba y en el detalle del día.
+  const details = [
+    `${steps.toLocaleString("es-ES")} pasos`,
+    `${totals.calories.toLocaleString("es-ES")} kcal`,
+    scheduled ? `${scheduled.routineDay.name}: ${trainingStatus}` : trainingStatus,
+  ].join(" · ");
+  const item = createElement("li", "timeline-item");
+  item.classList.add(`timeline-${trainingStatus.toLocaleLowerCase("es").replace(/\s+/g, "-")}`);
+  const openDay = createElement("button", "timeline-open");
+  openDay.type = "button";
+  openDay.setAttribute("aria-label", `Abrir el resumen completo del ${date}`);
+  // El año y el mes ya los dice el desplegable que contiene la fila.
+  const fecha = createElement("time", "timeline-date", shortDayLabel(date));
+  fecha.dateTime = date;
+  openDay.append(fecha, createElement("div", "timeline-content", details));
+  sessions.forEach((session) => {
+    const isCardioSession = (session.sessionType ?? "strength") === "cardio";
+    openDay.appendChild(createElement(
+      "small",
+      "muted",
+      isCardioSession
+        ? `${session.source.label} · ${cardioSummary(session.cardio)}`
+        : `${session.source.label} · ${countLabel(sessionSetCount(session), "serie")} guardadas`,
+    ));
+  });
+  if (day.notes) openDay.appendChild(createElement("small", "muted", day.notes));
+  openDay.appendChild(createElement("span", "timeline-chevron", "›"));
+  openDay.addEventListener("click", () => openDailyDetail(date));
+  item.appendChild(openDay);
+  return { item, hasContent, sessions: sessions.length };
+}
+
+// El diario se agrupa en año > mes > días, plegado. Con dos meses de uso la
+// lista plana ya medía catorce pantallas y no se podía recorrer.
+function renderDiaryTimeline(targets) {
+  const timeline = $("dailyTimeline");
+  timeline.replaceChildren();
+  $("diaryPeriodSummary").textContent = {
+    total: "Desde el inicio",
+    month: "Este mes",
+    week: "Esta semana",
+    day: "Hoy",
+  }[diaryPeriod] ?? "Periodo seleccionado";
+
+  const porAño = new Map();
+  dateKeysForPeriod().forEach((date) => {
+    const { item, hasContent, sessions } = createTimelineDayItem(date, targets);
+    if (!hasContent) return;
+    const [año, mes] = date.split("-");
+    if (!porAño.has(año)) porAño.set(año, new Map());
+    const meses = porAño.get(año);
+    if (!meses.has(mes)) meses.set(mes, { items: [], dias: 0, sesiones: 0 });
+    const grupo = meses.get(mes);
+    grupo.items.push(item);
+    grupo.dias += 1;
+    grupo.sesiones += sessions;
+  });
+
+  if (!porAño.size) {
+    timeline.appendChild(createElement("li", "timeline-empty", "Todavía no hay registros. Guarda hoy tus primeras métricas."));
+    return;
+  }
+
+  const añoActual = today.slice(0, 4);
+  const mesActual = today.slice(5, 7);
+  porAño.forEach((meses, año) => {
+    const totalSesiones = [...meses.values()].reduce((suma, grupo) => suma + grupo.sesiones, 0);
+    const totalDias = [...meses.values()].reduce((suma, grupo) => suma + grupo.dias, 0);
+    const añoItem = document.createElement("li");
+    const añoDetalle = createElement("details", "timeline-year");
+    añoDetalle.open = diaryOpenGroups.has(año) || (!diaryOpenGroups.size && año === añoActual);
+    añoDetalle.addEventListener("toggle", () => {
+      if (añoDetalle.open) diaryOpenGroups.add(año);
+      else diaryOpenGroups.delete(año);
+    });
+    const añoResumen = document.createElement("summary");
+    añoResumen.append(
+      createElement("strong", "", año),
+      createElement("small", "muted", `${countLabel(totalDias, "día")} · ${countLabel(totalSesiones, "entrenamiento")}`),
+    );
+    añoDetalle.appendChild(añoResumen);
+
+    const listaMeses = createElement("ul", "timeline-month-list");
+    meses.forEach((grupo, mes) => {
+      const clave = `${año}-${mes}`;
+      const mesItem = document.createElement("li");
+      const mesDetalle = createElement("details", "timeline-month");
+      mesDetalle.open = diaryOpenGroups.has(clave) || (!diaryOpenGroups.size && clave === `${añoActual}-${mesActual}`);
+      mesDetalle.addEventListener("toggle", () => {
+        if (mesDetalle.open) diaryOpenGroups.add(clave);
+        else diaryOpenGroups.delete(clave);
+      });
+      const mesResumen = document.createElement("summary");
+      mesResumen.append(
+        createElement("strong", "", monthName(clave)),
+        createElement("small", "muted", `${countLabel(grupo.dias, "día")} · ${countLabel(grupo.sesiones, "entrenamiento")}`),
+      );
+      mesDetalle.appendChild(mesResumen);
+      const listaDias = createElement("ul", "timeline-list");
+      grupo.items.forEach((item) => listaDias.appendChild(item));
+      mesDetalle.appendChild(listaDias);
+      mesItem.appendChild(mesDetalle);
+      listaMeses.appendChild(mesItem);
+    });
+    añoDetalle.appendChild(listaMeses);
+    añoItem.appendChild(añoDetalle);
+    timeline.appendChild(añoItem);
+  });
+}
+
+function shortDayLabel(date) {
+  const etiqueta = new Intl.DateTimeFormat("es-ES", { weekday: "short", day: "numeric" })
+    .format(new Date(`${date}T12:00:00`));
+  return etiqueta.charAt(0).toLocaleUpperCase("es") + etiqueta.slice(1);
+}
+
+function monthName(clave) {
+  const nombre = new Intl.DateTimeFormat("es-ES", { month: "long" })
+    .format(new Date(`${clave}-01T12:00:00`));
+  return nombre.charAt(0).toLocaleUpperCase("es") + nombre.slice(1);
+}
+
 function renderDailyDashboard() {
   const selectedDate = $("entryDate").value || today;
   const selectedDay = getLegacyDay(selectedDate);
@@ -1158,62 +1312,7 @@ function renderDailyDashboard() {
       ? "Objetivo diario de calorías alcanzado."
       : `${Math.abs(remainingCalories).toLocaleString("es-ES")} kcal por encima del objetivo.`;
 
-  const timeline = $("dailyTimeline");
-  timeline.replaceChildren();
-  $("diaryPeriodSummary").textContent = {
-    total: "Desde el inicio",
-    month: "Este mes",
-    week: "Esta semana",
-    day: "Hoy",
-  }[diaryPeriod] ?? "Periodo seleccionado";
-  dateKeysForPeriod().forEach((date) => {
-    const day = state.legacy.days[date] ?? { foods: [], workouts: [] };
-    const totals = dayTotals(day);
-    const sessions = state.training.sessions.filter(
-      (session) => session.status === "completed" && dateKeyFromIso(session.endedAt) === date,
-    );
-    const scheduled = scheduledDayForDate(date);
-    const completedScheduled = scheduled && sessions.some((session) => (
-      sessionMatchesScheduledDay(session, scheduled, date, { completedOnly: true })
-    ));
-    const isPast = date < today;
-    const trainingStatus = sessions.length
-      ? scheduled
-        ? completedScheduled ? "Completado" : "Extra · plan pendiente"
-        : "Extra"
-      : scheduled
-        ? isPast ? "No realizado" : "Planificado"
-        : "Descanso";
-    const details = [
-      `${Number(day.steps) || 0} / ${targets.steps} pasos`,
-      `${totals.calories} / ${targets.calories} kcal`,
-      scheduled ? `${scheduled.routineDay.name}: ${trainingStatus}` : trainingStatus,
-    ].join(" · ");
-    const item = createElement("li", "timeline-item");
-    item.classList.add(`timeline-${trainingStatus.toLocaleLowerCase("es").replace(/\s+/g, "-")}`);
-    const openDay = createElement("button", "timeline-open");
-    openDay.type = "button";
-    openDay.setAttribute("aria-label", `Abrir el resumen completo del ${date}`);
-    openDay.append(createElement("time", "timeline-date", date), createElement("div", "timeline-content", details));
-    sessions.forEach((session) => {
-      const isCardioSession = (session.sessionType ?? "strength") === "cardio";
-      openDay.appendChild(createElement(
-        "small",
-        "muted",
-        isCardioSession
-          ? `${session.source.label} · ${cardioSummary(session.cardio)}`
-          : `${session.source.label} · ${countLabel(sessionSetCount(session), "serie")} guardadas`,
-      ));
-    });
-    if (day.notes) openDay.appendChild(createElement("small", "muted", day.notes));
-    openDay.appendChild(createElement("span", "timeline-chevron", "›"));
-    openDay.addEventListener("click", () => openDailyDetail(date));
-    item.appendChild(openDay);
-    timeline.appendChild(item);
-  });
-  if (!timeline.children.length) {
-    timeline.appendChild(createElement("li", "timeline-empty", "Todavía no hay registros. Guarda hoy tus primeras métricas."));
-  }
+  renderDiaryTimeline(targets);
 }
 
 function createDayDetailSection(title, tone = null) {
@@ -1526,7 +1625,17 @@ function renderProgress() {
 
   const rows = $("exerciseProgressRows");
   rows.replaceChildren();
-  points.slice().reverse().forEach((point) => {
+  // Igual que el catálogo: unas pocas filas y ampliar a petición. Con meses de
+  // historial en un solo ejercicio, la tabla completa hacía interminable la
+  // pantalla del Diario.
+  const ordenados = points.slice().reverse();
+  const visibles = exerciseProgressExpanded ? ordenados : ordenados.slice(0, PROGRESS_ROWS_STEP);
+  const masBoton = $("exerciseProgressMore");
+  masBoton.hidden = ordenados.length <= PROGRESS_ROWS_STEP;
+  masBoton.textContent = exerciseProgressExpanded
+    ? `Ver solo las ${PROGRESS_ROWS_STEP} últimas`
+    : `Ver las ${ordenados.length} sesiones`;
+  visibles.forEach((point) => {
     const row = document.createElement("tr");
     [
       formatDateTime(point.date),
@@ -3423,7 +3532,7 @@ function backfillExerciseMuscles() {
 
 async function loadCatalog() {
   try {
-    const response = await fetch("./data/exercises.es.json?v=65", { cache: "no-cache" });
+    const response = await fetch("./data/exercises.es.json?v=68", { cache: "no-cache" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     if (!Array.isArray(payload.exercises)) throw new Error("Estructura no válida");
@@ -3734,12 +3843,21 @@ document.querySelector(".brand")?.addEventListener("click", (event) => {
 });
 syncTabFromHash();
 
-$("progressExerciseSelect").addEventListener("change", renderProgress);
+$("progressExerciseSelect").addEventListener("change", () => {
+  exerciseProgressExpanded = false;
+  renderProgress();
+});
 // Los selectores se acotan a su propio grupo: el Diario y el mapa muscular
 // tienen periodos independientes y comparten la clase .period-tab.
+$("exerciseProgressMore").addEventListener("click", () => {
+  exerciseProgressExpanded = !exerciseProgressExpanded;
+  renderProgress();
+});
+
 document.querySelectorAll("[data-period]").forEach((button) => {
   button.addEventListener("click", () => {
     diaryPeriod = button.dataset.period;
+    exerciseProgressExpanded = false;
     document.querySelectorAll("[data-period]").forEach((item) => {
       item.classList.toggle("active", item === button);
     });

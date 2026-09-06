@@ -387,6 +387,20 @@ haberlos seleccionado.
    defecto antiguo, abrir la app: debe migrar a oscuro una sola vez. Si después
    se elige `Automático` a propósito, no puede volver a migrarse.
 
+### Diario reciente plegado (QA-DIARY-002)
+
+1. Con la demo cargada, abrir el Diario y bajar hasta `Diario reciente`.
+2. Debe verse `2026` con su resumen y, dentro, los meses. El mes en curso
+   abierto y el resto plegados, cada uno con `N días · N entrenamientos`.
+3. Desplegar `Agosto`: deben aparecer sus días, con la fecha corta (`Sáb 5`).
+4. Cambiar el periodo del bloque de progreso o el ejercicio seleccionado:
+   Agosto tiene que **seguir abierto**.
+5. Comprobar que no aparecen días sin nada registrado.
+6. En `Evolución por ejercicio`, elegir uno con muchas sesiones: la tabla
+   muestra ocho filas y un botón `Ver las N sesiones`. Al pulsarlo se despliegan
+   todas y el botón pasa a `Ver solo las 8 últimas`.
+7. Cambiar de ejercicio: la tabla debe volver a ocho filas.
+
 ### Exportación (QA-EXPORT-001)
 
 1. Pulsar `Exportar`.
