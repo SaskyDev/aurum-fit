@@ -18,6 +18,7 @@ sabes en cuál escribir, probablemente el incremento no está cerrado.
 | `SISTEMA_VISUAL.md` | Tokens, componentes reutilizables, reglas de color y las del tema claro | Al añadir un componente o cambiar la paleta |
 | `DECISIONES_UX.md` | Decisiones de uso que ya son nuestras, sus límites y las preguntas abiertas | Al cerrar o abrir una decisión de experiencia de uso |
 | `REFERENCIA_BRENZO.md` | La app de referencia: qué hace, qué tomamos, qué descartamos y por qué | Al estudiar una función nueva de la referencia |
+| `MOTION.md` | Qué se mueve y por qué: el principio, la restricción del render completo, las reglas vigentes y lo que queda pendiente | Al añadir, quitar o retocar cualquier animación |
 
 ## Cómo se comprueba
 

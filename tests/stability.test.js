@@ -388,7 +388,6 @@ test("Diario, limpieza de demostración, etiquetas y ajustes tienen una base vis
   assert.match(css, /@keyframes nav-icon-pop/);
   assert.match(app, /--previous-tab-index/);
   assert.match(app, /--nav-direction/);
-  assert.match(css, /prefers-reduced-motion: reduce[\s\S]*\.tab-liquid-indicator/);
   assert.doesNotMatch(html, /id="loadDemoBtn"|id="removeDemoBtn"|id="demoBadge"/);
 });
 
@@ -765,4 +764,52 @@ test("el mapa muscular respeta la separación del resto de bloques del Diario", 
   // El bloque del diario reciente deja de llevar el tinte naranja.
   assert.match(html, /<div class="timeline-block surface">/);
   assert.doesNotMatch(html, /timeline-block[^>]*color-panel-orange/);
+});
+
+test("la fila de serie se arrastra sin transición y vuelve con ella", () => {
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const css = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+
+  // El bug: .set-row-content transiciona transform 160ms y attachSetSwipe
+  // escribe el transform en cada pointermove, así que la fila perseguía al dedo.
+  assert.match(css, /\.swipe-set-row\.is-dragging \.set-row-content \{[^}]*transition-duration: 0ms/);
+
+  const swipe = app.slice(
+    app.indexOf("function attachSetSwipe"),
+    app.indexOf("function createLastReferenceCard"),
+  );
+  assert.ok(swipe.length > 0, "attachSetSwipe debe existir");
+
+  // La clase entra en pointerdown, antes del umbral de 12px de swiping-left/right.
+  assert.match(swipe, /pointerdown[\s\S]*row\.classList\.add\("is-dragging"\)/);
+
+  // Y sale en reset() ANTES de devolver el transform, para que la vuelta anime.
+  const reset = swipe.slice(swipe.indexOf("const reset ="), swipe.indexOf("const finish ="));
+  const salida = reset.indexOf('"is-dragging"');
+  const vuelta = reset.indexOf("foreground.style.transform");
+  assert.ok(salida >= 0, "reset() debe quitar is-dragging");
+  assert.ok(salida < vuelta, "is-dragging debe salir antes de devolver el transform");
+});
+
+test("la reducción de movimiento se aplica a todo, no a una lista de selectores", () => {
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const css = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+
+  // Un solo bloque, con comodín: antes eran cuatro bloques sueltos y una lista
+  // de cinco selectores, así que toda animación nueva nacía sin proteger.
+  const bloques = css.match(/@media \(prefers-reduced-motion: reduce\)/g) ?? [];
+  assert.equal(bloques.length, 1, "debe haber un único bloque de reducción de movimiento");
+
+  const bloque = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"));
+  assert.match(bloque, /\*,\s*\*::before,\s*\*::after/);
+  assert.match(bloque, /animation-duration: \.01ms !important/);
+  assert.match(bloque, /transition-duration: \.01ms !important/);
+  // .01ms y no 0: animationend/transitionend tienen que seguir disparando.
+  assert.doesNotMatch(bloque, /animation-duration: 0s? !important/);
+
+  // El CSS no alcanza al scroll pedido desde JS, que es donde se escapaba.
+  assert.match(app, /matchMedia\("\(prefers-reduced-motion: reduce\)"\)/);
+  assert.match(app, /function scrollBehavior\(\)/);
+  assert.doesNotMatch(app, /behavior: "smooth"/);
+  assert.doesNotMatch(app, /"smooth", block/);
 });
