@@ -1,7 +1,7 @@
 # Modelo local v2
 
 Fecha: 24 de julio de 2026.
-Última revisión: 5 de septiembre de 2026.
+Última revisión: 7 de septiembre de 2026.
 
 ## Objetivo del incremento
 
@@ -100,6 +100,44 @@ desaparezca de una futura versión del dataset no puede perder su historial.
 El campo es opcional: un ejercicio personal que no esté en el catálogo se queda
 sin músculos y sus series se declaran como no repartidas. Es compatible hacia
 atrás y no cambia `schemaVersion`. Ver `docs/MAPA_MUSCULAR.md`.
+
+## Récord personal: derivado, nunca guardado
+
+El récord **no es un campo del estado**. Se recalcula desde el historial cada vez
+que se pide, con `exercisePersonalRecords(state, exerciseId)` en `core.js`.
+
+La razón es la regla de que el historial es inmutable y la de no inventar
+métricas, juntas. Un campo `record` guardado se desincroniza en cuanto alguien
+corrige el peso de una serie vieja o la borra: a partir de ahí la app afirmaría
+un récord que ya no ocurrió. Recalcular es barato —son las series de un
+ejercicio— y no puede mentir.
+
+Qué cuenta:
+
+- **Solo series efectivas.** Un récord calentando no es un récord; las series de
+  aproximación tampoco.
+- **Solo sesiones terminadas o en curso.** Descartar una sesión la elimina del
+  array, así que no deja rastro. El filtro por estado sigue puesto para que un
+  estado futuro (una plantilla, un borrador) no se cuele como historial sin que
+  alguien lo decida.
+- **Peso y repeticiones son hechos separados.** Decidir si 100 kg × 1 supera a
+  60 kg × 10 exige una fórmula de 1RM estimado. Eso es una métrica inventada y
+  aquí no se muestra: se dice el peso más alto que moviste y las repeticiones
+  más altas que hiciste, cada una con su fecha. Hay una prueba que falla si
+  aparece cualquier fórmula de 1RM en el código.
+- **Sin peso anotado no es 0 kg.** `loadKg` admite `null` para peso corporal, y
+  `Number(null)` es `0`, que sí es finito. Se distinguen a propósito: sin peso
+  no hay récord de peso, pero sí de repeticiones.
+
+Empates: a igual peso gana más repeticiones, porque es estrictamente más trabajo
+observado y no hace falta fórmula para afirmarlo. A igual peso y repeticiones
+gana la fecha más antigua, porque el récord se estableció la primera vez que lo
+hiciste, no la última vez que lo repetiste.
+
+`recordsSetBy(state, exerciseId, setId)` dice qué récords establece **una serie
+concreta**, comparándola con el historial sin ella. Exige superar, no igualar:
+si igualar contase, cinco series al mismo peso máximo cantarían récord cinco
+veces y la palabra dejaría de significar algo.
 
 ## Reglas de seguridad
 

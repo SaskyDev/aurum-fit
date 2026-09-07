@@ -4532,3 +4532,73 @@ th {
   transform: translateX(20px);
 }
 
+
+/* La tarjeta de récord comparte caja con la de última referencia: son dos
+   hechos del mismo ejercicio y conviene que se lean como un par, no como dos
+   componentes distintos. */
+.record-card { border-color: rgba(var(--accent-rgb), .3); }
+.record-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.record-list-item {
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+  gap: 4px var(--space-2);
+  align-items: baseline;
+}
+.record-kind {
+  color: var(--ink-soft);
+  font-size: .68rem;
+  font-weight: 850;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.record-value { font-size: .95rem; font-variant-numeric: tabular-nums; }
+.record-when {
+  grid-column: 2;
+  color: var(--ink-soft);
+  font-size: .74rem;
+}
+
+/* La serie recién guardada se señala con una animación, no con una transición.
+   La fila es un nodo nuevo en cada render (render() rehace los paneles enteros
+   y las listas con replaceChildren), así que no hay valor anterior desde el que
+   transicionar; un keyframe, en cambio, se reproduce al crearse el elemento.
+   Ver docs/MOTION.md.
+
+   Solo color: nada de desplazamiento ni de escala en la fila, que empujaría las
+   de abajo justo cuando estás mirando el número que acabas de escribir.
+
+   El tinte va con box-shadow interior y NO con background. --set-row-bg es un
+   linear-gradient, no un color, así que color-mix() con él es inválido: el
+   navegador descarta la declaración entera y el fondo se queda transparente,
+   dejando ver las etiquetas del swipe por debajo. No salta en ninguna prueba
+   de código; se vio mirando la fila en el navegador. */
+@keyframes set-saved {
+  from {
+    border-color: rgba(var(--accent-rgb), .65);
+    box-shadow: inset 0 0 0 999px rgba(var(--accent-rgb), .16);
+  }
+  to {
+    border-color: var(--line);
+    box-shadow: inset 0 0 0 999px rgba(var(--accent-rgb), 0);
+  }
+}
+.swipe-set-row.is-fresh .set-row-content { animation: set-saved 320ms ease-out; }
+
+/* El récord dura más y llega más arriba de color, porque es un hecho más raro.
+   No cambia de forma ni añade insignia: el aviso ya dice qué récord es y la
+   tarjeta de RÉCORD lo recoge. */
+@keyframes set-record {
+  0% {
+    border-color: rgba(var(--accent-rgb), .9);
+    box-shadow: inset 0 0 0 999px rgba(var(--accent-rgb), .34);
+  }
+  55% {
+    border-color: rgba(var(--accent-rgb), .7);
+    box-shadow: inset 0 0 0 999px rgba(var(--accent-rgb), .2);
+  }
+  100% {
+    border-color: var(--line);
+    box-shadow: inset 0 0 0 999px rgba(var(--accent-rgb), 0);
+  }
+}
+.swipe-set-row.is-record .set-row-content { animation: set-record 900ms ease-out; }

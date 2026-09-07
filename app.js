@@ -12,6 +12,8 @@ import {
   completeSession,
   cleanupPublishedData,
   computeMuscleVolume,
+  exercisePersonalRecords,
+  recordsSetBy,
   createRoutineWithWeekdays,
   deleteSet,
   duplicateSet,
@@ -42,8 +44,8 @@ import {
   startSessionFromRoutineDay,
   updateSet,
   validateLabelPhotoFile,
-} from "./core.js?v=69";
-import { BODY_FIGURES } from "./body-paths.js?v=69";
+} from "./core.js?v=73";
+import { BODY_FIGURES } from "./body-paths.js?v=73";
 
 const defaultTargets = { calories: 2200, protein: 170, steps: 10000 };
 const defaultPreferences = {
@@ -186,6 +188,16 @@ if (JSON.stringify(state.owner.preferences) + JSON.stringify(state.meta) !== est
 
 const darkModeMedia = window.matchMedia("(prefers-color-scheme: dark)");
 const reducedMotionMedia = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+// La serie que se acaba de guardar, para que el render que viene detrás la
+// destaque. No hace falta reutilizar nodos entre renders: una animación de
+// keyframes SÍ se reproduce en un elemento recién creado, y la fila lo es. Solo
+// las transiciones necesitarían identidad estable, y aquí no se usa ninguna.
+//
+// Se consume una sola vez al pintarla. Si no, cualquier render posterior
+// —arrancar el descanso, corregir otra serie— repetiría el destello y dejaría
+// de significar "acabas de guardar esto".
+let freshSet = null;
 
 // prefers-reduced-motion en CSS no cubre scrollTo ni scrollIntoView: ahí el
 // "smooth" se decide en JS y se salta la preferencia del sistema. Quien pide
@@ -2770,19 +2782,27 @@ function renderSetForm(session, sessionExercise, reference) {
     };
     const editingSetId = form.dataset.editingSetId;
     const restSeconds = timerFor(sessionExercise.id).duration;
-    const successMessage = editingSetId
-      ? "Serie corregida y guardada."
-      : (autoRestTimerEnabled()
-        ? `Serie guardada. Descanso de ${formatTimer(restSeconds)} en marcha.`
-        : "Serie guardada automáticamente.");
+    let logro = null;
+    // El aviso se da después del commit, no antes, porque hasta que la serie no
+    // está guardada no se puede saber si superó un récord.
     const saved = runOnce(submit, () => commit((next) => {
       if (editingSetId) {
         updateSet(next, session.id, sessionExercise.id, editingSetId, input);
-      } else {
-        addSetToExercise(next, session.id, sessionExercise.id, input);
+        return;
       }
-    }, successMessage), submissionKey);
+      const workoutSet = addSetToExercise(next, session.id, sessionExercise.id, input);
+      logro = recordSummary(next, sessionExercise.exerciseId, workoutSet.id);
+      // Lo lee el render() que commit() lanza justo después.
+      freshSet = { id: workoutSet.id, record: Boolean(logro) };
+    }, null), submissionKey);
     if (saved) {
+      showNotice(editingSetId
+        ? "Serie corregida y guardada."
+        : [
+          "Serie guardada.",
+          logro,
+          autoRestTimerEnabled() ? `Descanso de ${formatTimer(restSeconds)} en marcha.` : null,
+        ].filter(Boolean).join(" "));
       form.reset();
       if (!editingSetId && autoRestTimerEnabled()) startRestAfterSet(sessionExercise.id);
     }
@@ -2885,6 +2905,68 @@ function createLastReferenceCard(reference) {
   });
   if (!list.children.length) {
     list.appendChild(createElement("li", "muted", "La sesión anterior no tenía series completadas."));
+  }
+  card.appendChild(list);
+  return card;
+}
+
+// El récord se recalcula al pintar, no se lee de ningún campo guardado: por eso
+// refleja al instante una serie corregida o borrada. Incluye la sesión en curso
+// a propósito, porque una serie que acabas de registrar ya ocurrió.
+//
+// Peso y repeticiones se muestran por separado. Juntarlos en un único "mejor"
+// exigiría estimar un 1RM, que es una métrica inventada: aquí solo se dice lo
+// que pasó.
+// Solo se canta récord si HABÍA un récord anterior que superar. La primera
+// serie de un ejercicio nuevo es técnicamente tu mejor marca, pero llamarlo
+// récord vacía la palabra: no has superado nada todavía.
+//
+// Devuelve null cuando no hay nada que decir, y entonces no se dice nada: es la
+// regla de no afirmar lo que el dato no sostiene.
+function recordSummary(targetState, exerciseId, setId) {
+  const records = recordsSetBy(targetState, exerciseId, setId);
+  const partes = [];
+  if (records.load && records.previous.heaviestSet) {
+    partes.push(`peso ${records.set.loadKg} kg (antes ${records.previous.heaviestSet.loadKg})`);
+  }
+  if (records.reps && records.previous.mostReps) {
+    partes.push(`${records.set.reps} reps (antes ${records.previous.mostReps.reps})`);
+  }
+  return partes.length ? `Récord de ${partes.join(" y ")}.` : null;
+}
+
+function createPersonalRecordCard(exerciseId) {
+  const card = createElement("aside", "reference-card record-card");
+  card.setAttribute("aria-label", "Récord personal del ejercicio");
+  card.appendChild(createElement("span", "reference-card-label", "Récord"));
+
+  const records = exercisePersonalRecords(state, exerciseId);
+  if (!records.heaviestSet && !records.mostReps) {
+    card.appendChild(createElement("p", "muted", "Sin récord aún. Se calcula con tus series efectivas; el calentamiento no cuenta."));
+    return card;
+  }
+
+  const list = createElement("ul", "record-list");
+  const fila = (etiqueta, valor, cuando) => {
+    const item = createElement("li", "record-list-item");
+    item.append(
+      createElement("span", "record-kind", etiqueta),
+      createElement("strong", "record-value", valor),
+    );
+    if (cuando) item.appendChild(createElement("span", "record-when", formatDateTime(cuando)));
+    list.appendChild(item);
+  };
+
+  if (records.heaviestSet) {
+    fila("Más peso", `${records.heaviestSet.loadKg} kg × ${records.heaviestSet.reps} reps`, records.heaviestSet.date);
+  }
+  // Solo se repite la fila de repeticiones si aporta algo distinto: en un
+  // ejercicio con peso, la serie más pesada suele ser también la referencia.
+  if (records.mostReps && records.mostReps.setId !== records.heaviestSet?.setId) {
+    const peso = records.mostReps.loadKg === null || records.mostReps.loadKg === 0
+      ? "peso corporal"
+      : `${records.mostReps.loadKg} kg`;
+    fila("Más reps", `${records.mostReps.reps} reps · ${peso}`, records.mostReps.date);
   }
   card.appendChild(list);
   return card;
@@ -3047,6 +3129,7 @@ function renderSessionExercise(session, sessionExercise) {
   if (sessionExercise.planNote) titleBlock.appendChild(createElement("p", "muted", sessionExercise.planNote));
 
   const reference = findLastComparableExercise(state, sessionExercise.exerciseId, session.id);
+  titleBlock.appendChild(createPersonalRecordCard(sessionExercise.exerciseId));
   titleBlock.appendChild(createLastReferenceCard(reference));
   header.appendChild(titleBlock);
   const statusBlock = createElement("div", "exercise-status-actions");
@@ -3111,6 +3194,18 @@ function renderSessionExercise(session, sessionExercise) {
       }, "Serie borrada. Puedes deshacerla.");
     };
     const row = createElement("li", "set-row swipe-set-row");
+    if (freshSet && freshSet.id === workoutSet.id) {
+      row.classList.add("is-fresh");
+      if (freshSet.record) row.classList.add("is-record");
+      freshSet = null;
+      // Las clases se quitan al acabar la animación. No es cosmético: cambiar
+      // de pestaña no relanza render(), así que sin esto la fila se quedaría
+      // marcada indefinidamente y cualquier estilo que alguien añada mañana a
+      // .is-fresh se volvería permanente sin que se note al escribirlo.
+      row.addEventListener("animationend", () => {
+        row.classList.remove("is-fresh", "is-record");
+      }, { once: true });
+    }
     row.append(
       createElement("span", "set-swipe-action set-swipe-duplicate", "Duplicar"),
       createElement("span", "set-swipe-action set-swipe-delete", "Borrar"),
@@ -3547,7 +3642,7 @@ function backfillExerciseMuscles() {
 
 async function loadCatalog() {
   try {
-    const response = await fetch("./data/exercises.es.json?v=69", { cache: "no-cache" });
+    const response = await fetch("./data/exercises.es.json?v=73", { cache: "no-cache" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     if (!Array.isArray(payload.exercises)) throw new Error("Estructura no válida");

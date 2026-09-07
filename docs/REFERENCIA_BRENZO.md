@@ -138,7 +138,7 @@ señalar el hueco.
 | Recordar peso y repeticiones del entrenamiento anterior | **Parcial y a propósito**: se sugieren en el campo, no se rellenan solos |
 | Rutinas por objetivo y splits (PPL, Torso/Pierna, Full Body) | **Parcial**: las rutinas son libres, sin plantillas |
 | Más de 400 ejercicios con animaciones | **Parcial**: 1.317 ejercicios, sin animaciones (aparcado por licencias) |
-| Aviso de récord personal al superarlo | **Falta**: no existe el concepto de récord en el modelo |
+| Aviso de récord personal al superarlo | **Hecho**: el aviso dice contra qué se compara ("peso 95 kg (antes 90)") y la fila se tiñe. Solo si había un récord anterior que superar |
 | `Body Rank`: te compara con personas de tu edad, sexo y peso | **Descartado**, ver abajo |
 | Consejos personalizados de `Brenzo AI` | **Descartado**, ver abajo |
 | Entrenamiento nuevo cada día y programas guiados | Fuera del alcance actual |
@@ -190,9 +190,12 @@ señalar el hueco.
    encendido por defecto. Arranca con cualquier serie nueva, incluidas
    calentamiento y aproximación, porque también se descansa entre ellas;
    corregir una serie ya guardada no lo dispara.
-2. **El récord personal como hecho, no como insignia.** Encaja con los logros ya
-   decididos: superar tu mejor peso es un dato recalculable desde el historial,
-   no una recompensa inventada.
+2. ~~**El récord personal como hecho, no como insignia.**~~ **Hecho en el
+   modelo.** Se recalcula desde el historial, no se guarda, y peso y
+   repeticiones se muestran como hechos separados para no estimar un 1RM (ver
+   `MODELO_LOCAL_V2.md`). El aviso al superarlo dice contra qué se compara, y
+   solo aparece si había un récord anterior: la primera serie de un ejercicio
+   nuevo es tu mejor marca, pero no has superado nada.
 3. **El ejercicio de referencia por grupo muscular** de su pantalla de logros
    ("Pecho · ref. Press de banca"): da un siguiente paso concreto en lugar de
    solo señalar el hueco.

@@ -291,7 +291,11 @@ test("el submit de serie conserva el bloqueo aunque renderice otro formulario", 
   assert.match(app, /const pendingSetSubmissions = new Set\(\)/);
   assert.match(app, /pendingSetSubmissions\.has\(key\)/);
   assert.match(app, /const submissionKey = `\$\{session\.id\}:\$\{sessionExercise\.id\}`/);
-  assert.match(app, /\}, successMessage\), submissionKey\)/);
+  // Se comprueba que el bloqueo envuelve al commit entero, no el literal del
+  // mensaje: el aviso pasó a darse después del commit, porque hasta que la
+  // serie no está guardada no se sabe si superó un récord. Lo que no puede
+  // cambiar es que runOnce siga recibiendo la clave.
+  assert.match(app, /runOnce\(submit, \(\) => commit\([\s\S]*?, submissionKey\)/);
 });
 
 test("Importar deja el input fuera del foco y la actualización offline no silencia fallos online", () => {
@@ -812,4 +816,90 @@ test("la reducción de movimiento se aplica a todo, no a una lista de selectores
   assert.match(app, /function scrollBehavior\(\)/);
   assert.doesNotMatch(app, /behavior: "smooth"/);
   assert.doesNotMatch(app, /"smooth", block/);
+});
+
+test("el récord personal es un hecho recalculado, no una métrica estimada", () => {
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const core = fs.readFileSync(new URL("../core.js", import.meta.url), "utf8");
+
+  // Se calcula al pintar y se muestra donde se registra el trabajo.
+  assert.match(app, /createPersonalRecordCard\(sessionExercise\.exerciseId\)/);
+  assert.match(app, /exercisePersonalRecords\(state, exerciseId\)/);
+  assert.match(app, /Sin récord aún/);
+
+  // No se guarda en el estado: si se guardara, corregir o borrar una serie
+  // antigua dejaría la app afirmando un récord que ya no existe.
+  assert.doesNotMatch(core, /personalRecord:|heaviestSet:\s*state|records:\s*\{/);
+  assert.doesNotMatch(core, /validateState[\s\S]{0,4000}?record/i);
+
+  // Y nunca se estima un 1RM para comparar pesos con repeticiones distintas.
+  // Es la regla de no inventar métricas aplicada al récord: 100 kg x 1 y
+  // 60 kg x 10 se muestran como hechos separados, no se ordenan con fórmula.
+  //
+  // Se miran los comentarios aparte: los que hay explican precisamente por qué
+  // NO se usa la fórmula, así que buscar el término a secas se cazaría a sí
+  // mismo y la prueba no valdría para nada.
+  const sinComentarios = (fuente) => fuente
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/(^|[^:])\/\/[^\n]*/g, "$1 ");
+  for (const fuente of [core, app]) {
+    assert.doesNotMatch(sinComentarios(fuente), /1RM|epley|brzycki|lombardi|oconner/i);
+  }
+});
+
+test("guardar una serie la destaca una vez y solo canta récord si había uno", () => {
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const css = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+
+  // Se anima, no se transiciona: la fila es un nodo nuevo en cada render, así
+  // que una transición no tendría valor anterior desde el que partir. Si esto
+  // se convierte en transition, el destello deja de verse.
+  assert.match(css, /@keyframes set-saved/);
+  assert.match(css, /\.swipe-set-row\.is-fresh \.set-row-content \{ animation: set-saved/);
+  assert.match(css, /\.swipe-set-row\.is-record \.set-row-content \{ animation: set-record/);
+
+  // Solo color: desplazar o escalar la fila empujaría a las de abajo justo
+  // cuando estás mirando el número que acabas de escribir.
+  const destellos = css.slice(css.indexOf("@keyframes set-saved"), css.indexOf(".swipe-set-row.is-record"));
+  assert.doesNotMatch(destellos, /transform|translate|scale|margin|padding|width|height/);
+
+  // El tinte no puede salir de color-mix() sobre --set-row-bg: ese token es un
+  // linear-gradient, no un color, y color-mix() con una imagen es inválido. El
+  // navegador tira la declaración y el fondo se queda transparente, dejando ver
+  // las etiquetas del swipe. Pasó de verdad y no lo cazó ninguna prueba.
+  assert.match(css, /--set-row-bg: linear-gradient/);
+  assert.doesNotMatch(css, /color-mix\([^)]*var\(--set-row-bg\)/);
+
+  // Se consume una sola vez: si no, arrancar el descanso o corregir otra serie
+  // repetiría el destello y dejaría de significar "acabas de guardar esto".
+  assert.match(app, /if \(freshSet && freshSet\.id === workoutSet\.id\) \{[\s\S]*?freshSet = null;/);
+
+  // Y las clases se retiran al acabar la animación: cambiar de pestaña no
+  // relanza render(), así que sin esto la fila se quedaría marcada para siempre.
+  // Con .01ms de prefers-reduced-motion el evento sigue disparando, que es por
+  // lo que ese bloque usa .01ms y no 0.
+  assert.match(app, /addEventListener\("animationend"[\s\S]{0,160}?classList\.remove\("is-fresh", "is-record"\)[\s\S]{0,60}?once: true/);
+
+  // Corregir una serie ya guardada no destella: ahí no acabas de entrenar,
+  // estás arreglando un número. Misma regla que el descanso automático.
+  const guardado = app.slice(app.indexOf("const saved = runOnce(submit"), app.indexOf("form.startEditing ="));
+  assert.match(guardado, /updateSet\([^)]*\);\s*return;/);
+  assert.doesNotMatch(guardado.slice(0, guardado.indexOf("return;")), /freshSet =/);
+});
+
+test("el récord solo se canta cuando había un récord anterior que superar", () => {
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const resumen = app.slice(app.indexOf("function recordSummary("), app.indexOf("function createPersonalRecordCard("));
+
+  // La primera serie de un ejercicio nuevo es tu mejor marca, pero no has
+  // superado nada: llamarlo récord vacía la palabra. Por eso se exige que
+  // exista el récord anterior, no solo que la serie sea la mejor.
+  assert.match(resumen, /records\.load && records\.previous\.heaviestSet/);
+  assert.match(resumen, /records\.reps && records\.previous\.mostReps/);
+  // Y se dice contra qué se compara, que es lo que lo hace un hecho y no un aplauso.
+  assert.match(resumen, /antes \$\{records\.previous\.heaviestSet\.loadKg\}/);
+  assert.match(resumen, /return partes\.length \? .* : null;/);
+
+  // Sin récord, no se dice nada: el aviso se compone filtrando lo que no hay.
+  assert.match(app, /\[\s*"Serie guardada\.",\s*logro,[\s\S]*?\]\.filter\(Boolean\)\.join\(" "\)/);
 });
