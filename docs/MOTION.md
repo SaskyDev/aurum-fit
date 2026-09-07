@@ -1,10 +1,10 @@
 # Motion
 
 Qué se mueve en Aurum Fit, por qué, y qué queda pendiente. Auditoría completa
-del inventario de animación hecha sobre `2465de8`; P1 y P2 aplicados en
-`dce5819`.
+del inventario de animación hecha sobre `2465de8`. Aplicados P1 y P2 (`dce5819`)
+y P4.
 
-Última revisión: 6 de septiembre de 2026.
+Última revisión: 7 de septiembre de 2026.
 
 ## El principio
 
@@ -37,9 +37,12 @@ Consecuencias reales, medidas, no hipótesis:
   que existe solo para que los desplegables del diario no se cierren solos en
   cada render.
 
-Cualquier trabajo de motion sobre listas exige antes una forma de identificar
-nodos entre renders. No hace falta reescribir el render: basta con dar un
-`data-id` estable a las filas y reutilizar el nodo si ya existe.
+Cualquier **transición** sobre listas exige antes una forma de identificar nodos
+entre renders. Una **animación de keyframes, no**: se reproduce sola al crearse
+el elemento, y la fila es nueva en cada render. Es la diferencia que hizo que P4
+saliera sin tocar el render, al contrario de lo que decía el plan inicial. Si
+algún día se quieren transiciones de entrada y salida, entonces sí hará falta
+dar un `data-id` estable a las filas y reutilizar el nodo existente.
 
 ## Reglas vigentes
 
@@ -79,6 +82,33 @@ series se le había quedado sin portar.
 fuera la animación de las subvistas de Ajustes, el swipe de series, las
 tarjetas de cardio y las nueve llamadas de scroll suave desde JS.
 
+**P4 · Guardar una serie no tenía ninguna respuesta visual.** Ahora la fila
+recién guardada se tiñe brevemente (`set-saved`, 320 ms) y, si la serie superó
+un récord, más y durante más rato (`set-record`, 900 ms). Salió sin tocar el
+render: las animaciones no necesitan identidad de nodo.
+
+Tres decisiones que lo sostienen:
+
+- **Se consume una sola vez.** `freshSet` se vacía al pintar la fila. Sin eso,
+  arrancar el descanso o corregir otra serie repetirían el destello y dejaría de
+  significar "acabas de guardar esto". Las clases se retiran además en
+  `animationend`, porque cambiar de pestaña no relanza `render()` y la fila se
+  quedaría marcada.
+- **Solo color.** Nada de desplazamiento ni escala: empujaría las filas de abajo
+  justo cuando estás mirando el número que acabas de escribir.
+- **Corregir una serie no destella.** Misma regla que el descanso automático:
+  ahí no acabas de entrenar, estás arreglando un número.
+
+Y una trampa que costó encontrar: el tinte va con `box-shadow` interior y no con
+`background`, porque `--set-row-bg` es un `linear-gradient` y `color-mix()` con
+una imagen es inválido. El navegador descarta la declaración entera y el fondo
+se queda transparente, dejando ver las etiquetas del swipe por debajo. No lo
+cazó ninguna prueba de código: se vio mirando la fila en el navegador. Ahora hay
+una prueba que lo impide.
+
+Con movimiento reducido el destello dura 0,01 ms pero el aviso del récord sigue
+apareciendo: se quita el movimiento, no la información.
+
 ## Pendiente, por orden
 
 **P5 · La pestaña cambia de golpe y la barra tarda 720 ms.** `.panel` alterna
@@ -99,25 +129,19 @@ mientras el viejo se va.
 solo cambia de color. Un aro de progreso SVG con `stroke-dashoffset`, alimentado
 por el `setInterval` de 1 s que ya existe, es dato real y no choca con nada.
 
-**P4 · Guardar una serie no tiene ninguna respuesta visual.** Es el hueco más
-grande y el más caro, porque depende de la restricción de arriba. Por trozos:
-(a) dar `data-set-id` a la fila y reutilizar el nodo entre renders, sin
-animación y con las pruebas en verde; (b) marcar la fila guardada con
-`is-fresh` y un destello de ~220 ms sin desplazamiento; (c) opcional, un
-`scale` breve en el número de serie, midiendo antes si aporta o distrae.
-
 ## Qué sobrevive a una app nativa
 
 Si la migración a Swift/iOS se acerca, esto cambia el orden de trabajo.
 
-**Se tira entero:** los 7 `@keyframes`, todas las transiciones CSS, el andamiaje
-de `data-set-id` de P4, el aro SVG de P6 y la mecánica `display: none`/`block`
-de P5.
+**Se tira entero:** los `@keyframes`, todas las transiciones CSS, el aro SVG de
+P6 y la mecánica `display: none`/`block` de P5.
 
 **Sobrevive como decisión:** las duraciones y curvas elegidas, la regla del
 arrastre directo con vuelta animada, respetar la reducción de movimiento
 (`@Environment(\.accessibilityReduceMotion)` es el equivalente), y el criterio
 de que el motion siga a la frecuencia de uso.
 
-**Conclusión práctica: no invertir en P4 ni P6 si la migración está cerca.**
-P1 y P2 valían igualmente porque arreglaban defectos que alguien sufría hoy.
+Con la migración nativa aún lejos (decidido en septiembre de 2026), el orden lo
+manda el valor de uso y no la caducidad. Lo que queda —P5, P3, P6— es CSS que se
+tirará, así que conviene hacerlo barato: P5 es media hora y se nota en cada uso;
+P3 y P6 pueden esperar.
