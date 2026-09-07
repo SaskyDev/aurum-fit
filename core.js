@@ -2126,3 +2126,108 @@ export function muscleIntensity(directSets) {
   });
   return current.id;
 }
+
+// --- Récord personal ---------------------------------------------------------
+//
+// El récord NO se guarda en el estado: se recalcula desde el historial cada vez
+// que se pide. Un campo almacenado se desincroniza en cuanto alguien corrige o
+// borra una serie antigua, y a partir de ahí la app afirmaría un récord que ya
+// no existe. Recalcular sale barato y no puede mentir.
+//
+// Peso y repeticiones son dos hechos separados a propósito. Decidir si 100 kg
+// por 1 repetición "supera" a 60 kg por 10 exige una fórmula de 1RM estimado, y
+// eso es exactamente la métrica inventada que este proyecto no muestra. Aquí
+// solo se dice lo que ocurrió: este es el peso más alto que has movido, estas
+// son las repeticiones más altas que has hecho.
+
+function personalRecordCandidates(state, exerciseId, { excludeSetId = null, upToIso = null } = {}) {
+  const candidates = [];
+  (state?.training?.sessions ?? []).forEach((session) => {
+    // Misma regla que el mapa muscular: lo ya registrado en la sesión en curso
+    // cuenta, porque la serie existe. Una sesión descartada no dejó nada.
+    if (session.status !== "completed" && session.status !== "in_progress") return;
+    const sessionStamp = session.status === "completed"
+      ? (session.endedAt ?? session.startedAt)
+      : session.startedAt;
+
+    (session.exercises ?? []).forEach((sessionExercise) => {
+      if (sessionExercise.exerciseId !== exerciseId) return;
+      (sessionExercise.sets ?? []).forEach((workoutSet) => {
+        if (excludeSetId && workoutSet.id === excludeSetId) return;
+        if (workoutSet.status !== "completed") return;
+        // Un récord calentando no es un récord.
+        const setType = workoutSet.setType ?? (workoutSet.isWarmup ? "warmup" : "effective");
+        if (setType !== "effective") return;
+
+        const date = workoutSet.completedAt ?? sessionStamp ?? null;
+        if (upToIso && date && date > upToIso) return;
+
+        // loadKg admite null (peso corporal). Number(null) es 0, que sí es
+        // finito, así que hay que distinguir "sin peso anotado" de "0 kg".
+        const raw = workoutSet.loadKg;
+        const hasLoad = raw !== null && raw !== undefined && raw !== "" && Number.isFinite(Number(raw));
+
+        candidates.push({
+          setId: workoutSet.id,
+          sessionId: session.id,
+          exerciseName: sessionExercise.exerciseName,
+          loadKg: hasLoad ? Number(raw) : null,
+          reps: Number.isFinite(Number(workoutSet.reps)) ? Number(workoutSet.reps) : 0,
+          date,
+        });
+      });
+    });
+  });
+  return candidates;
+}
+
+// Empates: a igual peso gana más repeticiones, porque es estrictamente más
+// trabajo observado y no hace falta fórmula alguna para afirmarlo. A igual peso
+// y repeticiones gana la fecha más antigua: el récord se estableció la primera
+// vez que lo hiciste, no la última vez que lo repetiste.
+function bestBy(candidates, compare) {
+  return candidates.reduce((best, item) => (best === null || compare(item, best) < 0 ? item : best), null);
+}
+
+export function exercisePersonalRecords(state, exerciseId, options = {}) {
+  const candidates = personalRecordCandidates(state, exerciseId, options);
+
+  // Un "peso máximo" de 0 kg no dice nada: los ejercicios de peso corporal se
+  // miden por repeticiones, que es lo que sí varía.
+  const conPeso = candidates.filter((item) => item.loadKg !== null && item.loadKg > 0);
+
+  return {
+    heaviestSet: bestBy(conPeso, (a, b) => (
+      (b.loadKg - a.loadKg)
+      || (b.reps - a.reps)
+      || String(a.date ?? "").localeCompare(String(b.date ?? ""))
+    )),
+    mostReps: bestBy(candidates, (a, b) => (
+      (b.reps - a.reps)
+      || ((b.loadKg ?? 0) - (a.loadKg ?? 0))
+      || String(a.date ?? "").localeCompare(String(b.date ?? ""))
+    )),
+    effectiveSets: candidates.length,
+  };
+}
+
+// Qué récords establece UNA serie concreta, comparándola con el historial sin
+// ella. Se exige superar, no igualar: si no, cinco series al mismo peso máximo
+// cantarían récord cinco veces y la palabra dejaría de significar nada.
+export function recordsSetBy(state, exerciseId, setId) {
+  const candidates = personalRecordCandidates(state, exerciseId);
+  const workoutSet = candidates.find((item) => item.setId === setId);
+  const vacio = { load: false, reps: false, previous: null, set: null };
+  if (!workoutSet) return vacio;
+
+  const previous = exercisePersonalRecords(state, exerciseId, { excludeSetId: setId });
+  return {
+    load: workoutSet.loadKg !== null
+      && workoutSet.loadKg > 0
+      && (previous.heaviestSet === null || workoutSet.loadKg > previous.heaviestSet.loadKg),
+    reps: workoutSet.reps > 0
+      && (previous.mostReps === null || workoutSet.reps > previous.mostReps.reps),
+    previous,
+    set: workoutSet,
+  };
+}

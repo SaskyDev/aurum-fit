@@ -19,6 +19,7 @@ import {
   completeSession,
   cleanupPublishedData,
   computeMuscleVolume,
+  exercisePersonalRecords,
   createEmptyState,
   createRoutine,
   createRoutineWithWeekdays,
@@ -40,6 +41,7 @@ import {
   sanitizeExerciseMuscles,
   replaceSessionExerciseForToday,
   removeDemoData,
+  recordsSetBy,
   routineDayWeekdays,
   seedDemoData,
   setSessionExerciseSkipped,
@@ -1117,4 +1119,140 @@ test("la escala del mapa muscular es legible y coincide con la hoja de estilos",
       `el tramo ${tramo} claro de styles.css no coincide con la escala validada`,
     );
   });
+});
+
+function estadoConSeries(series, { now = "2026-07-24T08:10:00.000Z" } = {}) {
+  const state = createEmptyState({ now: "2026-07-24T08:00:00.000Z" });
+  const session = startFreeSession(state, { id: "session-1", now });
+  const exercise = addExerciseToSession(state, session.id, "Press banca", {
+    exerciseId: "exercise-1",
+    sessionExerciseId: "session-exercise-1",
+  });
+  series.forEach((entrada, indice) => {
+    addSetToExercise(state, session.id, exercise.id, {
+      setType: "effective",
+      ...entrada,
+    }, { id: `set-${indice + 1}`, now: entrada.completedAt ?? now });
+  });
+  return { state, session, exercise };
+}
+
+test("el récord personal sale del historial y no de un campo guardado", () => {
+  const { state } = estadoConSeries([
+    { reps: 8, loadKg: 60 },
+    { reps: 5, loadKg: 80 },
+    { reps: 10, loadKg: 50 },
+  ]);
+
+  const records = exercisePersonalRecords(state, "exercise-1");
+  assert.equal(records.heaviestSet.loadKg, 80);
+  assert.equal(records.heaviestSet.reps, 5);
+  assert.equal(records.mostReps.reps, 10);
+  assert.equal(records.effectiveSets, 3);
+
+  // Y no queda rastro del récord en el estado: si estuviera guardado, borrar la
+  // serie lo dejaría desincronizado. Recalcular es lo que impide esa mentira.
+  assert.doesNotMatch(JSON.stringify(state), /"record"|"personalRecord"|"heaviestSet"/i);
+  deleteSet(state, state.training.sessions[0].id, "session-exercise-1", "set-2");
+  assert.equal(exercisePersonalRecords(state, "exercise-1").heaviestSet.loadKg, 60);
+});
+
+test("calentar no marca récord y el peso corporal se mide por repeticiones", () => {
+  const { state } = estadoConSeries([
+    { reps: 3, loadKg: 200, setType: "warmup" },
+    { reps: 6, loadKg: 100, setType: "approach" },
+    { reps: 9, loadKg: 70 },
+  ]);
+  const records = exercisePersonalRecords(state, "exercise-1");
+  // 200 kg era calentamiento y 100 kg aproximación: ninguno es un récord.
+  assert.equal(records.heaviestSet.loadKg, 70);
+  assert.equal(records.effectiveSets, 1);
+
+  // Sin peso anotado no hay récord de peso, pero sí de repeticiones. Ojo: 0 kg
+  // no es lo mismo que "sin peso", y Number(null) === 0 los confundiría.
+  const corporal = estadoConSeries([{ reps: 15, loadKg: "" }, { reps: 20, loadKg: "" }]);
+  const sinPeso = exercisePersonalRecords(corporal.state, "exercise-1");
+  assert.equal(sinPeso.heaviestSet, null);
+  assert.equal(sinPeso.mostReps.reps, 20);
+  assert.equal(sinPeso.mostReps.loadKg, null);
+});
+
+test("igualar el récord no es superarlo", () => {
+  // Dos estados separados a propósito. Con las tres series en el mismo estado,
+  // al evaluar la segunda el récord anterior serían los 85 kg de la tercera y
+  // el empate quedaría tapado: la prueba pasaría aunque el código aceptase
+  // igualar como superar. Se comprobó mutando > por >=.
+  const empate = estadoConSeries([
+    { reps: 5, loadKg: 80, completedAt: "2026-07-24T08:11:00.000Z" },
+    { reps: 5, loadKg: 80, completedAt: "2026-07-24T08:20:00.000Z" },
+  ]).state;
+  const igualada = recordsSetBy(empate, "exercise-1", "set-2");
+  assert.equal(igualada.previous.heaviestSet.loadKg, 80, "el récord anterior tiene que ser el mismo peso");
+  assert.equal(igualada.load, false, "igualar el máximo no es récord");
+
+  const superado = estadoConSeries([
+    { reps: 5, loadKg: 80, completedAt: "2026-07-24T08:11:00.000Z" },
+    { reps: 5, loadKg: 85, completedAt: "2026-07-24T08:20:00.000Z" },
+  ]).state;
+  const mejorada = recordsSetBy(superado, "exercise-1", "set-2");
+  assert.equal(mejorada.previous.heaviestSet.loadKg, 80);
+  assert.equal(mejorada.load, true);
+
+  // Lo mismo con repeticiones, que es el eje de los ejercicios de peso corporal.
+  const reps = estadoConSeries([{ reps: 12, loadKg: "" }, { reps: 12, loadKg: "" }]).state;
+  assert.equal(recordsSetBy(reps, "exercise-1", "set-2").reps, false);
+});
+
+test("a igual peso y repeticiones el récord es de la primera vez, no de la última", () => {
+  const { state } = estadoConSeries([
+    { reps: 5, loadKg: 80, completedAt: "2026-07-24T08:11:00.000Z" },
+    { reps: 5, loadKg: 80, completedAt: "2026-07-24T09:00:00.000Z" },
+  ]);
+  assert.equal(exercisePersonalRecords(state, "exercise-1").heaviestSet.setId, "set-1");
+
+  // Y a igual peso gana más repeticiones, que es más trabajo observado y no
+  // necesita ninguna fórmula de 1RM estimado para afirmarse.
+  const { state: otro } = estadoConSeries([{ reps: 5, loadKg: 80 }, { reps: 9, loadKg: 80 }]);
+  assert.equal(exercisePersonalRecords(otro, "exercise-1").heaviestSet.reps, 9);
+});
+
+test("una sesión descartada no deja récord y una terminada sí", () => {
+  const { state, session, exercise } = estadoConSeries([{ reps: 5, loadKg: 120 }]);
+  completeSession(state, session.id, "2026-07-24T09:00:00.000Z");
+  assert.equal(exercisePersonalRecords(state, "exercise-1").heaviestSet.loadKg, 120);
+
+  const segunda = startFreeSession(state, { id: "session-2", now: "2026-07-25T08:00:00.000Z" });
+  const ejercicio2 = addExerciseToSession(state, segunda.id, "Press banca", {
+    exerciseId: "exercise-1",
+    sessionExerciseId: "session-exercise-2",
+  });
+  addSetToExercise(state, segunda.id, ejercicio2.id, { reps: 5, loadKg: 300, setType: "effective" }, { id: "set-descartado" });
+  // En curso ya cuenta: la serie existe aunque la sesión no haya terminado.
+  assert.equal(exercisePersonalRecords(state, "exercise-1").heaviestSet.loadKg, 300);
+
+  // Descartar borra la sesión del array entero, no le cambia el estado.
+  discardSession(state, segunda.id);
+  assert.equal(state.training.sessions.some((item) => item.id === "session-2"), false);
+  assert.equal(exercisePersonalRecords(state, "exercise-1").heaviestSet.loadKg, 120);
+  assert.ok(exercise);
+});
+
+test("una sesión con un estado que no es historial no aporta récord", () => {
+  // Hoy solo existen "completed" y "in_progress", pero el filtro está puesto y
+  // tiene que seguir estándolo: si mañana aparece un estado nuevo (una
+  // plantilla, un borrador), sus series no pueden colarse como récord sin que
+  // alguien lo decida a conciencia.
+  const { state } = estadoConSeries([{ reps: 5, loadKg: 100 }]);
+  state.training.sessions.push({
+    id: "session-borrador",
+    status: "draft",
+    startedAt: "2026-07-26T08:00:00.000Z",
+    exercises: [{
+      id: "session-exercise-borrador",
+      exerciseId: "exercise-1",
+      exerciseName: "Press banca",
+      sets: [{ id: "set-borrador", status: "completed", setType: "effective", reps: 5, loadKg: 500 }],
+    }],
+  });
+  assert.equal(exercisePersonalRecords(state, "exercise-1").heaviestSet.loadKg, 100);
 });

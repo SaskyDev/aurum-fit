@@ -813,3 +813,32 @@ test("la reducción de movimiento se aplica a todo, no a una lista de selectores
   assert.doesNotMatch(app, /behavior: "smooth"/);
   assert.doesNotMatch(app, /"smooth", block/);
 });
+
+test("el récord personal es un hecho recalculado, no una métrica estimada", () => {
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const core = fs.readFileSync(new URL("../core.js", import.meta.url), "utf8");
+
+  // Se calcula al pintar y se muestra donde se registra el trabajo.
+  assert.match(app, /createPersonalRecordCard\(sessionExercise\.exerciseId\)/);
+  assert.match(app, /exercisePersonalRecords\(state, exerciseId\)/);
+  assert.match(app, /Sin récord aún/);
+
+  // No se guarda en el estado: si se guardara, corregir o borrar una serie
+  // antigua dejaría la app afirmando un récord que ya no existe.
+  assert.doesNotMatch(core, /personalRecord:|heaviestSet:\s*state|records:\s*\{/);
+  assert.doesNotMatch(core, /validateState[\s\S]{0,4000}?record/i);
+
+  // Y nunca se estima un 1RM para comparar pesos con repeticiones distintas.
+  // Es la regla de no inventar métricas aplicada al récord: 100 kg x 1 y
+  // 60 kg x 10 se muestran como hechos separados, no se ordenan con fórmula.
+  //
+  // Se miran los comentarios aparte: los que hay explican precisamente por qué
+  // NO se usa la fórmula, así que buscar el término a secas se cazaría a sí
+  // mismo y la prueba no valdría para nada.
+  const sinComentarios = (fuente) => fuente
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/(^|[^:])\/\/[^\n]*/g, "$1 ");
+  for (const fuente of [core, app]) {
+    assert.doesNotMatch(sinComentarios(fuente), /1RM|epley|brzycki|lombardi|oconner/i);
+  }
+});

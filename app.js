@@ -12,6 +12,7 @@ import {
   completeSession,
   cleanupPublishedData,
   computeMuscleVolume,
+  exercisePersonalRecords,
   createRoutineWithWeekdays,
   deleteSet,
   duplicateSet,
@@ -42,8 +43,8 @@ import {
   startSessionFromRoutineDay,
   updateSet,
   validateLabelPhotoFile,
-} from "./core.js?v=69";
-import { BODY_FIGURES } from "./body-paths.js?v=69";
+} from "./core.js?v=70";
+import { BODY_FIGURES } from "./body-paths.js?v=70";
 
 const defaultTargets = { calories: 2200, protein: 170, steps: 10000 };
 const defaultPreferences = {
@@ -2890,6 +2891,50 @@ function createLastReferenceCard(reference) {
   return card;
 }
 
+// El récord se recalcula al pintar, no se lee de ningún campo guardado: por eso
+// refleja al instante una serie corregida o borrada. Incluye la sesión en curso
+// a propósito, porque una serie que acabas de registrar ya ocurrió.
+//
+// Peso y repeticiones se muestran por separado. Juntarlos en un único "mejor"
+// exigiría estimar un 1RM, que es una métrica inventada: aquí solo se dice lo
+// que pasó.
+function createPersonalRecordCard(exerciseId) {
+  const card = createElement("aside", "reference-card record-card");
+  card.setAttribute("aria-label", "Récord personal del ejercicio");
+  card.appendChild(createElement("span", "reference-card-label", "Récord"));
+
+  const records = exercisePersonalRecords(state, exerciseId);
+  if (!records.heaviestSet && !records.mostReps) {
+    card.appendChild(createElement("p", "muted", "Sin récord aún. Se calcula con tus series efectivas; el calentamiento no cuenta."));
+    return card;
+  }
+
+  const list = createElement("ul", "record-list");
+  const fila = (etiqueta, valor, cuando) => {
+    const item = createElement("li", "record-list-item");
+    item.append(
+      createElement("span", "record-kind", etiqueta),
+      createElement("strong", "record-value", valor),
+    );
+    if (cuando) item.appendChild(createElement("span", "record-when", formatDateTime(cuando)));
+    list.appendChild(item);
+  };
+
+  if (records.heaviestSet) {
+    fila("Más peso", `${records.heaviestSet.loadKg} kg × ${records.heaviestSet.reps} reps`, records.heaviestSet.date);
+  }
+  // Solo se repite la fila de repeticiones si aporta algo distinto: en un
+  // ejercicio con peso, la serie más pesada suele ser también la referencia.
+  if (records.mostReps && records.mostReps.setId !== records.heaviestSet?.setId) {
+    const peso = records.mostReps.loadKg === null || records.mostReps.loadKg === 0
+      ? "peso corporal"
+      : `${records.mostReps.loadKg} kg`;
+    fila("Más reps", `${records.mostReps.reps} reps · ${peso}`, records.mostReps.date);
+  }
+  card.appendChild(list);
+  return card;
+}
+
 function completedExerciseHistory(exerciseId) {
   return state.training.sessions
     .filter((session) => session.status === "completed" && session.endedAt)
@@ -3047,6 +3092,7 @@ function renderSessionExercise(session, sessionExercise) {
   if (sessionExercise.planNote) titleBlock.appendChild(createElement("p", "muted", sessionExercise.planNote));
 
   const reference = findLastComparableExercise(state, sessionExercise.exerciseId, session.id);
+  titleBlock.appendChild(createPersonalRecordCard(sessionExercise.exerciseId));
   titleBlock.appendChild(createLastReferenceCard(reference));
   header.appendChild(titleBlock);
   const statusBlock = createElement("div", "exercise-status-actions");
@@ -3547,7 +3593,7 @@ function backfillExerciseMuscles() {
 
 async function loadCatalog() {
   try {
-    const response = await fetch("./data/exercises.es.json?v=69", { cache: "no-cache" });
+    const response = await fetch("./data/exercises.es.json?v=70", { cache: "no-cache" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     if (!Array.isArray(payload.exercises)) throw new Error("Estructura no válida");

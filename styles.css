@@ -4532,3 +4532,28 @@ th {
   transform: translateX(20px);
 }
 
+
+/* La tarjeta de récord comparte caja con la de última referencia: son dos
+   hechos del mismo ejercicio y conviene que se lean como un par, no como dos
+   componentes distintos. */
+.record-card { border-color: rgba(var(--accent-rgb), .3); }
+.record-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.record-list-item {
+  display: grid;
+  grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+  gap: 4px var(--space-2);
+  align-items: baseline;
+}
+.record-kind {
+  color: var(--ink-soft);
+  font-size: .68rem;
+  font-weight: 850;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.record-value { font-size: .95rem; font-variant-numeric: tabular-nums; }
+.record-when {
+  grid-column: 2;
+  color: var(--ink-soft);
+  font-size: .74rem;
+}
