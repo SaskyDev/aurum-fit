@@ -1,7 +1,7 @@
 # Modelo local v2
 
 Fecha: 24 de julio de 2026.
-Última revisión: 7 de septiembre de 2026.
+Última revisión: 10 de septiembre de 2026.
 
 ## Objetivo del incremento
 
@@ -138,6 +138,58 @@ hiciste, no la última vez que lo repetiste.
 concreta**, comparándola con el historial sin ella. Exige superar, no igualar:
 si igualar contase, cinco series al mismo peso máximo cantarían récord cinco
 veces y la palabra dejaría de significar algo.
+
+## Rutinas guiadas · decidido, pendiente de construir
+
+> Acordado pero **todavía no está en el código**. El porqué de producto está en
+> `DECISIONES_UX.md`; aquí queda la forma de los datos.
+
+### Lo que ya existe a medias
+
+El ejercicio de rutina **ya admite un plan**: `plannedSets`, `repMin`, `repMax` y
+`note`, con validación (`validateRoutineExercisePlan`), actualizador
+(`updateRoutineExercisePlan`) y normalización en `validateState`. Está marcado
+como `hasLegacyPlan` y **ninguna pantalla lo rellena**. No es modelo nuevo: es
+completar algo a medio construir.
+
+### Lo que falta
+
+- **`mode` en la rutina**: `"log"` (por defecto) o `"guided"`. **Ausente
+  equivale a `"log"`**, para que las rutinas ya guardadas sigan siendo válidas.
+- **`targetLoadKg` en el ejercicio de rutina**: el único campo realmente nuevo.
+  **Admite nulo a propósito** — es el caso de "primera vez, aún sin referencia".
+  Distinto de `0`, igual que en el récord personal: `Number(null)` es `0` y
+  confundirlos haría que un ejercicio sin peso anotado pareciera de 0 kg.
+- **Estado `"skipped"` en la serie**, para la planificada que no se llegó a
+  hacer.
+
+### La invariante que no se puede romper
+
+> **Una serie planificada no cuenta como realizada hasta que se marca.**
+
+En la práctica: nada que no tenga `status === "completed"` puede aparecer en
+`computeMuscleVolume`, en `personalRecordCandidates` ni en el progreso. Esos
+filtros ya existen y ya lo hacen; lo que hay que garantizar es que lo planificado
+y lo anulado **nunca** lleguen a ese estado.
+
+Es el punto donde este cambio puede corromper datos que hoy son correctos: si una
+serie planificada se cuela como hecha, el mapa muscular y los récords empiezan a
+mentir sin que salte ningún error.
+
+### El plan y el hecho son cosas distintas
+
+`startSessionFromRoutineDay` copia el plan a la sesión **solo si la rutina es
+`guided`**. En modo registro sigue arrancando en blanco, que es la decisión
+original y sigue siendo la correcta ahí.
+
+Una vez copiado, **el plan de la sesión es una foto**: editarlo durante el
+entrenamiento afecta a ese día y no toca la rutina. Y al revés, editar la rutina
+después no altera ninguna sesión ya registrada. Es la misma regla de siempre —la
+rutina es un plan que cambia, la sesión es un hecho que ya ocurrió— aplicada a
+un plan que ahora lleva números.
+
+El plan de la rutina solo cambia cuando el usuario confirma que quiere cambiarlo,
+al responder la pregunta de desviación.
 
 ## Reglas de seguridad
 
