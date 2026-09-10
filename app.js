@@ -44,8 +44,8 @@ import {
   startSessionFromRoutineDay,
   updateSet,
   validateLabelPhotoFile,
-} from "./core.js?v=74";
-import { BODY_FIGURES } from "./body-paths.js?v=74";
+} from "./core.js?v=75";
+import { BODY_FIGURES } from "./body-paths.js?v=75";
 
 const defaultTargets = { calories: 2200, protein: 170, steps: 10000 };
 const defaultPreferences = {
@@ -3642,7 +3642,7 @@ function backfillExerciseMuscles() {
 
 async function loadCatalog() {
   try {
-    const response = await fetch("./data/exercises.es.json?v=74", { cache: "no-cache" });
+    const response = await fetch("./data/exercises.es.json?v=75", { cache: "no-cache" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     if (!Array.isArray(payload.exercises)) throw new Error("Estructura no válida");

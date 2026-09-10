@@ -5,6 +5,7 @@ import { spawnSync } from "node:child_process";
 // tocar el checkout ni arriesgar los cambios de otra persona.
 const mutations = [
   ["modo", 'routine.mode ??= "log";', 'routine.mode ??= "guided";'],
+  ["peso nulo", 'note, targetLoadKg: target.value };', 'note, targetLoadKg: Number(target.value) };'],
 ];
 const core = fs.readFileSync(new URL("../core.js", import.meta.url), "utf8");
 const tests = fs.readFileSync(new URL("../tests/guided.test.js", import.meta.url), "utf8");

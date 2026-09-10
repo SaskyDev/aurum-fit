@@ -342,6 +342,9 @@ export function validateState(state) {
           || typeof routineExercise.exerciseId !== "string"
           || typeof routineExercise.exerciseName !== "string"
           || !Number.isInteger(routineExercise.order)
+          || (routineExercise.targetLoadKg !== undefined && routineExercise.targetLoadKg !== null
+            && (!Number.isFinite(routineExercise.targetLoadKg)
+              || routineExercise.targetLoadKg < 0 || routineExercise.targetLoadKg > 2000))
           || (
             routineExercise.plannedSets !== undefined
             && (!Number.isInteger(routineExercise.plannedSets)
@@ -364,6 +367,11 @@ export function validateState(state) {
         ) {
           return "Hay un ejercicio de rutina no válido.";
         }
+        if (routine.mode === "guided") {
+          try { Object.assign(routineExercise, validateRoutineExercisePlan(routineExercise)); }
+          catch { return "Hay un plan de rutina no válido."; }
+        }
+        routineExercise.targetLoadKg ??= null;
       }
     }
     if (
@@ -919,12 +927,18 @@ export function addExerciseToRoutineDay(
     repMin,
     repMax,
     note,
+    targetLoadKg,
   } = {},
 ) {
   const { routine, routineDay } = findRoutineDay(state, routineId, routineDayId);
   if (routineDayType(routineDay) === "cardio") {
     throw new Error("Un día de cardio no usa ejercicios con series.");
   }
+  const hasLegacyPlan = [plannedSets, repMin, repMax].some((value) => value !== undefined);
+  const plan = routine.mode === "guided" || hasLegacyPlan
+    ? validateRoutineExercisePlan({ plannedSets, repMin, repMax, note, targetLoadKg }) : null;
+  const target = optionalNumber(targetLoadKg, "El peso previsto", { min: 0, max: 2000 });
+  if (target.error) throw new Error(target.error);
   const exercise = findOrCreateExercise(state, name, { now, exerciseId });
   if (routineDay.exercises.some((item) => item.exerciseId === exercise.id)) {
     throw new Error("Ese ejercicio ya está incluido en el día.");
@@ -934,11 +948,9 @@ export function addExerciseToRoutineDay(
     exerciseId: exercise.id,
     exerciseName: exercise.name,
     order: routineDay.exercises.length + 1,
+    targetLoadKg: target.value,
   };
-  const hasLegacyPlan = [plannedSets, repMin, repMax].some((value) => value !== undefined);
-  if (hasLegacyPlan) {
-    Object.assign(routineExercise, validateRoutineExercisePlan({ plannedSets, repMin, repMax, note }));
-  }
+  if (plan) Object.assign(routineExercise, plan);
   routineDay.exercises.push(routineExercise);
   routine.updatedAt = now;
   return routineExercise;
@@ -949,6 +961,8 @@ function validateRoutineExercisePlan(input) {
   const repMin = Number(input.repMin);
   const repMax = Number(input.repMax);
   const note = String(input.note ?? "").trim();
+  const target = optionalNumber(input.targetLoadKg, "El peso previsto", { min: 0, max: 2000 });
+  if (target.error) throw new Error(target.error);
   if (!Number.isInteger(plannedSets) || plannedSets < MIN_PLANNED_SETS || plannedSets > MAX_PLANNED_SETS) {
     throw new Error(`Las series previstas deben estar entre ${MIN_PLANNED_SETS} y ${MAX_PLANNED_SETS}.`);
   }
@@ -959,7 +973,7 @@ function validateRoutineExercisePlan(input) {
   if (note.length > MAX_NOTE_LENGTH) {
     throw new Error(`La nota no puede superar ${MAX_NOTE_LENGTH} caracteres.`);
   }
-  return { plannedSets, repMin, repMax, note };
+  return { plannedSets, repMin, repMax, note, targetLoadKg: target.value };
 }
 
 export function updateRoutineExercisePlan(
