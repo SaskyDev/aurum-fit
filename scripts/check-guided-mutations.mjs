@@ -6,6 +6,7 @@ import { spawnSync } from "node:child_process";
 const mutations = [
   ["modo", 'routine.mode ??= "log";', 'routine.mode ??= "guided";'],
   ["peso nulo", 'note, targetLoadKg: target.value };', 'note, targetLoadKg: Number(target.value) };'],
+  ["herencia", 'plannedSets: guided ? routineExercise.plannedSets : 0,', 'plannedSets: 0,'],
 ];
 const core = fs.readFileSync(new URL("../core.js", import.meta.url), "utf8");
 const tests = fs.readFileSync(new URL("../tests/guided.test.js", import.meta.url), "utf8");

@@ -464,9 +464,9 @@ test("inicia desde un día y conserva una copia histórica al editar la rutina",
   assert.deepEqual(torso.exercises.map((exercise) => exercise.exerciseName), ["Press banca"]);
 });
 
-test("la rutina solo copia ejercicios y la sesión empieza sin objetivos ficticios", () => {
+test("en modo log, la rutina solo copia ejercicios y la sesión empieza sin objetivos ficticios", () => {
   const state = createEmptyState({ now: "2026-07-24T08:00:00.000Z" });
-  const routine = createRoutine(state, "Empuje", { id: "routine-1" });
+  const routine = createRoutine(state, "Empuje", { id: "routine-1", mode: "log" });
   const day = addRoutineDay(state, routine.id, "Push", { id: "day-push" });
   const exercise = addExerciseToRoutineDay(state, routine.id, day.id, "Press banca", {
     exerciseId: "exercise-press",

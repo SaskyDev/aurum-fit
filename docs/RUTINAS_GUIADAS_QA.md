@@ -20,3 +20,12 @@ Alex confirmó usar la suite canónica `node --test tests/*.test.js`:
 - Validación antes de crear ejercicios evita altas parciales si el plan falla.
 - Se rechazan pesos negativos, no finitos y superiores a 2000 kg.
 - TDD rojo/verde; mutación `Number(null)` detectada por la prueba del plan.
+
+## Paso 3 — plan y hechos separados
+
+- Solo `guided` copia series, rango, carga y nota a una foto de sesión.
+- Las pendientes se derivan de la foto; `sets` sigue vacío hasta registrar algo.
+  No se crean falsas series completadas ni es necesario un estado `planned`.
+- La prueba original permanece en modo log. La nueva comprueba volumen/récord
+  vacíos y que editar la rutina no cambia una sesión ya cerrada.
+- TDD rojo/verde; la mutación que elimina las series previstas es detectada.

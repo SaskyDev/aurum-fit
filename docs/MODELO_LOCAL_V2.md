@@ -183,6 +183,11 @@ mentir sin que salte ningún error.
 `guided`**. En modo registro sigue arrancando en blanco, que es la decisión
 original y sigue siendo la correcta ahí.
 
+Implementado en el paso 3: la foto incluye `routineExerciseId`, `plannedSets`,
+`repMin`, `repMax`, `targetLoadKg` y `planNote`. Las pendientes no son registros:
+se derivan de esa foto, mientras `sets` empieza vacío. La fuente conserva
+`snapshot.routineMode: "guided"` solo para sesiones guiadas.
+
 Una vez copiado, **el plan de la sesión es una foto**: editarlo durante el
 entrenamiento afecta a ese día y no toca la rutina. Y al revés, editar la rutina
 después no altera ninguna sesión ya registrada. Es la misma regla de siempre —la

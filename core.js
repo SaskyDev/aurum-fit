@@ -439,6 +439,12 @@ export function validateState(state) {
       ) {
         return "Hay un ejercicio de sesión no válido.";
       }
+      if (sessionExercise.routineExerciseId !== undefined) {
+        try {
+          if (typeof sessionExercise.routineExerciseId !== "string") throw new Error();
+          validateRoutineExercisePlan({ ...sessionExercise, note: sessionExercise.planNote });
+        } catch { return "Hay un plan de sesión no válido."; }
+      }
       for (const workoutSet of sessionExercise.sets) {
         const checkedSet = validateSetInput(workoutSet);
         if (
@@ -1080,6 +1086,9 @@ export function startSessionFromRoutineDay(
   if (active) throw new Error("Ya hay un entrenamiento en curso.");
   const { routine, routineDay } = findRoutineDay(state, routineId, routineDayId);
   const sessionType = routineDayType(routineDay);
+  const guided = routine.mode === "guided";
+  // Validar la foto completa antes de crear la sesión evita planes parciales.
+  if (guided) routineDay.exercises.forEach(validateRoutineExercisePlan);
   if (sessionType === "strength" && !routineDay.exercises.length) {
     throw new Error("Añade al menos un ejercicio al día antes de entrenar.");
   }
@@ -1097,6 +1106,7 @@ export function startSessionFromRoutineDay(
         routineDayName: routineDay.name,
         routineAccentColor: routine.accentColor ?? null,
         routineDayType: sessionType,
+        ...(guided ? { routineMode: "guided" } : {}),
         cardioType: routineDay.cardioType ?? null,
       },
     },
@@ -1144,10 +1154,14 @@ export function startSessionFromRoutineDay(
         order: index + 1,
         status: "active",
         isExtra: false,
-        plannedSets: 0,
-        repMin: null,
-        repMax: null,
-        planNote: "",
+        plannedSets: guided ? routineExercise.plannedSets : 0,
+        repMin: guided ? routineExercise.repMin : null,
+        repMax: guided ? routineExercise.repMax : null,
+        planNote: guided ? routineExercise.note ?? "" : "",
+        ...(guided ? {
+          targetLoadKg: routineExercise.targetLoadKg ?? null,
+          routineExerciseId: routineExercise.id,
+        } : {}),
         sets: [],
       })),
   };
