@@ -44,8 +44,8 @@ import {
   startSessionFromRoutineDay,
   updateSet,
   validateLabelPhotoFile,
-} from "./core.js?v=76";
-import { BODY_FIGURES } from "./body-paths.js?v=76";
+} from "./core.js?v=77";
+import { BODY_FIGURES } from "./body-paths.js?v=77";
 
 const defaultTargets = { calories: 2200, protein: 170, steps: 10000 };
 const defaultPreferences = {
@@ -1629,7 +1629,7 @@ function renderProgress() {
       const exercise = session.exercises.find((item) => item.exerciseId === select.value);
       if (!exercise) return;
       const effectiveSets = exercise.sets.filter(
-        (workoutSet) => (workoutSet.setType ?? (workoutSet.isWarmup ? "warmup" : "effective")) === "effective",
+        (workoutSet) => workoutSet.status === "completed" && (workoutSet.setType ?? (workoutSet.isWarmup ? "warmup" : "effective")) === "effective",
       );
       if (!effectiveSets.length) return;
       const best = effectiveSets.slice().sort((a, b) => (
@@ -2574,7 +2574,7 @@ function renderRoutineExerciseOptions(query = "") {
 
 function sessionSetCount(session) {
   if ((session?.sessionType ?? "strength") === "cardio") return session.cardio?.completedAt ? 1 : 0;
-  return session.exercises.reduce((total, exercise) => total + exercise.sets.length, 0);
+  return session.exercises.reduce((total, exercise) => total + exercise.sets.filter((item) => item.status === "completed").length, 0);
 }
 
 function formatSet(workoutSet) {
@@ -2989,7 +2989,7 @@ function exerciseProgressPoints(exerciseId) {
     .reverse()
     .flatMap(({ session, exercise }) => {
       const effectiveSets = exercise.sets.filter(
-        (workoutSet) => (workoutSet.setType ?? (workoutSet.isWarmup ? "warmup" : "effective")) === "effective",
+        (workoutSet) => workoutSet.status === "completed" && (workoutSet.setType ?? (workoutSet.isWarmup ? "warmup" : "effective")) === "effective",
       );
       if (!effectiveSets.length) return [];
       const best = effectiveSets.slice().sort((left, right) => (
@@ -3642,7 +3642,7 @@ function backfillExerciseMuscles() {
 
 async function loadCatalog() {
   try {
-    const response = await fetch("./data/exercises.es.json?v=76", { cache: "no-cache" });
+    const response = await fetch("./data/exercises.es.json?v=77", { cache: "no-cache" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     if (!Array.isArray(payload.exercises)) throw new Error("Estructura no válida");

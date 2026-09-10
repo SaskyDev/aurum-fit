@@ -446,6 +446,19 @@ export function validateState(state) {
         } catch { return "Hay un plan de sesión no válido."; }
       }
       for (const workoutSet of sessionExercise.sets) {
+        if (!isObject(workoutSet)) return "Hay una serie no válida.";
+        if (workoutSet.planOrder !== undefined && (
+          !Number.isInteger(workoutSet.planOrder) || workoutSet.planOrder < 1
+          || workoutSet.planOrder > sessionExercise.plannedSets
+          || sessionExercise.sets.filter((item) => item.planOrder === workoutSet.planOrder).length !== 1
+        )) return "Hay una serie planificada no válida.";
+        if (workoutSet.status === "skipped") {
+          if (typeof workoutSet.id !== "string" || !Number.isInteger(workoutSet.order)
+            || !Number.isInteger(workoutSet.planOrder) || workoutSet.completedAt !== null) {
+            return "Hay una serie anulada no válida.";
+          }
+          continue;
+        }
         const checkedSet = validateSetInput(workoutSet);
         if (
           !isObject(workoutSet)
@@ -1414,17 +1427,40 @@ export function addSetToExercise(
   const sessionExercise = findEditableSessionExercise(state, sessionId, sessionExerciseId);
   const result = validateSetInput(input);
   if (result.error) throw new Error(result.error);
+  if (input.planOrder !== undefined) assertPendingPlanSlot(sessionExercise, input.planOrder);
 
   const workoutSet = {
     id,
     order: sessionExercise.sets.length + 1,
     status: "completed",
+    ...(input.planOrder !== undefined ? { planOrder: input.planOrder } : {}),
     ...result.value,
     completedAt: now,
     updatedAt: now,
   };
   sessionExercise.sets.push(workoutSet);
   return workoutSet;
+}
+
+export function pendingPlannedSets(exercise) {
+  return Array.from({ length: exercise.plannedSets ?? 0 }, (_, index) => index + 1)
+    .filter((order) => !exercise.sets.some((item) => item.planOrder === order));
+}
+
+function assertPendingPlanSlot(exercise, order) {
+  if (!exercise.routineExerciseId || !Number.isInteger(order) || order < 1 || order > exercise.plannedSets) {
+    throw new Error("La serie no pertenece al plan de este ejercicio.");
+  }
+  if (!pendingPlannedSets(exercise).includes(order)) throw new Error("Esta serie ya está resuelta.");
+}
+
+export function skipPlannedSet(state, sessionId, exerciseId, planOrder, { now = new Date().toISOString(), id = createId("set") } = {}) {
+  const exercise = findEditableSessionExercise(state, sessionId, exerciseId);
+  assertPendingPlanSlot(exercise, planOrder);
+  // Anular deja constancia sin fabricar repeticiones, carga ni fecha de realización.
+  const skipped = { id, order: exercise.sets.length + 1, planOrder, status: "skipped", completedAt: null, updatedAt: now };
+  exercise.sets.push(skipped);
+  return skipped;
 }
 
 export function addCardioToSession(
@@ -1464,6 +1500,7 @@ export function duplicateSet(
   const sessionExercise = findEditableSessionExercise(state, sessionId, sessionExerciseId);
   const source = sessionExercise.sets.find((item) => item.id === setId);
   if (!source) throw new Error("No se encontró la serie que quieres duplicar.");
+  if (source.status === "skipped") throw new Error("Una serie anulada no se puede duplicar como realizada.");
   return addSetToExercise(state, sessionId, sessionExerciseId, {
     reps: source.reps,
     loadKg: source.loadKg,
@@ -1484,6 +1521,7 @@ export function updateSet(
   const sessionExercise = findEditableSessionExercise(state, sessionId, sessionExerciseId);
   const workoutSet = sessionExercise.sets.find((item) => item.id === setId);
   if (!workoutSet) throw new Error("No se encontró la serie.");
+  if (workoutSet.status === "skipped") throw new Error("Una serie anulada no se puede editar como realizada.");
   const result = validateSetInput(input);
   if (result.error) throw new Error(result.error);
 
@@ -1602,7 +1640,8 @@ export function findLastComparableExercise(state, exerciseId, excludedSessionId 
     .filter((session) => (
       session.id !== excludedSessionId
       && session.status === "completed"
-      && session.exercises.some((exercise) => exercise.exerciseId === exerciseId)
+      && session.exercises.some((exercise) => exercise.exerciseId === exerciseId
+        && exercise.sets.some((item) => item.status === "completed"))
     ))
     .sort((a, b) => (b.endedAt ?? b.startedAt).localeCompare(a.endedAt ?? a.startedAt));
 

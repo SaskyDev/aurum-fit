@@ -29,3 +29,13 @@ Alex confirmó usar la suite canónica `node --test tests/*.test.js`:
 - La prueba original permanece en modo log. La nueva comprueba volumen/récord
   vacíos y que editar la rutina no cambia una sesión ya cerrada.
 - TDD rojo/verde; la mutación que elimina las series previstas es detectada.
+
+## Paso 4 — anulación y auditoría de consumidores
+
+- `planOrder` identifica cada hueco; no admite dos resoluciones ni índices fuera
+  del plan. `skipPlannedSet` conserva estado `skipped`, sin datos realizados.
+- Volumen muscular, récords y `completeSession` ya filtraban completadas.
+- Corregidos ambos gráficos de progreso y `sessionSetCount`: no filtraban estado.
+- Última referencia omite sesiones del ejercicio sin series completadas.
+- Duplicar/editar una anulada no puede convertirla implícitamente en realizada.
+- TDD rojo/verde; mutación de skipped a completed detectada. Pendiente de UI.

@@ -161,8 +161,10 @@ completar algo a medio construir.
   **Admite nulo a propósito** — es el caso de "primera vez, aún sin referencia".
   Distinto de `0`, igual que en el récord personal: `Number(null)` es `0` y
   confundirlos haría que un ejercicio sin peso anotado pareciera de 0 kg.
-- **Estado `"skipped"` en la serie**, para la planificada que no se llegó a
-  hacer.
+- **Estado `"skipped"` en la serie — implementado (paso 4)**, para la planificada
+  que no se llegó a hacer. Conserva `planOrder` y `completedAt: null`, sin carga
+  ni repeticiones reales. `planOrder` enlaza una serie realizada o anulada con un
+  único hueco de la foto; borrar esa serie vuelve a dejar el hueco pendiente.
 
 ### La invariante que no se puede romper
 
