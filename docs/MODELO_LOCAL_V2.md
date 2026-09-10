@@ -154,8 +154,9 @@ completar algo a medio construir.
 
 ### Lo que falta
 
-- **`mode` en la rutina**: `"log"` (por defecto) o `"guided"`. **Ausente
-  equivale a `"log"`**, para que las rutinas ya guardadas sigan siendo válidas.
+- **`mode` en la rutina — implementado (paso 1)**: `"log"` (por defecto) o
+  `"guided"`. Ausente se normaliza a `"log"` en `validateState`, para que las
+  rutinas ya guardadas sigan siendo válidas. La interfaz aún está pendiente.
 - **`targetLoadKg` en el ejercicio de rutina**: el único campo realmente nuevo.
   **Admite nulo a propósito** — es el caso de "primera vez, aún sin referencia".
   Distinto de `0`, igual que en el récord personal: `Number(null)` es `0` y

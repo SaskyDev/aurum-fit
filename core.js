@@ -284,6 +284,7 @@ export function validateState(state) {
       || typeof routine.id !== "string"
       || typeof routine.userId !== "string"
       || typeof routine.name !== "string"
+      || (routine.mode !== undefined && !["log", "guided"].includes(routine.mode))
       || (
         routine.accentColor !== undefined
         && routine.accentColor !== null
@@ -300,6 +301,8 @@ export function validateState(state) {
     ) {
       return "Hay una rutina no válida.";
     }
+    // Los datos anteriores no cambian de comportamiento al actualizar la app.
+    routine.mode ??= "log";
     for (const routineDay of routine.days) {
       if (
         !isObject(routineDay)
@@ -639,6 +642,7 @@ export function createRoutine(
     now = new Date().toISOString(),
     id = createId("routine"),
     accentColor = null,
+    mode = "log",
     dayType = "strength",
     cardioType = "run",
   } = {},
@@ -647,6 +651,7 @@ export function createRoutine(
     max: MAX_ROUTINE_NAME_LENGTH,
   });
   if (result.error) throw new Error(result.error);
+  if (!["log", "guided"].includes(mode)) throw new Error("El modo de rutina no es válido.");
   if (accentColor !== null && !ACCENT_COLORS.has(accentColor)) {
     throw new Error("El color de la rutina no es válido.");
   }
@@ -666,6 +671,7 @@ export function createRoutine(
     userId: state.owner.id,
     name: result.value,
     accentColor,
+    mode,
     status: "active",
     suggestedDayId: null,
     days: [],
@@ -684,6 +690,7 @@ export function createRoutineWithWeekdays(
     now = new Date().toISOString(),
     id = createId("routine"),
     accentColor = null,
+    mode = "log",
     dayType = "strength",
     cardioType = "run",
   } = {},
@@ -717,7 +724,7 @@ export function createRoutineWithWeekdays(
         day.weekday = remaining[0] ?? null;
       }
     }));
-  const routine = createRoutine(state, name, { now, id, accentColor });
+  const routine = createRoutine(state, name, { now, id, accentColor, mode });
   const sortedWeekdays = normalizedWeekdays
     .sort((left, right) => ((left + 6) % 7) - ((right + 6) % 7));
   const day = addRoutineDay(state, routine.id, sortedWeekdays.length === 1 ? weekdayLabel(sortedWeekdays[0]) : "Entrenamiento", {
