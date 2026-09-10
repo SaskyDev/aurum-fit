@@ -1619,6 +1619,11 @@ progress::-moz-progress-bar {
   background: rgba(var(--routine-accent-rgb), .12);
   color: var(--routine-accent);
 }
+/* En claro el texto usa tinta oscura: la base de la tarjeta también debe cambiar. */
+:root[data-theme="light"] .routine-overview-card[class*="routine-theme-"],
+:root[data-theme="light"] .routine-spotlight[class*="routine-theme-"] {
+  background: radial-gradient(circle at 88% 17%, rgba(var(--routine-accent-rgb), .12), transparent 48%), var(--surface);
+}
 .routine-overview-card[class*="routine-theme-"] .routine-card-chevron,
 .routine-overview-card[class*="routine-theme-"] .routine-weekday-pills span {
   border-color: rgba(var(--routine-accent-rgb), .42);
@@ -1697,6 +1702,15 @@ progress::-moz-progress-bar {
 .weekday-choice input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .weekday-choice span { display: grid; min-height: 46px; place-items: center; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink-soft); cursor: pointer; font-size: .72rem; font-weight: 850; }
 .weekday-choice input:checked + span { border-color: var(--accent-ink); background: var(--accent); color: var(--on-accent); }
+.weekday-choice input:focus-visible + span { outline: 2px solid var(--accent-ink); outline-offset: 3px; }
+/* Plan guiado: controles existentes, dos columnas legibles incluso en móvil. */
+.routine-mode-picker, .guided-plan-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+.guided-plan-fields { grid-column: 1 / -1; margin-block: var(--space-3); }
+.guided-plan-fields label, .guided-plan-fields input { min-width: 0; width: 100%; }
+.guided-plan-editor { margin-block: var(--space-3); }
+.guided-plan-editor summary { cursor: pointer; padding-block: var(--space-2); }
+.guided-plan-editor form { padding-block: var(--space-2); }
+.routine-exercise-form:has(.guided-plan-fields) { grid-template-columns: minmax(0, 1fr); }
 .weekday-choice input:disabled + span {
   cursor: not-allowed;
   /* .32 de opacidad hacía que un día ocupado pareciera un fallo de pintado.

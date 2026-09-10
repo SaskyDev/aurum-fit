@@ -39,3 +39,15 @@ Alex confirmó usar la suite canónica `node --test tests/*.test.js`:
 - Última referencia omite sesiones del ejercicio sin series completadas.
 - Duplicar/editar una anulada no puede convertirla implícitamente en realizada.
 - TDD rojo/verde; mutación de skipped a completed detectada. Pendiente de UI.
+
+## Paso 5 — creación y edición guiadas
+
+- Selector Solo registro / Guiada en fuerza; cardio mantiene su flujo log.
+- Campos reutilizan `makeSetField`; series/rango obligatorios, peso opcional.
+- Editar el plan y convertir una rutina log pide configurar cada ejercicio;
+  conversión atómica mediante `commit`, sin botón de conversión inversa.
+- E2E antes de implementar falló por ausencia del selector; pasa a 390 px en
+  claro/oscuro con movimiento reducido. `QA_MUTATE=creation` fuerza log en la
+  respuesta HTTP de app.js: el recorrido falla, sin tocar archivos.
+- Detectado visualmente y corregido fondo oscuro con tinta oscura en tarjetas
+  de rutina bajo tema claro. No se cambia la paleta general.

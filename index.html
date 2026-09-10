@@ -21,10 +21,10 @@
         } catch {}
       })();
     </script>
-    <link rel="manifest" href="manifest.json?v=77" />
-    <link rel="icon" type="image/svg+xml" href="icon.svg?v=77" />
-    <link rel="apple-touch-icon" href="icon.svg?v=77" />
-    <link rel="stylesheet" href="styles.css?v=77" />
+    <link rel="manifest" href="manifest.json?v=78" />
+    <link rel="icon" type="image/svg+xml" href="icon.svg?v=78" />
+    <link rel="apple-touch-icon" href="icon.svg?v=78" />
+    <link rel="stylesheet" href="styles.css?v=78" />
   </head>
   <body>
     <main>
@@ -314,6 +314,14 @@
                     <div id="cardioActivityOptions" class="cardio-activity-picker" aria-label="Actividad cardio"></div>
                     <small id="cardioActivityHelp">Mostraremos solo las métricas que necesita esa actividad.</small>
                   </fieldset>
+                  <fieldset id="routineModePicker" class="routine-type-fieldset">
+                    <legend>Cómo quieres entrenar</legend>
+                    <div class="routine-mode-picker">
+                      <label class="weekday-choice"><input type="radio" name="routineMode" value="log" checked /><span>Solo registro</span></label>
+                      <label class="weekday-choice"><input type="radio" name="routineMode" value="guided" /><span>Guiada</span></label>
+                    </div>
+                    <small>Registro: anotas lo que haces. Guiada: preparas series y repeticiones antes; solo cuentan cuando las marcas.</small>
+                  </fieldset>
                   <fieldset class="routine-color-fieldset">
                     <legend>Color de la rutina</legend>
                     <div class="routine-color-picker" aria-label="Color de la nueva rutina">
@@ -364,6 +372,7 @@
               <div><p class="eyebrow">Entrenamiento</p><h2 id="routineDetailTitle">Rutina</h2><p id="routineDetailMeta" class="muted"></p></div>
             </header>
             <div id="routineSpotlight" aria-label="Resumen visual de la rutina"></div>
+            <div id="routineModeEditor"></div>
             <details id="selectedRoutineColorEditor" class="routine-color-editor">
               <summary>Editar color</summary>
               <fieldset class="routine-color-fieldset routine-detail-color">
@@ -655,6 +664,6 @@
 
     </main>
 
-    <script type="module" src="app.js?v=77"></script>
+    <script type="module" src="app.js?v=78"></script>
   </body>
 </html>

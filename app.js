@@ -43,9 +43,10 @@ import {
   startFreeSession,
   startSessionFromRoutineDay,
   updateSet,
+  updateRoutineExercisePlan,
   validateLabelPhotoFile,
-} from "./core.js?v=77";
-import { BODY_FIGURES } from "./body-paths.js?v=77";
+} from "./core.js?v=78";
+import { BODY_FIGURES } from "./body-paths.js?v=78";
 
 const defaultTargets = { calories: 2200, protein: 170, steps: 10000 };
 const defaultPreferences = {
@@ -1895,6 +1896,7 @@ function renderCardioActivityPicker() {
 function syncNewRoutineCardioVisibility() {
   const isCardio = document.querySelector('input[name="routineDayType"]:checked')?.value === "cardio";
   $("cardioActivityPicker").hidden = !isCardio;
+  $("routineModePicker").hidden = isCardio;
   if (isCardio) {
     const selected = document.querySelector('input[name="cardioActivityType"]:checked');
     selected?.dispatchEvent(new Event("change"));
@@ -2193,6 +2195,22 @@ function createRoutineExerciseRow(routine, routineDay, routineExercise, index) {
   row.appendChild(createElement("span", "routine-order", String(routineExercise.order)));
   const summary = createElement("div", "routine-exercise-summary");
   summary.appendChild(createElement("strong", "", routineExercise.exerciseName));
+  if (routine.mode === "guided") {
+    summary.appendChild(createElement("small", "muted", `${routineExercise.plannedSets} series · ${routineExercise.repMin}–${routineExercise.repMax} reps · ${routineExercise.targetLoadKg === null ? "Peso por definir" : `${routineExercise.targetLoadKg} kg`}`));
+    const editor = createElement("details", "guided-plan-editor");
+    editor.appendChild(createElement("summary", "", "Editar plan"));
+    const editForm = createElement("form");
+    const planFields = createGuidedPlanFields(routineExercise);
+    const save = createElement("button", "button button-secondary", "Guardar plan");
+    save.type = "submit";
+    editForm.append(planFields.element, save);
+    editForm.addEventListener("submit", event => {
+      event.preventDefault();
+      commit(next => updateRoutineExercisePlan(next, routine.id, routineDay.id, routineExercise.id, planFields.value()), "Plan actualizado. Tu historial no cambia.");
+    });
+    editor.append(editForm);
+    summary.append(editor);
+  }
   row.appendChild(summary);
   const actions = createElement("div", "order-actions");
   const moveUp = createButton("↑", "button-secondary", () => {
@@ -2362,6 +2380,8 @@ function createRoutineDayCard(routine, routineDay, index) {
   );
   addExerciseButton.type = "submit";
   exerciseForm.append(exerciseInput, addExerciseButton);
+  const planFields = routine.mode === "guided" ? createGuidedPlanFields() : null;
+  if (planFields) exerciseForm.insertBefore(planFields.element, addExerciseButton);
   exerciseForm.addEventListener("submit", (event) => {
     event.preventDefault();
     const entry = catalogEntryForName(exerciseInput.value);
@@ -2373,6 +2393,7 @@ function createRoutineDayCard(routine, routineDay, index) {
         entry ? translatedCatalogName(entry) : exerciseInput.value,
         {
           exerciseId: entry?.id,
+          ...(planFields ? planFields.value() : {}),
         },
       );
       attachCatalogMetadata(next, routineExercise.exerciseId, entry);
@@ -2526,6 +2547,7 @@ function renderRoutineManager() {
   $("routineDetailTitle").textContent = selectedRoutine.name;
   $("routineDetailMeta").textContent = `${countLabel(routineScheduledWeekdayCount(selectedRoutine), "día")} · ${countLabel(routineActivityCount(selectedRoutine), "actividad", "actividades")}`;
   $("routineSpotlight").replaceChildren(createRoutineSpotlight(selectedRoutine));
+  renderRoutineModeEditor(selectedRoutine);
   document.querySelectorAll('input[name="selectedRoutineAccentColor"]').forEach((input) => {
     input.checked = input.value === (selectedRoutine.accentColor ?? "auto");
   });
@@ -2626,6 +2648,52 @@ function makeSetField(labelText, name, options = {}) {
   if (options.placeholder) input.placeholder = options.placeholder;
   label.appendChild(input);
   return { label, input };
+}
+
+function createGuidedPlanFields(plan = {}) {
+  const element = createElement("div", "guided-plan-fields");
+  const fields = {};
+  [["plannedSets", "Series", 1, 20, 1], ["repMin", "Reps mínimas", 1, 1000, 1],
+    ["repMax", "Reps máximas", 1, 1000, 1], ["targetLoadKg", "Peso previsto · kg (opcional)", 0, 2000, 0.5]]
+    .forEach(([name, label, min, max, step]) => {
+      const field = makeSetField(label, name, { min, max, step, inputMode: step === 1 ? "numeric" : "decimal" });
+      field.input.required = name !== "targetLoadKg";
+      field.input.value = plan[name] ?? "";
+      fields[name] = field.input;
+      element.append(field.label);
+    });
+  return { element, value: () => ({ ...Object.fromEntries(Object.entries(fields).map(([name, input]) => [name, input.value])), note: plan.note ?? "" }) };
+}
+
+function renderRoutineModeEditor(routine) {
+  const container = $("routineModeEditor");
+  container.replaceChildren();
+  if (routine.mode === "guided") {
+    container.append(createElement("p", "muted", "Rutina guiada · el plan no cuenta hasta marcar cada serie."));
+    return;
+  }
+  if (routine.days.some(day => routineDayType(day) === "cardio")) return;
+  const details = createElement("details", "guided-plan-editor");
+  details.append(createElement("summary", "", "Convertir en rutina guiada"));
+  const form = createElement("form");
+  form.append(createElement("p", "muted", "Prepara los números de cada ejercicio. Se conserva el historial y no se podrá volver al modo de solo registro."));
+  const plans = routine.days.flatMap(day => day.exercises.map(exercise => {
+    const fields = createGuidedPlanFields(exercise);
+    form.append(createElement("strong", "", `${day.name} · ${exercise.exerciseName}`), fields.element);
+    return { day, exercise, fields };
+  }));
+  const save = createElement("button", "button button-secondary", "Guardar como guiada");
+  save.type = "submit";
+  form.append(save);
+  form.addEventListener("submit", event => {
+    event.preventDefault();
+    commit(next => {
+      plans.forEach(({ day, exercise, fields }) => updateRoutineExercisePlan(next, routine.id, day.id, exercise.id, fields.value()));
+      next.training.routines.find(item => item.id === routine.id).mode = "guided";
+    }, "Rutina convertida a guiada. El historial no cambia.");
+  });
+  details.append(form);
+  container.append(details);
 }
 
 function formatHintValue(value) {
@@ -3642,7 +3710,7 @@ function backfillExerciseMuscles() {
 
 async function loadCatalog() {
   try {
-    const response = await fetch("./data/exercises.es.json?v=77", { cache: "no-cache" });
+    const response = await fetch("./data/exercises.es.json?v=78", { cache: "no-cache" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     if (!Array.isArray(payload.exercises)) throw new Error("Estructura no válida");
@@ -4132,6 +4200,7 @@ $("createRoutineForm").addEventListener("submit", (event) => {
       accentColor: selectedColor === "auto" ? null : selectedColor,
       dayType: selectedType,
       cardioType: selectedType === "cardio" ? selectedCardioType : "run",
+      mode: selectedType === "cardio" ? "log" : document.querySelector('input[name="routineMode"]:checked')?.value ?? "log",
     }),
     `Rutina ${name.trim()} creada con ${countLabel(weekdays.length, "día")}.`,
   );
