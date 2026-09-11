@@ -113,11 +113,24 @@ python3 -m http.server 8000
 Para ejecutar las comprobaciones:
 
 ```bash
-node --test tests/*.test.js
-node scripts/check-guided-mutations.mjs
-node scripts/qa-guided-browser.mjs
-node scripts/qa-guided-demo.mjs
+node --test                                  # todas las pruebas
+node scripts/check-guided-mutations.mjs      # rompe el modelo a propósito y exige pruebas rojas
+node scripts/check-theme-contrast.mjs        # contraste del tema claro y de las tintas sobre relleno
+node scripts/check-muscle-palette.mjs        # escala del mapa y daltonismo
 ```
+
+Los dos recorridos de navegador necesitan **Playwright y el servidor levantado**
+en el puerto 8000. No son dependencia del proyecto; se instalan aparte:
+
+```bash
+npm install --no-save playwright && npx playwright install chromium
+python3 -m http.server 8000 &
+node scripts/qa-guided-browser.mjs           # rutina guiada a 390 px: oscuro, claro y movimiento reducido
+node scripts/qa-guided-demo.mjs              # demo, gráfica de progreso y restauración
+```
+
+Si ya tienes Playwright en otro sitio, `PLAYWRIGHT_MODULE=/ruta/a/playwright/index.mjs`
+evita instalarlo de nuevo.
 
 La versión de caché vive repartida entre `SHELL_VERSION` (`service-worker.js`) y
 las referencias `?v=` de `index.html` y `app.js`. No se editan a mano:

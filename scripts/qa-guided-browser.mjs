@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { loadChromium } from "./playwright-runtime.mjs";
 import { createEmptyState, STORE_KEY, PUBLIC_CLEANUP_VERSION } from "../core.js";
 
-const runtime = process.env.PLAYWRIGHT_MODULE
-  ?? "/Users/alex/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs";
-const { chromium } = await import(runtime);
+const chromium = await loadChromium();
 const browser = await chromium.launch({ headless: true });
 const output = process.env.QA_OUTPUT ?? "/tmp/aurum-guided-qa";
 fs.mkdirSync(output, { recursive: true });

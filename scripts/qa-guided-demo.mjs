@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { loadChromium } from "./playwright-runtime.mjs";
 import { createEmptyState, STORE_KEY, PUBLIC_CLEANUP_VERSION } from "../core.js";
-const { chromium } = await import(process.env.PLAYWRIGHT_MODULE ?? "/Users/alex/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs");
+const chromium = await loadChromium();
 const browser = await chromium.launch({ headless: true });
 try {
   for (const theme of ["dark", "light"]) {
