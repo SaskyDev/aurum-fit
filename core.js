@@ -400,8 +400,9 @@ export function validateState(state) {
       !isObject(session)
       || typeof session.id !== "string"
       || typeof session.userId !== "string"
-      || !["in_progress", "completed"].includes(session.status)
-      || typeof session.startedAt !== "string"
+      || !["draft", "in_progress", "completed"].includes(session.status)
+      || (session.status !== "draft" && typeof session.startedAt !== "string")
+      || (session.status === "draft" && session.startedAt !== null)
       || !isObject(session.source)
       || typeof session.source.type !== "string"
       || typeof session.source.label !== "string"
@@ -1133,6 +1134,77 @@ export function getActiveSession(state) {
   ) ?? null;
 }
 
+// Un entrenamiento libre puede montarse antes de salir de casa. El borrador no
+// es una sesión activa: no tiene hora de inicio, no aparece en el Diario y sus
+// ejercicios no influyen en récords, volumen ni mapa muscular hasta empezar.
+export function getFreeSessionDraft(state) {
+  return state.training.sessions.find((session) => (
+    session.status === "draft" && session.source?.type === "free"
+  )) ?? null;
+}
+
+export function createFreeSessionDraft(
+  state,
+  { now = new Date().toISOString(), id = createId("free-draft") } = {},
+) {
+  if (getActiveSession(state)) throw new Error("Ya hay un entrenamiento en curso.");
+  const existing = getFreeSessionDraft(state);
+  if (existing) return existing;
+  const draft = {
+    id,
+    userId: state.owner.id,
+    source: {
+      type: "free",
+      routineDayId: null,
+      label: "Entrenamiento libre",
+    },
+    sessionType: "strength",
+    status: "draft",
+    createdAt: now,
+    startedAt: null,
+    endedAt: null,
+    cardio: null,
+    exercises: [],
+  };
+  state.training.sessions.push(draft);
+  return draft;
+}
+
+export function startFreeSessionDraft(state, sessionId, now = new Date().toISOString()) {
+  const active = getActiveSession(state);
+  if (active) throw new Error("Ya hay un entrenamiento en curso.");
+  const draft = state.training.sessions.find((session) => session.id === sessionId);
+  if (!draft || draft.status !== "draft" || draft.source?.type !== "free") {
+    throw new Error("No se encontró el borrador de entrenamiento libre.");
+  }
+  if (!draft.exercises.length) throw new Error("Añade al menos un ejercicio antes de empezar.");
+  draft.status = "in_progress";
+  draft.startedAt = now;
+  state.training.activeSessionId = draft.id;
+  return draft;
+}
+
+export function discardFreeSessionDraft(state, sessionId) {
+  const index = state.training.sessions.findIndex((session) => (
+    session.id === sessionId && session.status === "draft" && session.source?.type === "free"
+  ));
+  if (index === -1) throw new Error("No se encontró el borrador de entrenamiento libre.");
+  const [draft] = state.training.sessions.splice(index, 1);
+  return draft;
+}
+
+export function removeExerciseFromFreeSessionDraft(state, sessionId, sessionExerciseId) {
+  const draft = state.training.sessions.find((session) => (
+    session.id === sessionId && session.status === "draft" && session.source?.type === "free"
+  ));
+  if (!draft) throw new Error("No se encontró el borrador de entrenamiento libre.");
+  const index = draft.exercises.findIndex((exercise) => exercise.id === sessionExerciseId);
+  if (index === -1) throw new Error("No se encontró el ejercicio del borrador.");
+  const [exercise] = draft.exercises.splice(index, 1);
+  recalculateOrder(draft.exercises);
+  return exercise;
+}
+
 export function startFreeSession(
   state,
   { now = new Date().toISOString(), id = createId("session") } = {},
@@ -1266,7 +1338,7 @@ export function addExerciseToSession(
   { now = new Date().toISOString(), exerciseId, sessionExerciseId } = {},
 ) {
   const session = state.training.sessions.find((item) => item.id === sessionId);
-  if (!session || session.status !== "in_progress") {
+  if (!session || !["draft", "in_progress"].includes(session.status)) {
     throw new Error("No hay una sesión editable con ese identificador.");
   }
 

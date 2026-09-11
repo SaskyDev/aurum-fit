@@ -70,6 +70,25 @@ try {
     });
     await page.reload();
     await page.locator('[data-routine-planner-view="library"]').tap();
+    await page.locator("#startFreeSessionBtn").tap();
+    assert.equal(await page.locator("#freeWorkoutDraftPanel").isVisible(), true);
+    assert.equal(await page.locator("#activeSessionPanel").isHidden(), true);
+    let saved = await page.evaluate((key) => JSON.parse(localStorage.getItem(key)), STORE_KEY);
+    assert.equal(saved.training.activeSessionId, null);
+    assert.equal(saved.training.sessions.at(-1).status, "draft");
+    assert.equal(saved.training.sessions.at(-1).startedAt, null);
+    await page.locator("#exercisePicker summary").tap();
+    await page.locator("#catalogSearch").fill("Press de banca");
+    await page.getByRole("button", { name: "Añadir", exact: true }).first().tap();
+    assert.equal(await page.locator(".free-draft-exercise").count(), 1);
+    await page.locator("#startFreeDraftBtn").tap();
+    assert.equal(await page.locator("#activeSessionPanel").isVisible(), true);
+    saved = await page.evaluate((key) => JSON.parse(localStorage.getItem(key)), STORE_KEY);
+    assert.equal(saved.training.sessions.at(-1).status, "in_progress");
+    assert.ok(saved.training.sessions.at(-1).startedAt);
+    await page.locator("#discardSessionBtn").tap();
+    await page.getByRole("alertdialog").getByRole("button", { name: "Descartar", exact: true }).tap();
+    assert.equal(await page.locator("#routineManager").isVisible(), true);
     await page.locator("#createRoutineCard summary").tap();
     await page.locator("#routineName").fill("QA Guiada");
     await page.locator('label').filter({ has: page.locator('input[name="routineMode"][value="guided"]') }).tap();
@@ -155,7 +174,7 @@ try {
     const pending = page.locator(".planned-set-row .compact-set-row-content").first();
     await swipe(page, pending, "left");
     assert.equal(await page.locator(".set-skipped").count(), 1);
-    let saved = await page.evaluate((key) => JSON.parse(localStorage.getItem(key)), STORE_KEY);
+    saved = await page.evaluate((key) => JSON.parse(localStorage.getItem(key)), STORE_KEY);
     assert.equal(saved.training.sessions[0].exercises[0].sets.find((set) => set.status === "skipped").planOrder, 2);
 
     await page.getByRole("button", { name: "Nota", exact: true }).tap();
@@ -217,6 +236,7 @@ try {
     // La captura representa el estado estable, no el toast temporal del deshacer.
     await page.locator("#trainingNotice").evaluate((notice) => { notice.hidden = true; });
     await page.screenshot({ path: `${output}/compact-${profile.name}.png` });
+
     assert.deepEqual(errors, []);
     console.log(`Entrenamiento compacto: ${profile.name}, 390x844 OK`);
     await context.close();

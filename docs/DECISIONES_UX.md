@@ -19,6 +19,9 @@ Actualizado: 11 de septiembre de 2026.
   poder editarla o borrarla de forma independiente.
 - El catálogo no vuelca 1.317 resultados de golpe: exige búsqueda o filtros y
   amplía la lista solo cuando el usuario lo pide.
+- El entrenamiento libre se prepara como borrador persistente: no inicia el
+  tiempo ni crea hechos en el Diario hasta que se pulsa **Empezar**. Es puntual,
+  no se convierte en rutina reutilizable.
 
 ## Límites y preguntas abiertas
 

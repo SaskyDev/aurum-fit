@@ -1890,7 +1890,18 @@ progress::-moz-progress-bar {
 .back-button { margin-bottom: var(--space-3); width: auto; }
 .routine-detail-header { display: flex; align-items: center; gap: var(--space-4); margin-bottom: var(--space-4); padding: var(--space-5); }
 .routine-detail-header h2 { margin: 4px 0; }
-.add-routine-day { display: grid; grid-template-columns: minmax(200px, .8fr) minmax(320px, 1.4fr) auto; gap: var(--space-4); align-items: center; margin-top: var(--space-4); padding: var(--space-4) var(--space-5); }
+.add-routine-day {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(130px, .5fr) auto;
+  gap: var(--space-3);
+  align-items: end;
+  margin-top: var(--space-5);
+  padding: var(--space-4) var(--space-5);
+}
+.add-routine-day > div:first-child { grid-column: 1 / -1; }
+.add-routine-day > small { grid-column: 1 / -1; margin-top: calc(var(--space-2) * -1); }
+.add-routine-day > .weekday-selector { grid-column: 1 / -1; }
+.add-routine-day .button { min-height: 46px; white-space: nowrap; }
 .routine-day-icon { display: inline-grid; color: var(--accent-ink); place-items: center; }
 .routine-day-icon .ui-icon { width: 20px; height: 20px; }
 
@@ -2165,6 +2176,31 @@ summary.routine-header::-webkit-details-marker { display: none; }
 .exercise-picker-summary small { margin-top: 2px; color: var(--ink-soft); font-size: .75rem; }
 .exercise-picker-content { padding: 0 var(--space-5) var(--space-5); border-top: 1px solid var(--line); }
 .session-exercises + .exercise-picker { margin-top: var(--space-3); }
+.free-workout-draft-panel,
+.free-workout-draft-panel + .exercise-picker { margin-top: var(--space-4); }
+.free-draft-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-4);
+  align-items: center;
+  margin-bottom: var(--space-3);
+  padding: var(--space-4);
+}
+.free-draft-summary h3 { margin: 3px 0 5px; }
+.free-draft-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.free-draft-actions .button { min-height: 44px; }
+.free-draft-exercise-list { display: grid; gap: 8px; margin: 0 0 var(--space-4); padding: 0; list-style: none; }
+.free-draft-exercise {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+}
+.free-draft-exercise-order { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 10px; background: var(--surface-inset); color: var(--accent-ink); font-size: .78rem; font-weight: 850; }
+.free-draft-exercise-copy { display: grid; min-width: 0; gap: 2px; }
+.free-draft-exercise-copy small { color: var(--ink-soft); font-size: .75rem; }
+.free-draft-remove.button { min-height: 38px; padding-inline: 10px; color: var(--ink-soft); }
 
 .cardio-session-card {
   display: grid;
@@ -4049,6 +4085,9 @@ th {
   .weekday-choice span { min-height: 42px; border-radius: 9px; font-size: .62rem; }
   .routine-detail-header { padding: var(--space-4); }
   .add-routine-day { grid-template-columns: 1fr; padding: var(--space-4); }
+  .free-draft-summary { grid-template-columns: 1fr; align-items: stretch; }
+  .free-draft-actions { justify-content: stretch; }
+  .free-draft-actions .button { flex: 1 1 150px; }
 
   .routine-header,
   .routine-day-header {
@@ -4654,6 +4693,7 @@ th {
   display: inline-flex;
   min-height: 22px;
   align-items: center;
+  gap: 6px;
   padding: 3px 8px;
   border: 1px solid var(--line);
   border-radius: 999px;

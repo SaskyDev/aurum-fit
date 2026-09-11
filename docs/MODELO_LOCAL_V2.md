@@ -7,7 +7,7 @@ Fecha: 24 de julio de 2026.
 
 Este corte permite:
 
-- iniciar un entrenamiento libre;
+- preparar un entrenamiento libre como borrador e iniciarlo cuando corresponda;
 - crear rutinas con días y ejercicios ordenados;
 - revisar una rutina y empezar uno de sus días;
 - registrar series independientes;
@@ -53,6 +53,7 @@ estado v2
 │   │   └── days
 │   │       └── exercises
 │   ├── sessions
+│   │   ├── draft (solo libre; no cuenta tiempo, Diario ni métricas)
 │   │   └── exercises
 │   │       ├── sessionNote (opcional)
 │   │       └── sets
@@ -66,6 +67,13 @@ estado v2
 
 Cada entidad histórica lleva `userId` aunque solo exista el usuario local. Esto
 prepara la propiedad futura sin introducir cuentas, autenticación o backend.
+
+Un entrenamiento libre puede existir como `draft`: conserva la lista puntual de
+ejercicios para prepararla antes de ir al gimnasio, pero no tiene `startedAt`, no
+activa el cronómetro y no participa en récords, volumen, mapa muscular ni Diario.
+Al pulsar **Empezar entrenamiento**, el mismo borrador pasa a `in_progress`; al
+finalizar queda registrado como cualquier otra sesión. No crea ni modifica una
+rutina reutilizable.
 
 Una rutina es un plan mutable. Cada rutina contiene bloques/días con ejercicios
 ordenados. Un mismo bloque puede repetirse varios días de la semana mediante

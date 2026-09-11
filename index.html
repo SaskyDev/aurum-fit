@@ -21,10 +21,10 @@
         } catch {}
       })();
     </script>
-    <link rel="manifest" href="manifest.json?v=85" />
-    <link rel="icon" type="image/svg+xml" href="icon.svg?v=85" />
-    <link rel="apple-touch-icon" href="icon.svg?v=85" />
-    <link rel="stylesheet" href="styles.css?v=85" />
+    <link rel="manifest" href="manifest.json?v=86" />
+    <link rel="icon" type="image/svg+xml" href="icon.svg?v=86" />
+    <link rel="apple-touch-icon" href="icon.svg?v=86" />
+    <link rel="stylesheet" href="styles.css?v=86" />
   </head>
   <body>
     <main>
@@ -401,6 +401,21 @@
           </section>
         </section>
 
+        <section id="freeWorkoutDraftPanel" class="free-workout-draft-panel" hidden>
+          <header class="subpage-header">
+            <button id="freeDraftBackBtn" class="minimal-icon-button bare-arrow-button" type="button" aria-label="Volver a rutinas">←</button>
+            <div><p class="eyebrow">Entrenamiento libre</p><h2>Prepara tu sesión</h2><p class="muted">Aún no ha empezado: el tiempo y el Diario comenzarán cuando pulses Empezar.</p></div>
+          </header>
+          <section class="free-draft-summary surface" aria-labelledby="freeDraftTitle">
+            <div><p class="eyebrow">Borrador guardado</p><h3 id="freeDraftTitle">Tu entrenamiento puntual</h3><p id="freeDraftMeta" class="muted">Añade los ejercicios que quieras hacer.</p></div>
+            <div class="free-draft-actions">
+              <button id="startFreeDraftBtn" class="button button-accent" type="button">▶ Empezar entrenamiento</button>
+              <button id="discardFreeDraftBtn" class="button button-quiet" type="button">Descartar borrador</button>
+            </div>
+          </section>
+          <ol id="freeDraftExerciseList" class="free-draft-exercise-list" aria-label="Ejercicios del borrador"></ol>
+        </section>
+
         <section id="activeSessionPanel" hidden>
           <div class="session-toolbar surface">
             <button id="backToRoutinesBtn" class="minimal-icon-button bare-arrow-button session-back-button" type="button" aria-label="Volver a rutinas">←</button>
@@ -457,8 +472,9 @@
             </section>
             <button class="button button-accent button-large" type="submit">Guardar actividad</button>
           </form>
+        </section>
 
-          <details class="exercise-picker surface">
+        <details id="exercisePicker" class="exercise-picker surface" hidden>
             <summary class="exercise-picker-summary">
               <span aria-hidden="true">＋</span>
               <span><strong>Añadir ejercicio solo hoy</strong><small>No modifica la rutina original</small></span>
@@ -510,8 +526,7 @@
                 </form>
               </div>
             </div>
-          </details>
-        </section>
+        </details>
 
       </section>
 
@@ -666,6 +681,6 @@
 
     </main>
 
-    <script type="module" src="app.js?v=85"></script>
+    <script type="module" src="app.js?v=86"></script>
   </body>
 </html>

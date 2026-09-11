@@ -48,14 +48,15 @@ node scripts/check-guided-mutations.mjs
 
 1. Ejecutar `python3 -m http.server 8000`.
 2. Abrir `http://localhost:8000`.
-3. Entrar en `Entrenamiento` y pulsar `Iniciar entrenamiento libre`.
-4. Recargar la página: la misma sesión debe seguir visible y en curso.
-5. Añadir `Press banca`.
+3. Entrar en `Entrenamiento` y pulsar `Entrenamiento libre`.
+4. Comprobar que aparece un borrador, sin cronómetro activo ni entrada en el
+   Diario; añadir `Press banca` y recargar: el borrador debe conservarse.
+5. Pulsar `Empezar entrenamiento`: solo entonces debe empezar el tiempo.
 6. Registrar `10` repeticiones, `60` kg y RIR `2`.
 7. Editar la serie a `9` repeticiones y `62,5` kg.
 8. Borrarla, confirmar y pulsar `Deshacer`.
 9. Añadir otra serie y finalizar el entrenamiento.
-10. Iniciar otra sesión y volver a añadir `Press banca`.
+10. Iniciar otro borrador y volver a añadir `Press banca`.
 11. Comprobar que aparece la referencia de la sesión finalizada.
 
 ## Casos de error

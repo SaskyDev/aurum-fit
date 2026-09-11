@@ -192,8 +192,9 @@ test("las confirmaciones usan un diálogo accesible propio y no window.confirm",
   assert.match(styles, /\.overlay-open \{ overflow: hidden; \}/);
 
   const confirmaciones = app.match(/await confirmDialog\(/g) ?? [];
-  // La eliminación global de un ejercicio añade una confirmación destructiva.
-  assert.equal(confirmaciones.length, 10);
+  // La eliminación global y descartar un borrador son acciones destructivas.
+  assert.equal(confirmaciones.length, 11);
+  assert.match(app, /title: "Descartar borrador"/);
 });
 
 test("el catálogo avisa de los ejercicios sin revisión profesional", () => {
@@ -614,7 +615,7 @@ test("cardio se integra en rutinas, sesión activa y diario sin usar series", ()
   assert.match(app, /paceSecondsPer100m/);
   assert.match(app, /averageSpeedKmh/);
   assert.match(app, /routineDayType\(suggested\.routineDay\) === "cardio"/);
-  assert.match(app, /document\.querySelector\("\.exercise-picker"\)\.hidden = isCardioSession/);
+  assert.match(app, /\$\("exercisePicker"\)\.hidden = isCardioSession \|\| trainingView !== "session"/);
   assert.match(app, /Las métricas derivadas se calcularon automáticamente/);
   assert.match(app, /function renderCardioHistory/);
   assert.match(css, /\.cardio-session-card/);

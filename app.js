@@ -15,11 +15,14 @@ import {
   exercisePersonalRecords,
   recordsSetBy,
   createRoutineWithWeekdays,
+  createFreeSessionDraft,
   deleteSet,
   duplicateSet,
   discardSession,
+  discardFreeSessionDraft,
   findLastComparableExercise,
   getActiveSession,
+  getFreeSessionDraft,
   loadAppState,
   PUBLIC_CLEANUP_VERSION,
   moveRoutineExercise,
@@ -32,6 +35,7 @@ import {
   removeDemoData,
   removeExerciseFromRoutineDay,
   removeExerciseFromRoutine,
+  removeExerciseFromFreeSessionDraft,
   replaceSessionExerciseForToday,
   restoreLastTrainingUndo,
   routineDayType,
@@ -42,7 +46,7 @@ import {
   setRoutineDayWeekday,
   setRoutineDayWeekdays,
   setRoutineAccentColor,
-  startFreeSession,
+  startFreeSessionDraft,
   startSessionFromRoutineDay,
   updateSet,
   updateRoutineExercisePlan,
@@ -50,8 +54,8 @@ import {
   skipPlannedSet,
   guidedExerciseDeviation,
   validateLabelPhotoFile,
-} from "./core.js?v=85";
-import { BODY_FIGURES } from "./body-paths.js?v=85";
+} from "./core.js?v=86";
+import { BODY_FIGURES } from "./body-paths.js?v=86";
 
 const defaultTargets = { calories: 2200, protein: 170, steps: 10000 };
 const defaultPreferences = {
@@ -3743,16 +3747,53 @@ function renderSessionExercise(session, sessionExercise) {
   return article;
 }
 
+function catalogEditingSession() {
+  return getActiveSession(state) ?? getFreeSessionDraft(state);
+}
+
+function renderFreeWorkoutDraft(draft) {
+  const list = $("freeDraftExerciseList");
+  list.replaceChildren();
+  $("freeDraftMeta").textContent = draft.exercises.length
+    ? `${countLabel(draft.exercises.length, "ejercicio")} preparados. El cronómetro empezará al iniciar.`
+    : "Añade los ejercicios que quieras hacer antes de empezar.";
+  $("startFreeDraftBtn").disabled = !draft.exercises.length;
+  draft.exercises
+    .slice()
+    .sort((left, right) => left.order - right.order)
+    .forEach((exercise, index) => {
+      const item = createElement("li", "free-draft-exercise surface");
+      const order = createElement("span", "free-draft-exercise-order", String(index + 1));
+      const copy = createElement("span", "free-draft-exercise-copy");
+      copy.append(createElement("strong", "", exercise.exerciseName), createElement("small", "", "Preparado · aún sin series"));
+      const remove = createButton("Quitar", "button button-quiet free-draft-remove", () => {
+        commit(
+          next => removeExerciseFromFreeSessionDraft(next, draft.id, exercise.id),
+          `${exercise.exerciseName} quitado del borrador.`,
+        );
+      });
+      item.append(order, copy, remove);
+      list.appendChild(item);
+    });
+  if (!draft.exercises.length) {
+    renderEmpty(list, "Tu borrador está vacío", "Abre el catálogo de abajo para añadir el primer ejercicio.");
+  }
+}
+
 function renderTraining() {
   const active = getActiveSession(state);
+  const freeDraft = getFreeSessionDraft(state);
   const activeRoutine = routineForSession(active);
-  if (!active) trainingView = "routines";
+  if (!active && trainingView === "session") trainingView = "routines";
+  if (!freeDraft && trainingView === "free-draft") trainingView = "routines";
   applyRoutineVisualClasses($("activeSessionPanel"), activeRoutine);
   applyRoutineVisualClasses($("activeSessionResume"), activeRoutine);
   $("routineManager").hidden = trainingView !== "routines";
   $("activeSessionPanel").hidden = !active || trainingView !== "session";
+  $("freeWorkoutDraftPanel").hidden = !freeDraft || trainingView !== "free-draft";
   $("activeSessionResume").hidden = !active;
   $("startFreeSessionBtn").disabled = Boolean(active);
+  $("startFreeSessionBtn").classList.toggle("has-draft", Boolean(freeDraft));
 
   if (active) {
     const isCardioSession = (active.sessionType ?? "strength") === "cardio";
@@ -3767,7 +3808,7 @@ function renderTraining() {
     $("sessionExerciseList").replaceChildren();
     $("sessionExerciseList").hidden = isCardioSession;
     $("cardioSessionForm").hidden = !isCardioSession || trainingView !== "session";
-    document.querySelector(".exercise-picker").hidden = isCardioSession;
+    $("exercisePicker").hidden = isCardioSession || trainingView !== "session";
     if (isCardioSession) {
       setCardioForm(active);
       updateCardioPacePreview();
@@ -3786,8 +3827,10 @@ function renderTraining() {
   } else {
     $("sessionExerciseList").hidden = false;
     $("cardioSessionForm").hidden = true;
-    document.querySelector(".exercise-picker").hidden = false;
+    $("exercisePicker").hidden = !(freeDraft && trainingView === "free-draft");
   }
+
+  if (freeDraft && trainingView === "free-draft") renderFreeWorkoutDraft(freeDraft);
 
   $("undoBar").hidden = !state.training.undo;
   if (state.training.undo) {
@@ -3971,6 +4014,7 @@ function renderCatalogFilters() {
 function renderCatalogResults() {
   const container = $("catalogResults");
   const resultActions = $("catalogResultActions");
+  const editingSession = catalogEditingSession();
   resultActions.replaceChildren();
   $("cancelReplacementBtn").hidden = !replacementTargetExerciseId;
   if (!catalog.length) {
@@ -3988,6 +4032,8 @@ function renderCatalogResults() {
     $("catalogCount").textContent = `${catalog.length.toLocaleString("es-ES")} disponibles`;
     $("catalogStatus").textContent = replacementTargetExerciseId
       ? "Modo alternativa: elige un ejercicio; la rutina original no cambiará."
+      : editingSession?.status === "draft"
+        ? "Añade ejercicios al borrador. Nada empieza a contar hasta pulsar Empezar."
       : "Busca por nombre, músculo o equipo para ver una selección breve.";
     renderEmpty(
       container,
@@ -4012,6 +4058,8 @@ function renderCatalogResults() {
   $("catalogCount").textContent = `${catalog.length.toLocaleString("es-ES")} ejercicios`;
   $("catalogStatus").textContent = replacementTargetExerciseId
     ? `Cambiando solo hoy · ${matches.length.toLocaleString("es-ES")} alternativas. La rutina original no cambiará.`
+    : editingSession?.status === "draft"
+      ? `${matches.length.toLocaleString("es-ES")} resultados · se añadirán a este borrador.`
     : `${matches.length.toLocaleString("es-ES")} resultados · catálogo auditado, sin imágenes ni GIF.`;
   container.replaceChildren();
   matches.slice(0, catalogResultLimit).forEach((entry) => {
@@ -4031,9 +4079,9 @@ function renderCatalogResults() {
     if (entry.reviewStatus === "pending_professional_review") {
       text.appendChild(createElement("small", "catalog-review-pending", "Sin revisión profesional todavía"));
     }
-    const active = getActiveSession(state);
+    const active = catalogEditingSession();
     const add = createButton(replacementTargetExerciseId ? "Elegir alternativa" : "Añadir", "button-secondary", () => {
-      if (!active) return;
+      if (!active || (replacementTargetExerciseId && active.status !== "in_progress")) return;
       const replacementId = replacementTargetExerciseId;
       const saved = runOnce(add, () => commit((next) => {
         const sessionExercise = replacementId
@@ -4059,7 +4107,7 @@ function renderCatalogResults() {
         renderCatalogResults();
       }
     });
-    add.disabled = !active;
+    add.disabled = !active || (replacementTargetExerciseId && active.status !== "in_progress");
 
     const details = document.createElement("details");
     details.className = "catalog-instructions";
@@ -4124,7 +4172,7 @@ function backfillExerciseMuscles() {
 
 async function loadCatalog() {
   try {
-    const response = await fetch("./data/exercises.es.json?v=85", { cache: "no-cache" });
+    const response = await fetch("./data/exercises.es.json?v=86", { cache: "no-cache" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     if (!Array.isArray(payload.exercises)) throw new Error("Estructura no válida");
@@ -4673,12 +4721,43 @@ $("addRoutineDayForm").addEventListener("submit", (event) => {
 $("addRoutineDayType").addEventListener("change", syncAddRoutineCardioVisibility);
 
 $("startFreeSessionBtn").addEventListener("click", (event) => {
-  trainingView = "session";
-  const started = runOnce(
+  trainingView = "free-draft";
+  const created = runOnce(
     event.currentTarget,
-    () => commit((next) => startFreeSession(next), "Entrenamiento iniciado y guardado."),
+    () => commit((next) => createFreeSessionDraft(next), "Borrador creado. El tiempo empezará cuando tú decidas."),
   );
-  if (!started) trainingView = "routines";
+  if (!created) trainingView = "routines";
+});
+
+$("freeDraftBackBtn").addEventListener("click", () => {
+  trainingView = "routines";
+  renderTraining();
+});
+
+$("startFreeDraftBtn").addEventListener("click", () => {
+  const draft = getFreeSessionDraft(state);
+  if (!draft) return;
+  trainingView = "session";
+  const started = commit(
+    next => startFreeSessionDraft(next, draft.id),
+    "Entrenamiento iniciado. El tiempo y el Diario ya cuentan desde ahora.",
+  );
+  if (!started) trainingView = "free-draft";
+});
+
+$("discardFreeDraftBtn").addEventListener("click", async () => {
+  const draft = getFreeSessionDraft(state);
+  if (!draft) return;
+  if (!(await confirmDialog("Se borrará este borrador y sus ejercicios preparados. No había entrenamiento registrado todavía.", {
+    title: "Descartar borrador",
+    confirmLabel: "Descartar",
+    danger: true,
+  }))) return;
+  const discarded = commit(
+    next => discardFreeSessionDraft(next, draft.id),
+    "Borrador descartado.",
+  );
+  if (discarded) trainingView = "routines";
 });
 
 $("continueSessionBtn").addEventListener("click", () => {
@@ -4774,10 +4853,11 @@ $("finishSessionBtn").addEventListener("click", async () => {
 
 $("addExerciseForm").addEventListener("submit", (event) => {
   event.preventDefault();
-  const active = getActiveSession(state);
+  const active = catalogEditingSession();
   if (!active) return;
   const name = $("newExerciseName").value;
   const replacementId = replacementTargetExerciseId;
+  if (replacementId && active.status !== "in_progress") return;
   const saved = commit((next) => {
     if (replacementId) {
       replaceSessionExerciseForToday(next, active.id, replacementId, name);
