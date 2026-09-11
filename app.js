@@ -54,8 +54,8 @@ import {
   skipPlannedSet,
   guidedExerciseDeviation,
   validateLabelPhotoFile,
-} from "./core.js?v=94";
-import { BODY_FIGURES } from "./body-paths.js?v=94";
+} from "./core.js?v=95";
+import { BODY_FIGURES } from "./body-paths.js?v=95";
 
 const defaultTargets = { calories: 2200, protein: 170, steps: 10000 };
 const defaultPreferences = {
@@ -4273,7 +4273,7 @@ function backfillExerciseMuscles() {
 
 async function loadCatalog() {
   try {
-    const response = await fetch("./data/exercises.es.json?v=94", { cache: "no-cache" });
+    const response = await fetch("./data/exercises.es.json?v=95", { cache: "no-cache" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     if (!Array.isArray(payload.exercises)) throw new Error("Estructura no válida");
@@ -4434,6 +4434,11 @@ function renderMuscleMap() {
     button.setAttribute("aria-pressed", String(button.dataset.musclePeriod === muscleMapPeriod));
   });
 
+  const figuraActual = state.owner.preferences?.mapFigure === "female" ? "female" : "male";
+  document.querySelectorAll("[data-map-figure]").forEach((button) => {
+    button.setAttribute("aria-pressed", String(button.dataset.mapFigure === figuraActual));
+  });
+
   figures.replaceChildren(
     renderMuscleFigure("front", volume),
     renderMuscleFigure("back", volume),
@@ -4486,8 +4491,13 @@ function renderMuscleMap() {
     empty.appendChild(cell);
     rows.replaceChildren(empty);
   } else {
-    rows.replaceChildren(...filas.map(({ region, data }) => {
+    // Cada zona lleva debajo los ejercicios que la trabajaron. El número solo
+    // dice cuánto; esto dice de dónde viene, que es lo que permite decidir qué
+    // cambiar la semana que viene. Los datos ya venían en computeMuscleVolume,
+    // ordenados por series: aquí no se recalcula nada.
+    rows.replaceChildren(...filas.flatMap(({ region, data }) => {
       const row = document.createElement("tr");
+      row.className = "muscle-row";
       const nombre = document.createElement("th");
       nombre.scope = "row";
       nombre.textContent = region.labelEs;
@@ -4496,7 +4506,33 @@ function renderMuscleMap() {
       const secundarias = document.createElement("td");
       secundarias.textContent = String(data.secondarySets);
       row.append(nombre, directas, secundarias);
-      return row;
+
+      const ejercicios = data.exercises ?? [];
+      if (!ejercicios.length) return [row];
+      const detalle = document.createElement("tr");
+      detalle.className = "muscle-row-exercises";
+      const celda = document.createElement("td");
+      celda.colSpan = 3;
+      const lista = document.createElement("ul");
+      lista.className = "muscle-exercise-list";
+      ejercicios.forEach((ejercicio) => {
+        const item = document.createElement("li");
+        item.className = `muscle-exercise muscle-exercise-${ejercicio.kind}`;
+        const nombreEjercicio = document.createElement("span");
+        nombreEjercicio.textContent = ejercicio.name;
+        const cuenta = document.createElement("span");
+        cuenta.className = "muscle-exercise-sets";
+        // "de forma directa" o "con implicación": sin esto, dos ejercicios con
+        // las mismas series parecerían aportar lo mismo a la zona.
+        cuenta.textContent = ejercicio.kind === "direct"
+          ? countLabel(ejercicio.sets, "serie")
+          : `${countLabel(ejercicio.sets, "serie")} · implicación`;
+        item.append(nombreEjercicio, cuenta);
+        lista.appendChild(item);
+      });
+      celda.appendChild(lista);
+      detalle.appendChild(celda);
+      return [row, detalle];
     }));
   }
 
@@ -4612,6 +4648,18 @@ document.querySelectorAll("[data-muscle-period]").forEach((button) => {
   button.addEventListener("click", () => {
     muscleMapPeriod = button.dataset.musclePeriod;
     renderMuscleMap();
+  });
+});
+
+// La figura vivía solo en Ajustes, a cuatro toques del mapa, así que quien
+// abría el mapa no sabía que se podía cambiar. Escribe la misma preferencia:
+// no es un ajuste nuevo, es el mismo donde se usa.
+document.querySelectorAll("[data-map-figure]").forEach((button) => {
+  button.addEventListener("click", () => {
+    if (state.owner.preferences?.mapFigure === button.dataset.mapFigure) return;
+    commit((next) => {
+      next.owner.preferences.mapFigure = button.dataset.mapFigure === "female" ? "female" : "male";
+    }, null);
   });
 });
 

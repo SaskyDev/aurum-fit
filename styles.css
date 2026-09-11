@@ -4448,9 +4448,9 @@ th {
 :root {
   --muscle-body: #232c25;
   --muscle-none: #232c25;
-  --muscle-low: #3d5a2a;
-  --muscle-medium: #79ab3f;
-  --muscle-high: #c7f464;
+  --muscle-low: #5b45b0;
+  --muscle-medium: #e0609a;
+  --muscle-high: #ffc861;
   --muscle-secondary-ink: #8aa39a;
   --muscle-edge: #55685b;
 }
@@ -4458,9 +4458,9 @@ th {
 :root[data-theme="light"] {
   --muscle-body: #e2e7dd;
   --muscle-none: #e2e7dd;
-  --muscle-low: #9cc93f;
-  --muscle-medium: #5f8a1a;
-  --muscle-high: #365008;
+  --muscle-low: #d98324;
+  --muscle-medium: #a92a6d;
+  --muscle-high: #31215e;
   --muscle-secondary-ink: #5d7266;
   --muscle-edge: #a3b39d;
 }
@@ -4474,18 +4474,6 @@ th {
 
 /* El grupo de periodos del Diario tiene cuatro opciones; el del mapa, tres. */
 .muscle-map .period-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-
-.muscle-map-detail > summary {
-  cursor: pointer;
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-  gap: .5rem;
-  color: var(--ink-soft);
-  font-weight: 600;
-}
-
-.muscle-map-detail[open] > summary { margin-bottom: var(--space-2); }
 
 .muscle-map-figures {
   display: flex;
@@ -4519,6 +4507,63 @@ th {
 .muscle-region.intensity-low > :not(title) { fill: var(--muscle-low); }
 .muscle-region.intensity-medium > :not(title) { fill: var(--muscle-medium); }
 .muscle-region.intensity-high > :not(title) { fill: var(--muscle-high); }
+
+/* "Ver detalle por zona" ya tenía sus 44 px de alto, pero se pintaba en gris
+   apagado y sin borde: parecía un pie de tabla, no algo que se pueda tocar, y
+   por eso nadie lo abría. Lo que le faltaba era peso visual, no tamaño. */
+.muscle-map-detail > summary {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 var(--space-3);
+  border: 1px solid rgba(var(--accent-rgb), .45);
+  border-radius: var(--radius-sm);
+  background: rgba(var(--accent-rgb), .12);
+  color: var(--accent-ink);
+  cursor: pointer;
+  font-size: .84rem;
+  font-weight: 850;
+  list-style: none;
+}
+.muscle-map-detail > summary::-webkit-details-marker { display: none; }
+.muscle-map-detail > summary::after { content: "▾"; font-size: .72rem; }
+.muscle-map-detail[open] > summary { margin-bottom: var(--space-2); }
+.muscle-map-detail[open] > summary::after { content: "▴"; }
+
+/* Los ejercicios que trabajaron cada zona, debajo de sus números. El número
+   dice cuánto; esto dice de dónde viene. */
+.muscle-row-exercises > td { padding-top: 0; border-top: 0; }
+.muscle-exercise-list { display: grid; gap: 2px; margin: 0 0 var(--space-2); padding: 0; list-style: none; }
+.muscle-exercise {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: .78rem;
+}
+.muscle-exercise-sets { flex: none; color: var(--ink-soft); font-size: .72rem; }
+.muscle-exercise-secondary { color: var(--ink-soft); }
+
+/* Qué figura se dibuja. Estaba solo en Ajustes, a cuatro toques del mapa. */
+.muscle-figure-switch { display: flex; gap: 6px; justify-content: flex-end; }
+.muscle-figure-switch button {
+  min-height: 32px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+  font-size: .74rem;
+  font-weight: 800;
+}
+.muscle-figure-switch button[aria-pressed="true"] {
+  border-color: rgba(var(--accent-rgb), .65);
+  background: rgba(var(--accent-rgb), .14);
+  color: var(--accent-ink);
+}
 
 .muscle-hatch-bg { fill: var(--muscle-none); }
 .muscle-hatch-line { stroke: var(--muscle-secondary-ink); stroke-width: 3; stroke-opacity: .55; }

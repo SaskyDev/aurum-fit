@@ -219,6 +219,37 @@ test("el catálogo avisa de los ejercicios sin revisión profesional", () => {
   assert.doesNotMatch(app, /guía verificada/);
 });
 
+test("el detalle por zona nombra los ejercicios y se puede tocar", () => {
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const css = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+  const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+
+  // El número dice cuánto; el ejercicio dice de dónde viene, que es lo que
+  // permite decidir qué cambiar. Los datos ya venían de computeMuscleVolume.
+  assert.match(app, /detalle\.className = "muscle-row-exercises"/);
+  assert.match(app, /ejercicio\.kind === "direct"\s*\n\s*\? countLabel\(ejercicio\.sets, "serie"\)/);
+  assert.match(app, /`\$\{countLabel\(ejercicio\.sets, "serie"\)\} · implicación`/);
+  assert.match(css, /\.muscle-exercise-list \{/);
+
+  // El summary era un <details> pelado, sin una sola regla de estilo: se leía
+  // como texto muerto. Ahora es un control con objetivo táctil de 44 px.
+  // Una sola regla para el summary, no una nueva encima de la vieja, o la
+  // comprobación mira un bloque y el navegador aplica otro: así fue como bajar
+  // la altura a 20px no ponía nada en rojo.
+  const reglasSummary = css.match(/\.muscle-map-detail > summary \{[^}]*\}/g) ?? [];
+  assert.equal(reglasSummary.length, 1, "hay dos reglas para el mismo summary");
+  assert.match(reglasSummary[0], /min-height: 44px;/, "el control de detalle perdió su objetivo táctil");
+  assert.match(reglasSummary[0], /border: 1px solid rgba\(var\(--accent-rgb\)/, "y su peso visual: en gris apagado parecía un pie de tabla");
+  assert.match(html, /Ver detalle por zona/);
+
+  // Y la figura se cambia donde se usa, no a cuatro toques en Ajustes. Escribe
+  // la MISMA preferencia: si fuese otra, las dos pantallas se contradirían.
+  assert.match(html, /data-map-figure="male"/);
+  assert.match(html, /data-map-figure="female"/);
+  assert.match(app, /next\.owner\.preferences\.mapFigure = button\.dataset\.mapFigure === "female" \? "female" : "male"/);
+  assert.match(app, /button\.setAttribute\("aria-pressed", String\(button\.dataset\.mapFigure === figuraActual\)\)/);
+});
+
 test("el mapa no inventa color: la trama, el tramo y el trazo compartido", () => {
   const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
   const css = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");

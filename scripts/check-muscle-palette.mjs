@@ -99,8 +99,17 @@ export function checkRamp(name, steps) {
 // Los mismos valores que styles.css. Si se tocan allí, hay que tocarlos aquí:
 // la prueba "la escala del mapa muscular sigue siendo legible" compara ambos.
 export const MUSCLE_RAMPS = {
-  oscuro: ["#232c25", "#3d5a2a", "#79ab3f", "#c7f464"],
-  claro: ["#e2e7dd", "#9cc93f", "#5f8a1a", "#365008"],
+  // Escala multitono, no cuatro verdes. El paso 0 se queda neutro a propósito:
+  // "sin trabajo" no es una cantidad pequeña, es ausencia, y darle tono la
+  // convertiría en un tramo más.
+  //
+  // NO es verde → amarillo → naranja → rojo, que es lo primero que pide el
+  // cuerpo: esa escala mide 0.282 → 0.673 → 0.886 → 0.608 de luminosidad, o sea
+  // sube y luego baja, así que "10+" y "1-4" se confunden en gris y con
+  // daltonismo. Y un músculo en rojo sobre una figura humana se lee como dolor
+  // o lesión: la app no diagnostica.
+  oscuro: ["#232c25", "#5b45b0", "#e0609a", "#ffc861"],
+  claro: ["#e2e7dd", "#d98324", "#a92a6d", "#31215e"],
 };
 
 if (import.meta.url === `file://${process.argv[1]}`) {

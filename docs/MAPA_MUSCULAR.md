@@ -275,3 +275,42 @@ región con más volumen directo, así que el dibujo puede mostrar los abductore
 coloreados con 0 series propias. El título del grupo declara los números de cada
 región por separado, y el resumen en texto nombra la que manda. Hay pruebas que
 se ponen rojas si alguna de esas dos cosas desaparece.
+
+## La escala de color
+
+Multitono, no cuatro verdes. El paso 0 se queda neutro a propósito: "sin
+trabajo" no es una cantidad pequeña, es ausencia, y darle tono la convertiría
+en un tramo más.
+
+| | 0 | 1-4 | 5-9 | 10+ |
+|---|---|---|---|---|
+| oscuro | `#232c25` | `#5b45b0` | `#e0609a` | `#ffc861` |
+| claro | `#e2e7dd` | `#d98324` | `#a92a6d` | `#31215e` |
+
+**Lo primero que pide el cuerpo es verde → amarillo → naranja → rojo, y no
+sirve.** Medido: su luminosidad hace `0.282 → 0.673 → 0.886 → 0.608`, sube y
+luego baja, así que "10+" y "1-4" se confunden en escala de grises y con
+daltonismo. `check-muscle-palette.mjs` la rechaza.
+
+Y hay una razón que no es técnica: **un músculo en rojo sobre una figura humana
+se lee como dolor o lesión.** La app no diagnostica ni previene lesiones. Mucho
+volumen no es malo, así que el extremo de la escala no puede ser un color de
+alarma.
+
+La escala elegida sube en luminosidad de forma monótona en los dos temas y
+separa todos los pares por encima del umbral: el peor caso es protan ΔE 13,8
+sobre un mínimo de 8, y visión normal 21,8 sobre un mínimo de 15.
+
+## El detalle por zona
+
+Cada zona lista debajo **los ejercicios que la trabajaron**, distinguiendo las
+series directas de las que fueron con implicación. El número dice cuánto; el
+ejercicio dice de dónde viene, que es lo que permite decidir qué cambiar. Los
+datos ya los devolvía `computeMuscleVolume` en `byRegion[id].exercises`,
+ordenados por series: la tabla no recalcula nada.
+
+La figura (hombre o mujer) se cambia **desde el propio mapa**, no solo en
+Ajustes. Es la misma preferencia `mapFigure`, escrita desde otro sitio: no hay
+un ajuste nuevo que pueda contradecir al viejo. No se deduce de ningún campo de
+sexo en el perfil, porque no existe: la app no pide ese dato para nada más y no
+va a pedirlo solo para elegir un dibujo.
