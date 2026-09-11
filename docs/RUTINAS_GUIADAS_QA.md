@@ -72,3 +72,14 @@ Alex confirmó usar la suite canónica `node --test tests/*.test.js`:
 - Contadores del ejercicio solo suman realizadas.
 - Recorrido E2E anula, finaliza una sesión con trabajo real y abre el Diario.
   La mutación `QA_MUTATE=annul` elimina la operación y el recorrido falla.
+
+## Paso 8 — desviación con decisión explícita
+
+- `guidedPlanDeviation` es puro: compara peso y rango en ambos sentidos.
+- Solo las series efectivas marcadas proponen cambiar la referencia. Calentar,
+  anular, duplicar extras o corregir un registro no redefine el plan.
+- El diálogo se abre después de guardar: cancelar no pierde la serie.
+- Actualizar usa `updateRoutineExercisePlan` y preserva otros campos del plan
+  actual; la foto de la sesión permanece igual.
+- TDD y mutación de desviación detectada. E2E rechaza una bajada y acepta una
+  subida, comprobando persistencia antes y después de responder.

@@ -1447,6 +1447,18 @@ export function pendingPlannedSets(exercise) {
     .filter((order) => !exercise.sets.some((item) => item.planOrder === order));
 }
 
+export function guidedPlanDeviation(plan, actual) {
+  if (!plan.routineExerciseId || actual.planOrder === undefined || actual.status !== "completed"
+    || (actual.setType ?? "effective") !== "effective") return null;
+  const changes = {};
+  if (plan.targetLoadKg !== null && actual.loadKg !== plan.targetLoadKg) changes.targetLoadKg = actual.loadKg;
+  if (actual.reps < plan.repMin || actual.reps > plan.repMax) {
+    changes.repMin = actual.reps;
+    changes.repMax = actual.reps;
+  }
+  return Object.keys(changes).length ? changes : null;
+}
+
 function assertPendingPlanSlot(exercise, order) {
   if (!exercise.routineExerciseId || !Number.isInteger(order) || order < 1 || order > exercise.plannedSets) {
     throw new Error("La serie no pertenece al plan de este ejercicio.");

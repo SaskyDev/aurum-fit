@@ -46,9 +46,10 @@ import {
   updateRoutineExercisePlan,
   pendingPlannedSets,
   skipPlannedSet,
+  guidedPlanDeviation,
   validateLabelPhotoFile,
-} from "./core.js?v=80";
-import { BODY_FIGURES } from "./body-paths.js?v=80";
+} from "./core.js?v=81";
+import { BODY_FIGURES } from "./body-paths.js?v=81";
 
 const defaultTargets = { calories: 2200, protein: 170, steps: 10000 };
 const defaultPreferences = {
@@ -2859,7 +2860,7 @@ function renderSetForm(session, sessionExercise, reference, planOrder = null) {
   if (planOrder !== null) noteControl.append(createElement("summary", "", "Nota opcional"), note.label);
   form.append(columnHeadings, newSetNumber, load.label, reps.label, rir.label, setTypeGroup, noteControl, error, actions);
 
-  form.addEventListener("submit", (event) => {
+  form.addEventListener("submit", async (event) => {
     event.preventDefault();
     error.hidden = true;
     error.textContent = "";
@@ -2888,6 +2889,7 @@ function renderSetForm(session, sessionExercise, reference, planOrder = null) {
     const editingSetId = form.dataset.editingSetId;
     const restSeconds = timerFor(sessionExercise.id).duration;
     let logro = null;
+    let completedSet = null;
     // El aviso se da después del commit, no antes, porque hasta que la serie no
     // está guardada no se puede saber si superó un récord.
     const saved = runOnce(submit, () => commit((next) => {
@@ -2896,6 +2898,7 @@ function renderSetForm(session, sessionExercise, reference, planOrder = null) {
         return;
       }
       const workoutSet = addSetToExercise(next, session.id, sessionExercise.id, input);
+      completedSet = workoutSet;
       logro = recordSummary(next, sessionExercise.exerciseId, workoutSet.id);
       // Lo lee el render() que commit() lanza justo después.
       freshSet = { id: workoutSet.id, record: Boolean(logro) };
@@ -2910,6 +2913,7 @@ function renderSetForm(session, sessionExercise, reference, planOrder = null) {
         ].filter(Boolean).join(" "));
       form.reset();
       if (!editingSetId && autoRestTimerEnabled()) startRestAfterSet(sessionExercise.id);
+      if (completedSet) await offerGuidedPlanUpdate(session, sessionExercise, completedSet);
     }
   });
 
@@ -2931,6 +2935,28 @@ function renderSetForm(session, sessionExercise, reference, planOrder = null) {
     reps.input.focus();
   };
   return form;
+}
+
+async function offerGuidedPlanUpdate(session, exercise, actual) {
+  const changes = guidedPlanDeviation(exercise, actual);
+  if (!changes) return;
+  const current = state.training.routines.find(item => item.id === session.source.routineId);
+  const day = current?.days.find(item => item.id === session.source.routineDayId);
+  const plan = day?.exercises.find(item => item.id === exercise.routineExerciseId);
+  if (!plan) return; // Una rutina eliminada no impide guardar lo realizado.
+  const description = [
+    changes.targetLoadKg !== undefined ? `peso: ${changes.targetLoadKg === null ? "sin referencia" : `${changes.targetLoadKg} kg`}` : null,
+    changes.repMin !== undefined ? `repeticiones: ${changes.repMin}` : null,
+  ].filter(Boolean).join(" · ");
+  if (!(await confirmDialog(`Has registrado algo distinto al plan (${description}). ¿Usarlo como referencia para las próximas sesiones? Lo de hoy ya está guardado.`, {
+    title: "¿Actualizar el plan?", confirmLabel: "Actualizar plan", cancelLabel: "Solo hoy",
+  }))) return;
+  commit(next => {
+    const livePlan = next.training.routines.find(item => item.id === current.id)?.days
+      .find(item => item.id === day.id)?.exercises.find(item => item.id === plan.id);
+    if (!livePlan) throw new Error("El plan ya no existe. La serie realizada sigue guardada.");
+    updateRoutineExercisePlan(next, current.id, day.id, plan.id, { ...livePlan, ...changes });
+  }, "Plan actualizado para próximas sesiones. La sesión actual conserva su plan original.");
 }
 
 function attachSetSwipe(row, foreground, { onDuplicate, onDelete }) {
@@ -3770,7 +3796,7 @@ function backfillExerciseMuscles() {
 
 async function loadCatalog() {
   try {
-    const response = await fetch("./data/exercises.es.json?v=80", { cache: "no-cache" });
+    const response = await fetch("./data/exercises.es.json?v=81", { cache: "no-cache" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     if (!Array.isArray(payload.exercises)) throw new Error("Estructura no válida");

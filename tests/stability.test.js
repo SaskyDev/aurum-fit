@@ -192,7 +192,8 @@ test("las confirmaciones usan un diálogo accesible propio y no window.confirm",
   assert.match(styles, /\.overlay-open \{ overflow: hidden; \}/);
 
   const confirmaciones = app.match(/await confirmDialog\(/g) ?? [];
-  assert.equal(confirmaciones.length, 9);
+  // La décima confirmación decide si una desviación actualiza el plan guiado.
+  assert.equal(confirmaciones.length, 10);
 });
 
 test("el catálogo avisa de los ejercicios sin revisión profesional", () => {

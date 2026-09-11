@@ -3,7 +3,7 @@ import test from "node:test";
 import { createEmptyState, createRoutine, createRoutineWithWeekdays, validateState,
   addExerciseToRoutineDay, updateRoutineExercisePlan, startSessionFromRoutineDay,
   computeMuscleVolume, exercisePersonalRecords, addSetToExercise, completeSession,
-  skipPlannedSet, pendingPlannedSets, duplicateSet, updateSet } from "../core.js";
+  skipPlannedSet, pendingPlannedSets, duplicateSet, updateSet, guidedPlanDeviation } from "../core.js";
 
 test("modo de rutina: compatibilidad log, creación guiada y rechazo de valores desconocidos", () => {
   const state = createEmptyState();
@@ -17,6 +17,19 @@ test("modo de rutina: compatibilidad log, creación guiada y rechazo de valores 
   assert.throws(() => createRoutine(state, "Inválida", { mode: "other" }), /modo/i);
   guided.mode = "other";
   assert.match(validateState(state), /rutina/i);
+});
+
+test("la desviación ofrece cambios en ambos sentidos sin mutar el plan ni confundir un rango válido", () => {
+  const plan = { routineExerciseId: "re", plannedSets: 3, repMin: 8, repMax: 12, targetLoadKg: 50 };
+  const actual = { status: "completed", planOrder: 1, setType: "effective", reps: 10, loadKg: 50 };
+  assert.equal(guidedPlanDeviation(plan, actual), null);
+  assert.deepEqual(guidedPlanDeviation(plan, { ...actual, reps: 6, loadKg: 40 }), { targetLoadKg: 40, repMin: 6, repMax: 6 });
+  assert.deepEqual(guidedPlanDeviation(plan, { ...actual, reps: 15, loadKg: 60 }), { targetLoadKg: 60, repMin: 15, repMax: 15 });
+  assert.deepEqual(guidedPlanDeviation(plan, { ...actual, loadKg: 60 }), { targetLoadKg: 60 });
+  assert.equal(guidedPlanDeviation(plan, { ...actual, setType: "warmup", loadKg: 20 }), null);
+  assert.equal(guidedPlanDeviation(plan, { ...actual, status: "skipped" }), null);
+  assert.equal(guidedPlanDeviation({}, actual), null);
+  assert.equal(plan.targetLoadKg, 50);
 });
 
 test("anular no completa: las series omitidas no cuentan y cada hueco del plan se resuelve una vez", () => {

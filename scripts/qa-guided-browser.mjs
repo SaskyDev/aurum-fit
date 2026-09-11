@@ -9,13 +9,14 @@ fs.mkdirSync(output, { recursive: true });
 try {
   for (const theme of ["dark", "light"]) {
     const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, reducedMotion: "reduce", serviceWorkers: "block" });
-    if (["creation", "check", "annul"].includes(process.env.QA_MUTATE)) {
+    if (["creation", "check", "annul", "deviation"].includes(process.env.QA_MUTATE)) {
       await context.route("**/app.js*", async route => {
         const response = await route.fetch();
         const mutations = {
           creation: ['mode: selectedType === "cardio" ? "log" : document.querySelector(\'input[name="routineMode"]:checked\')?.value ?? "log",', 'mode: "log",'],
           check: ['const workoutSet = addSetToExercise(next, session.id, sessionExercise.id, input);', 'return;'],
           annul: ['next => skipPlannedSet(next, session.id, sessionExercise.id, planOrder)', 'next => undefined'],
+          deviation: ['if (!changes) return;', 'return;'],
         };
         const source = (await response.text()).replace(...mutations[process.env.QA_MUTATE]);
         await route.fulfill({ response, body: source });
@@ -98,6 +99,17 @@ try {
     saved = await read();
     assert.equal(saved.training.sessions[0].exercises[0].sets.find(item => item.planOrder === 2).status, "skipped");
     assert.equal(await page.locator('.set-skipped').count(), 1);
+    const lastPlan = page.locator('.planned-set-form').first();
+    await lastPlan.locator('[name="loadKg"]').fill(theme === 'dark' ? '40' : '60');
+    await lastPlan.locator('[name="reps"]').fill(theme === 'dark' ? '6' : '15');
+    await lastPlan.getByRole('button', { name: 'Completar serie 3', exact: true }).tap();
+    await page.getByRole('alertdialog').waitFor();
+    saved = await read();
+    assert.equal(saved.training.routines[0].days[0].exercises[0].targetLoadKg, 50);
+    await page.getByRole('alertdialog').getByRole('button', { name: theme === 'dark' ? 'Solo hoy' : 'Actualizar plan', exact: true }).click();
+    saved = await read();
+    assert.equal(saved.training.routines[0].days[0].exercises[0].targetLoadKg, theme === 'dark' ? 50 : 60);
+    assert.equal(saved.training.sessions[0].exercises[0].targetLoadKg, 50);
     await page.locator('#finishSessionBtn').click();
     await page.getByRole('alertdialog').getByRole('button', { name: 'Finalizar', exact: true }).click();
     await page.goto('http://localhost:8000/#diario');
