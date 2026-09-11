@@ -4614,6 +4614,42 @@ th {
 
 .muscle-legend-title small { color: var(--ink-soft); font-weight: 600; }
 
+/* Una barra continua en vez de cuatro muestras sueltas: así la dirección de la
+   escala se ve, no se deduce. Importa porque la intuición de "más oscuro = más
+   trabajo" solo vale en tema claro; en oscuro se invierte por fuerza, ya que el
+   "sin trabajo" está pegado al suelo de luminosidad y solo queda subir. */
+.muscle-legend-scale { display: flex; gap: 6px; align-items: center; }
+.muscle-legend-end { color: var(--ink-soft); font-size: .68rem; }
+.muscle-legend-bar {
+  display: flex;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+.muscle-legend-step {
+  min-width: 38px;
+  padding: 3px 8px;
+  color: var(--ink);
+  font-size: .68rem;
+  font-weight: 850;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.muscle-legend-step.intensity-none { background: var(--muscle-none); color: var(--ink-soft); }
+.muscle-legend-step.intensity-low { background: var(--muscle-low); }
+.muscle-legend-step.intensity-medium { background: var(--muscle-medium); }
+.muscle-legend-step.intensity-high { background: var(--muscle-high); }
+/* Cada tramo lleva la tinta que se lee sobre SU color, no la del tema: el cobre
+   y el ámbar son de luminosidad media y piden lados distintos. Medido en el
+   navegador; con una sola tinta por tema, el cobre se quedaba en 3,04:1. */
+.muscle-legend-step.intensity-low,
+.muscle-legend-step.intensity-medium,
+.muscle-legend-step.intensity-high { color: #071009; }
+:root:not([data-theme="light"]) .muscle-legend-step.intensity-low { color: #ffffff; }
+:root[data-theme="light"] .muscle-legend-step.intensity-medium,
+:root[data-theme="light"] .muscle-legend-step.intensity-high { color: #ffffff; }
+
+
 .muscle-legend-item {
   display: inline-flex;
   align-items: center;

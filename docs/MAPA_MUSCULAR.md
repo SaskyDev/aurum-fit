@@ -311,6 +311,26 @@ La escala sube en luminosidad de forma monótona en los dos temas y separa todos
 los pares por encima del umbral: el peor caso es protan ΔE 18,4 sobre un mínimo
 de 8, y visión normal 18,4 sobre un mínimo de 15.
 
+### Por qué la dirección se invierte entre temas
+
+La intuición razonable es **más oscuro = más trabajo**, y el tema claro la
+respeta. El oscuro la invierte por fuerza, no por gusto:
+
+| | sin trabajo | tarjeta | margen que queda |
+|---|---|---|---|
+| oscuro | 0.282 | 0.217 | **0.065 hacia abajo** |
+| claro | 0.921 | 1.000 | 0.079 hacia arriba |
+
+En tema oscuro el "sin trabajo" ya está pegado al suelo: por debajo quedan 0.065
+de luminosidad antes de confundirse con la propia tarjeta. Tres tramos no caben
+ahí, y el "10+" acabaría siendo lo menos visible del mapa justo donde más
+trabajo hay. La escala tiene que alejarse del "sin trabajo" hacia donde haya
+recorrido, y en oscuro eso es hacia arriba.
+
+Por eso la leyenda es **una barra continua con "menos" y "más" en los extremos**
+en vez de cuatro muestras sueltas: la dirección se ve, no hay que deducirla de
+los números ni acertar con la intuición.
+
 ## El detalle por zona
 
 Cada zona se despliega para ver **los ejercicios que la trabajaron**, en dos

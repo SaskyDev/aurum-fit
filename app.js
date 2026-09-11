@@ -54,8 +54,8 @@ import {
   skipPlannedSet,
   guidedExerciseDeviation,
   validateLabelPhotoFile,
-} from "./core.js?v=97";
-import { BODY_FIGURES } from "./body-paths.js?v=97";
+} from "./core.js?v=98";
+import { BODY_FIGURES } from "./body-paths.js?v=98";
 
 const defaultTargets = { calories: 2200, protein: 170, steps: 10000 };
 const defaultPreferences = {
@@ -4273,7 +4273,7 @@ function backfillExerciseMuscles() {
 
 async function loadCatalog() {
   try {
-    const response = await fetch("./data/exercises.es.json?v=97", { cache: "no-cache" });
+    const response = await fetch("./data/exercises.es.json?v=98", { cache: "no-cache" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     if (!Array.isArray(payload.exercises)) throw new Error("Estructura no válida");
@@ -4455,19 +4455,27 @@ function renderMuscleMap() {
   const titulo = document.createElement("li");
   titulo.className = "muscle-legend-title";
   titulo.append(createElement("small", "", "Series directas:"));
-  legend.replaceChildren(titulo, ...MUSCLE_INTENSITY_STEPS.map((step) => {
-    const item = document.createElement("li");
-    item.className = `muscle-legend-item intensity-${step.id}`;
-    const swatch = createElement("span", "muscle-legend-swatch");
-    swatch.setAttribute("aria-hidden", "true");
+
+  // Los cuatro tramos van pegados formando una barra, con "menos" y "más" en
+  // los extremos. Sueltos, cada uno con su número, obligaban a leer la leyenda
+  // para saber hacia dónde crece la escala: la intuición de "más oscuro = más
+  // trabajo" vale en tema claro y se invierte en oscuro, porque ahí el "sin
+  // trabajo" ya está en el suelo de luminosidad y solo se puede subir. La
+  // dirección tiene que verse, no deducirse.
+  const escala = document.createElement("li");
+  escala.className = "muscle-legend-scale";
+  escala.append(createElement("small", "muscle-legend-end", "menos"));
+  const barra = createElement("span", "muscle-legend-bar");
+  MUSCLE_INTENSITY_STEPS.forEach((step) => {
     const siguiente = MUSCLE_INTENSITY_STEPS[MUSCLE_INTENSITY_STEPS.indexOf(step) + 1];
-    const detail = step.id === "none"
-      ? "0"
-      : `${step.min}${siguiente ? `-${siguiente.min - 1}` : "+"}`;
-    item.append(swatch, createElement("small", "", detail));
-    item.title = step.labelEs;
-    return item;
-  }));
+    const detail = step.id === "none" ? "0" : `${step.min}${siguiente ? `-${siguiente.min - 1}` : "+"}`;
+    const tramo = createElement("span", `muscle-legend-step intensity-${step.id}`, detail);
+    tramo.title = step.labelEs;
+    barra.appendChild(tramo);
+  });
+  escala.appendChild(barra);
+  escala.append(createElement("small", "muscle-legend-end", "más"));
+  legend.replaceChildren(titulo, escala);
   const implicacion = document.createElement("li");
   implicacion.className = "muscle-legend-item";
   const trama = createElement("span", "muscle-legend-swatch swatch-secondary");

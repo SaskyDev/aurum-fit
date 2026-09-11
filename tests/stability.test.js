@@ -262,6 +262,27 @@ test("el detalle por zona nombra los ejercicios y se puede tocar", () => {
   assert.match(app, /button\.setAttribute\("aria-pressed", String\(button\.dataset\.mapFigure === figuraActual\)\)/);
 });
 
+test("la leyenda del mapa dice hacia dónde crece la escala", () => {
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const css = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+
+  // La intuición de "más oscuro = más trabajo" vale en tema claro y se invierte
+  // en oscuro por fuerza: allí el "sin trabajo" está pegado al suelo de
+  // luminosidad (0.282 contra 0.217 de la tarjeta) y solo queda subir. Con
+  // cuatro muestras sueltas había que leer los números para saber la dirección;
+  // en una barra continua con extremos rotulados se ve.
+  assert.match(app, /escala\.append\(createElement\("small", "muscle-legend-end", "menos"\)\)/);
+  assert.match(app, /escala\.append\(createElement\("small", "muscle-legend-end", "más"\)\)/);
+  assert.match(app, /const barra = createElement\("span", "muscle-legend-bar"\)/);
+  assert.match(css, /\.muscle-legend-bar \{[^}]*overflow: hidden;/);
+
+  // Cada tramo lleva la tinta que se lee sobre SU color, no una por tema: el
+  // cobre y el ámbar son de luminosidad media y piden lados distintos. Con una
+  // sola tinta por tema el cobre se quedaba en 3,04:1.
+  assert.match(css, /:root:not\(\[data-theme="light"\]\) \.muscle-legend-step\.intensity-low \{ color: #ffffff; \}/);
+  assert.match(css, /:root\[data-theme="light"\] \.muscle-legend-step\.intensity-medium,\s*\n:root\[data-theme="light"\] \.muscle-legend-step\.intensity-high \{ color: #ffffff; \}/);
+});
+
 test("el mapa no inventa color: la trama, el tramo y el trazo compartido", () => {
   const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
   const css = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
