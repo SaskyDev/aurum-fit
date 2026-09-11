@@ -116,7 +116,6 @@ Para ejecutar las comprobaciones:
 node --test tests/*.test.js
 node scripts/check-guided-mutations.mjs
 node scripts/qa-guided-browser.mjs
-QA_CALIBRATION=1 node scripts/qa-guided-browser.mjs
 node scripts/qa-guided-demo.mjs
 ```
 

@@ -97,8 +97,10 @@ Alex confirmó usar la suite canónica `node --test tests/*.test.js`:
 - Tras registrar una carga (también 0), se pregunta antes de guardarla como
   objetivo. No se insiste si ya se aceptó ese mismo valor.
 - TDD rojo/verde; mutación que excluye null de calibración detectada.
-- `QA_CALIBRATION=1 node scripts/qa-guided-browser.mjs`: ambos temas, comprobación
-  de campo y placeholder vacíos, confirmación y foto original inalterada.
+- La calibración se cubre con pruebas de dominio: comprueban campo vacío,
+  confirmación explícita y foto original inalterada. No existe una QA de
+  navegador separada por variable de entorno; no documentar comandos que no
+  cambien el recorrido ejecutado.
 
 ## Paso 10 — demostración y cierre
 
