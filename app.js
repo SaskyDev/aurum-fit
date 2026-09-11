@@ -54,8 +54,8 @@ import {
   skipPlannedSet,
   guidedExerciseDeviation,
   validateLabelPhotoFile,
-} from "./core.js?v=86";
-import { BODY_FIGURES } from "./body-paths.js?v=86";
+} from "./core.js?v=88";
+import { BODY_FIGURES } from "./body-paths.js?v=88";
 
 const defaultTargets = { calories: 2200, protein: 170, steps: 10000 };
 const defaultPreferences = {
@@ -908,8 +908,36 @@ function createExerciseQuickAction(label, iconName, action, onClick) {
   const button = createButton("", "exercise-quick-action", onClick);
   button.dataset.quickAction = action;
   button.setAttribute("aria-label", label);
-  button.append(createIcon(iconName, "quick-action-icon"), createElement("span", "quick-action-label", label));
+  // Inline paths avoid the file:// SVG <use> limitation on the mobile preview.
+  button.append(createQuickActionIcon(iconName), createElement("span", "quick-action-label", label));
   return button;
+}
+
+function createQuickActionIcon(name) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("class", "quick-action-icon");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "2");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+  svg.setAttribute("aria-hidden", "true");
+  const add = (tag, attrs) => {
+    const node = document.createElementNS("http://www.w3.org/2000/svg", tag);
+    Object.entries(attrs).forEach(([key, value]) => node.setAttribute(key, value));
+    svg.appendChild(node);
+  };
+  const icons = {
+    guide: () => { add("circle", { cx: "12", cy: "12", r: "9" }); add("path", { d: "M9.7 9a2.5 2.5 0 1 1 4.3 1.7c-.9.9-2 1.4-2 3" }); add("path", { d: "M12 17h.01" }); },
+    note: () => { add("path", { d: "M5 4h14v16H5z" }); add("path", { d: "M8 9h8M8 13h5" }); },
+    swap: () => { add("path", { d: "M7 7h11l-3-3M17 17H6l3 3" }); add("path", { d: "M18 7l-3 3M6 17l3-3" }); },
+    skip: () => { add("path", { d: "M6 6l12 12M18 6L6 18" }); },
+    trash: () => { add("path", { d: "M4 7h16M10 11v6M14 11v6M9 7l1-2h4l1 2M6 7l1 13h10l1-13" }); },
+    check: () => add("path", { d: "m6 12 4 4 8-8" }),
+  };
+  (icons[name] ?? icons.guide)();
+  return svg;
 }
 
 function trapModalFocus(overlay, { initialFocus, onEscape }) {
@@ -3062,12 +3090,12 @@ function openPlanUpdateSheet(exercise, proposal) {
     sheet.setAttribute("role", "dialog");
     sheet.setAttribute("aria-modal", "true");
     sheet.setAttribute("aria-labelledby", `planUpdateTitle-${exercise.id}`);
-    const title = createElement("h3", "", "Editar próximas sesiones");
+    const title = createElement("h3", "", "¿Actualizar el plan futuro?");
     title.id = `planUpdateTitle-${exercise.id}`;
     const explanation = createElement(
       "p",
       "muted",
-      `Hemos agrupado ${proposal.observedSetCount} series efectivas. Lo de hoy no cambiará.`,
+      `Tus ${proposal.observedSetCount} series efectivas de hoy se alejan del plan actual. Puedes mantener este cambio solo hoy o guardar una nueva referencia para las próximas sesiones. Lo registrado hoy no se modifica.`,
     );
     const form = createElement("form", "plan-update-form");
     const load = makeSetField("Peso de referencia · kg", "targetLoadKg", {
@@ -3083,8 +3111,8 @@ function openPlanUpdateSheet(exercise, proposal) {
     repMin.input.value = proposal.repMin ?? exercise.repMin;
     repMax.input.value = proposal.repMax ?? exercise.repMax;
     const actions = createElement("div", "workout-sheet-actions");
-    const today = createButton("Solo hoy", "button-secondary", () => close(null));
-    const save = createElement("button", "button button-primary", "Guardar próximas");
+    const today = createButton("Mantener solo hoy", "button-secondary", () => close(null));
+    const save = createElement("button", "button button-primary", "Actualizar próximas");
     save.type = "submit";
     actions.append(today, save);
     form.append(load.label, repMin.label, repMax.label, actions);
@@ -4043,12 +4071,15 @@ function renderCatalogResults() {
     return;
   }
   const usedExerciseIds = new Set(state.training.exercises.map((exercise) => exercise.id));
+  const sessionExerciseIds = new Set(editingSession?.exercises.map((exercise) => exercise.exerciseId) ?? []);
   const matches = catalog.filter((entry) => {
     const normalizedSearchable = catalogSearchText(entry);
     return (!queryTokens.length || queryTokens.every((token) => normalizedSearchable.includes(token)))
       && (!category || entry.categoryEs === category)
       && (!equipment || entry.equipmentEs === equipment)
-      && (!target || (entry.targetEs ?? entry.target) === target);
+      && (!target || (entry.targetEs ?? entry.target) === target)
+      // Already-added options should make room for other suggestions in this session.
+      && (replacementTargetExerciseId || !sessionExerciseIds.has(entry.id));
   }).sort((left, right) => {
     return catalogSearchScore(right, query, usedExerciseIds)
       - catalogSearchScore(left, query, usedExerciseIds)
@@ -4172,7 +4203,7 @@ function backfillExerciseMuscles() {
 
 async function loadCatalog() {
   try {
-    const response = await fetch("./data/exercises.es.json?v=86", { cache: "no-cache" });
+    const response = await fetch("./data/exercises.es.json?v=88", { cache: "no-cache" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     if (!Array.isArray(payload.exercises)) throw new Error("Estructura no válida");

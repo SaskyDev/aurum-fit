@@ -21,10 +21,10 @@
         } catch {}
       })();
     </script>
-    <link rel="manifest" href="manifest.json?v=86" />
-    <link rel="icon" type="image/svg+xml" href="icon.svg?v=86" />
-    <link rel="apple-touch-icon" href="icon.svg?v=86" />
-    <link rel="stylesheet" href="styles.css?v=86" />
+    <link rel="manifest" href="manifest.json?v=88" />
+    <link rel="icon" type="image/svg+xml" href="icon.svg?v=88" />
+    <link rel="apple-touch-icon" href="icon.svg?v=88" />
+    <link rel="stylesheet" href="styles.css?v=88" />
   </head>
   <body>
     <main>
@@ -320,7 +320,7 @@
                       <label class="weekday-choice"><input type="radio" name="routineMode" value="log" checked /><span>Solo registro</span></label>
                       <label class="weekday-choice"><input type="radio" name="routineMode" value="guided" /><span>Guiada</span></label>
                     </div>
-                    <small>Registro: anotas lo que haces. Guiada: preparas series y repeticiones antes; solo cuentan cuando las marcas.</small>
+                    <small><strong>Solo registro:</strong> eliges ejercicios y anotas cada serie al hacerla. <strong>Guiada:</strong> además preparas series, rango de repeticiones y carga de referencia; nada cuenta hasta marcarlo.</small>
                   </fieldset>
                   <fieldset class="routine-color-fieldset">
                     <legend>Color de la rutina</legend>
@@ -392,11 +392,13 @@
             <div id="routineDetailDays" class="routine-day-list"></div>
             <form id="addRoutineDayForm" class="add-routine-day surface">
               <div><strong>+ Crear entrenamiento diferente</strong><small>Solo si quieres una variante distinta dentro de esta rutina.</small></div>
-              <label class="routine-day-type-select">Tipo<select id="addRoutineDayType"><option value="strength">Fuerza</option><option value="cardio">Cardio</option></select></label>
-              <label id="addRoutineCardioTypeLabel" class="routine-day-type-select" hidden>Actividad<select id="addRoutineCardioType"></select></label>
+              <div class="routine-variant-controls">
+                <label class="routine-day-type-select">Tipo<select id="addRoutineDayType"><option value="strength">Fuerza</option><option value="cardio">Cardio</option></select></label>
+                <label id="addRoutineCardioTypeLabel" class="routine-day-type-select" hidden>Actividad<select id="addRoutineCardioType"></select></label>
+              </div>
               <div id="addRoutineDayWeekdays" class="weekday-selector compact-weekdays" aria-label="Nuevo día de entrenamiento"></div>
               <small id="addRoutineDayWeekdaysHelp" class="muted"></small>
-              <button class="button button-secondary" type="submit">Crear variante</button>
+              <button class="button button-secondary routine-variant-submit" type="submit">Crear variante</button>
             </form>
           </section>
         </section>
@@ -681,6 +683,6 @@
 
     </main>
 
-    <script type="module" src="app.js?v=86"></script>
+    <script type="module" src="app.js?v=88"></script>
   </body>
 </html>

@@ -1892,7 +1892,7 @@ progress::-moz-progress-bar {
 .routine-detail-header h2 { margin: 4px 0; }
 .add-routine-day {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(130px, .5fr) auto;
+  grid-template-columns: 1fr;
   gap: var(--space-3);
   align-items: end;
   margin-top: var(--space-5);
@@ -1901,7 +1901,10 @@ progress::-moz-progress-bar {
 .add-routine-day > div:first-child { grid-column: 1 / -1; }
 .add-routine-day > small { grid-column: 1 / -1; margin-top: calc(var(--space-2) * -1); }
 .add-routine-day > .weekday-selector { grid-column: 1 / -1; }
-.add-routine-day .button { min-height: 46px; white-space: nowrap; }
+.routine-variant-controls { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: end; }
+.routine-variant-controls .routine-day-type-select { width: min(100%, 190px); min-width: 130px; }
+.routine-variant-controls select { min-height: 42px; padding-block: 8px; }
+.add-routine-day .routine-variant-submit { justify-self: center; width: min(100%, 230px); min-height: 44px; white-space: nowrap; }
 .routine-day-icon { display: inline-grid; color: var(--accent-ink); place-items: center; }
 .routine-day-icon .ui-icon { width: 20px; height: 20px; }
 
@@ -2174,7 +2177,8 @@ summary.routine-header::-webkit-details-marker { display: none; }
 .exercise-picker-summary strong,
 .exercise-picker-summary small { display: block; }
 .exercise-picker-summary small { margin-top: 2px; color: var(--ink-soft); font-size: .75rem; }
-.exercise-picker-content { padding: 0 var(--space-5) var(--space-5); border-top: 1px solid var(--line); }
+.exercise-picker { margin-top: var(--space-4); }
+.exercise-picker-content { padding: var(--space-4) var(--space-5) var(--space-5); border-top: 1px solid var(--line); }
 .session-exercises + .exercise-picker { margin-top: var(--space-3); }
 .free-workout-draft-panel,
 .free-workout-draft-panel + .exercise-picker { margin-top: var(--space-4); }
@@ -4906,6 +4910,9 @@ th {
   font-weight: 900;
   font-variant-numeric: tabular-nums;
   text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .compact-set-row-content > .set-cell {
   display: grid;
