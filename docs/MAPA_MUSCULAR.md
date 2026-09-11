@@ -284,22 +284,32 @@ en un tramo más.
 
 | | 0 | 1-4 | 5-9 | 10+ |
 |---|---|---|---|---|
-| oscuro | `#232c25` | `#8c3b2f` | `#d98324` | `#e8e84a` |
+| oscuro | `#232c25` | `#8a5220` | `#d98324` | `#e8e84a` |
 | claro | `#e2e7dd` | `#c9a227` | `#b05c17` | `#4f2d0d` |
 
-**El alto del tema claro es marrón quemado y no granate, a propósito.** Sobre
-blanco el paso alto tiene que ser el más oscuro, y un granate ahí pintaba de
-color sangre justo el músculo más entrenado. El marrón se lee como brasa
-apagada; el granate, como una lesión. La app no diagnostica.
+**No hay rojo en ninguno de los dos temas, y es deliberado.** La versión
+original de esta escala arrancaba en rojo ladrillo (`#8c3b2f`) y terminaba en
+granate (`#6b2016`) en claro. Las dos cosas se cambiaron:
+
+- **El paso bajo en oscuro es cobre**, no ladrillo. Con ladrillo, las piernas
+  poco entrenadas salían rojas: lo que MENOS trabajo tiene se pintaba del color
+  de alarma, que es la lectura al revés.
+- **El paso alto en claro es marrón quemado**, no granate. Sobre blanco el paso
+  alto es el más oscuro, y un granate ahí pintaba de color sangre justo el
+  músculo más entrenado.
+
+Un músculo rojo sobre una figura humana se lee como dolor o lesión, y la app no
+diagnostica. Además el cobre es lo que más margen da de todo lo probado: protan
+ΔE 18,4, frente a 12,4 del ladrillo y 15,2 de los verdes anteriores.
 
 **Lo que no sirve es verde → amarillo → naranja → rojo**, que es lo primero que
 pide el cuerpo. Medido: su luminosidad hace `0.282 → 0.673 → 0.886 → 0.608`,
 sube y luego baja, así que "10+" y "1-4" se confunden en escala de grises y con
 daltonismo. `check-muscle-palette.mjs` la rechaza.
 
-La escala elegida sube en luminosidad de forma monótona en los dos temas y
-separa todos los pares por encima del umbral: el peor caso es protan ΔE 12,4
-sobre un mínimo de 8, y visión normal 18,4 sobre un mínimo de 15.
+La escala sube en luminosidad de forma monótona en los dos temas y separa todos
+los pares por encima del umbral: el peor caso es protan ΔE 18,4 sobre un mínimo
+de 8, y visión normal 18,4 sobre un mínimo de 15.
 
 ## El detalle por zona
 

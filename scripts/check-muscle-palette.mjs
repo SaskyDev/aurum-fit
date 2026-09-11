@@ -108,7 +108,12 @@ export const MUSCLE_RAMPS = {
   // sube y luego baja, así que "10+" y "1-4" se confunden en gris y con
   // daltonismo. Y un músculo en rojo sobre una figura humana se lee como dolor
   // o lesión: la app no diagnostica.
-  oscuro: ["#232c25", "#8c3b2f", "#d98324", "#e8e84a"],
+  oscuro: ["#232c25", "#8a5220", "#d98324", "#e8e84a"],
+  // El paso bajo del tema oscuro es COBRE y no rojo ladrillo: con ladrillo las
+  // piernas poco entrenadas salían rojas, o sea que lo que MENOS trabajo tiene
+  // se pintaba del color de alarma. El cobre además es lo que más margen da:
+  // protan ΔE 18,4 frente a 12,4 del ladrillo y 15,2 de los verdes.
+  //
   // El alto del tema claro es marrón quemado y NO granate. Sobre blanco, el
   // paso alto es el más oscuro, y un granate ahí pintaba de color sangre
   // justo el músculo más entrenado. Marrón se lee como brasa apagada.
