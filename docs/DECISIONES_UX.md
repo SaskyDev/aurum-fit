@@ -129,3 +129,37 @@ La atribución se conserva en `THIRD_PARTY_NOTICES.md`.
   debajo de `Set · Peso · Reps · RIR`.
 - El catálogo de una sesión no vuelve a sugerir ejercicios ya añadidos, salvo
   en el flujo explícito de sustituir un ejercicio solo hoy.
+
+## Revisión posterior al rediseño compacto
+
+Cuatro cosas que la revisión encontró y que quedan cerradas. Ninguna era
+estructural: el modelo aguantó (una serie planificada no existe como objeto
+hasta que se resuelve, así que no hay nada que filtrar para que no cuente).
+
+- **La tinta sobre un relleno de color se decide por tema, nunca a mano.**
+  `--ink-on-fill` vale `#071009` en oscuro y `#ffffff` en claro. El ✓ de la
+  serie hecha la llevaba fija en `#071009`, elegida para el neón del tema
+  oscuro, y en claro daba 2,78:1. `check-theme-contrast.mjs` ahora lee los
+  rellenos del código y comprueba los dos temas.
+- **El relleno de ese ✓ es `--success`, no `--accent`.** Atarlo al acento de la
+  rutina hacía que una rutina roja pintara de rojo cada serie completada. Una
+  serie hecha significa lo mismo en todas las rutinas.
+- **Una serie anulada no cuenta como trabajo en ningún recuento.** Ni en el
+  selector de ejercicios de Progreso, donde entraba porque el `?? "effective"`
+  la daba por efectiva al no llevar `setType`, ni en el "N series" del historial
+  del ejercicio.
+- **El catálogo conserva su reserva donde se muestra el dato.** El origen del
+  ejercicio dice "Catálogo auditado · revisión pendiente", y la hoja de `Guía`
+  lleva el mismo descargo que el catálogo: *"pendiente de revisión profesional.
+  No es consejo médico"*. Bajo un botón llamado Guía ese texto gana una
+  autoridad que no tiene.
+
+**Decidido y no cambiado:** confirmar una serie guiada sigue pidiendo dos
+toques, el ✓ y el tipo de serie. Alex: *"no quita más de un segundo y así la app
+no decide por defecto qué tipo de serie has hecho"*. Encaja con no inventar
+datos. No se reabre.
+
+**Sin probar en hardware:** los recorridos de navegador despachan `PointerEvent`
+sintéticos, sin inercia real ni conflicto de `touch-action`. Siguen pendientes
+de un iPhone el check contra el gesto de arrastre y la rueda numérica a media
+inercia.
