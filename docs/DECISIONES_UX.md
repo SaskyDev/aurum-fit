@@ -163,3 +163,44 @@ datos. No se reabre.
 sintéticos, sin inercia real ni conflicto de `touch-action`. Siguen pendientes
 de un iPhone el check contra el gesto de arrastre y la rueda numérica a media
 inercia.
+
+## Las dos pantallas que deciden por el usuario
+
+Dos sitios donde la app hace una pregunta. En los dos, la regla es la misma: si
+la pregunta no dice los números concretos, no es una pregunta, es un trámite.
+
+### Elegir el modo al crear la rutina
+
+La pregunta es **"¿quién pone los números?"**, no "cómo quieres entrenar". Cada
+modalidad explica en su propia tarjeta qué pasa al entrenar, no comparten una
+línea de texto debajo: es la decisión que más cuesta a quien empieza y tiene que
+poder compararse de un vistazo.
+
+Y se dice que la conversión va en un solo sentido, con la recomendación de
+empezar por el modo simple. Saber que no cierras ninguna puerta es lo que
+permite elegir sin miedo.
+
+### La hoja de desviación del plan
+
+Se abre al plegar el ejercicio y al finalizar la sesión, nunca al guardar una
+serie: hasta que no has terminado el ejercicio no se sabe si te has desviado.
+
+- **Enseña la comparación**: `Plan: 50 kg → Hoy: 42,5 kg`. Decía "tus N series se
+  alejan del plan actual", sin decir de qué a qué, y no se entendía para qué
+  aparecía.
+- **Solo lo que se ha movido.** Si el peso cambió y las repeticiones no, no
+  pregunta por las repeticiones. Enseñar tres campos convierte una decisión de
+  un segundo en un formulario.
+- **Los botones nombran el resultado**: *Dejar el plan en 50 kg* / *Cambiar el
+  plan a 42,5 kg*. No "mantener" ni "actualizar", que no dicen qué queda.
+- **No se cierra tocando fuera.** Antes sí, y valía como "no". La firma de la
+  desviación se marca como preguntada *antes* de abrir la hoja, así que un toque
+  despistado contestaba por el usuario y la pregunta no volvía a salir nunca
+  para esos mismos números. Es una decisión, no un desplegable.
+- **El foco va al botón, no a un campo**: enfocar un número abre el teclado del
+  móvil justo encima de la propia pregunta.
+
+Comprobado en navegador que la respuesta se aplica de verdad: rechazar deja el
+plan en 50 kg, aceptar lo pasa a 42,5, y en los dos casos la serie registrada
+sigue siendo 42,5 × 10 y la sesión de hoy conserva su plan original. Editar el
+plan no reescribe lo que hoy dijo.

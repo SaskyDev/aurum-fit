@@ -21,10 +21,10 @@
         } catch {}
       })();
     </script>
-    <link rel="manifest" href="manifest.json?v=92" />
-    <link rel="icon" type="image/svg+xml" href="icon.svg?v=92" />
-    <link rel="apple-touch-icon" href="icon.svg?v=92" />
-    <link rel="stylesheet" href="styles.css?v=92" />
+    <link rel="manifest" href="manifest.json?v=93" />
+    <link rel="icon" type="image/svg+xml" href="icon.svg?v=93" />
+    <link rel="apple-touch-icon" href="icon.svg?v=93" />
+    <link rel="stylesheet" href="styles.css?v=93" />
   </head>
   <body>
     <main>
@@ -315,12 +315,12 @@
                     <small id="cardioActivityHelp">Mostraremos solo las métricas que necesita esa actividad.</small>
                   </fieldset>
                   <fieldset id="routineModePicker" class="routine-type-fieldset">
-                    <legend>Cómo quieres entrenar</legend>
-                    <div class="routine-mode-picker">
-                      <label class="weekday-choice"><input type="radio" name="routineMode" value="log" checked /><span>Solo registro</span></label>
-                      <label class="weekday-choice"><input type="radio" name="routineMode" value="guided" /><span>Guiada</span></label>
+                    <legend>¿Quién pone los números?</legend>
+                    <div class="routine-type-picker routine-mode-picker" aria-label="Modo de la rutina">
+                      <label><input type="radio" name="routineMode" value="log" checked /><span><strong>Los pones tú</strong><small>La rutina solo recuerda qué ejercicios tocan cada día. El peso y las repeticiones los escribes mientras entrenas, como en un cuaderno.</small></span></label>
+                      <label><input type="radio" name="routineMode" value="guided" /><span><strong>Los prepara la rutina</strong><small>Dejas escritos ahora las series, las repeticiones y el peso de cada ejercicio. Entrenar es ir confirmando serie a serie.</small></span></label>
                     </div>
-                    <small><strong>Solo registro:</strong> eliges ejercicios y anotas cada serie al hacerla. <strong>Guiada:</strong> además preparas series, rango de repeticiones y carga de referencia; nada cuenta hasta marcarlo.</small>
+                    <small class="routine-mode-note">Si no lo tienes claro, empieza con <strong>Los pones tú</strong>: se puede convertir en rutina preparada más adelante, pero no al revés. En los dos casos solo cuenta lo que confirmes tú.</small>
                   </fieldset>
                   <fieldset class="routine-color-fieldset">
                     <legend>Color de la rutina</legend>
@@ -683,6 +683,6 @@
 
     </main>
 
-    <script type="module" src="app.js?v=92"></script>
+    <script type="module" src="app.js?v=93"></script>
   </body>
 </html>

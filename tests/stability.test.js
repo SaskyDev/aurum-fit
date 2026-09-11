@@ -670,6 +670,59 @@ test("una serie anulada no mete el ejercicio en el selector de Progreso", () => 
   });
 });
 
+test("elegir el modo de rutina se explica opción por opción", () => {
+  const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+
+  const picker = html.slice(html.indexOf('id="routineModePicker"'), html.indexOf("routine-color-fieldset"));
+
+  // Antes las dos opciones eran dos píldoras con nombre y UNA sola línea de
+  // texto debajo con todo junto. Quien empieza tiene que poder comparar: cada
+  // opción explica qué pasa al entrenar, en su propia tarjeta.
+  const explicaciones = picker.match(/<small>[^<]+<\/small>/g) ?? [];
+  assert.equal(explicaciones.length, 2, "cada modalidad necesita su propia explicación");
+  explicaciones.forEach((texto) => {
+    assert.ok(texto.length > 80, `la explicación se quedó en un titular: ${texto}`);
+  });
+
+  // Y el dato que baja el riesgo de equivocarse: la conversión va en un solo
+  // sentido, así que empezar por el modo simple no cierra ninguna puerta.
+  assert.match(picker, /no al revés/);
+  assert.match(picker, /routine-mode-note/);
+  assert.doesNotMatch(picker, /weekday-choice/, "el modo no es un día de la semana: reutiliza el patrón de Fuerza/Cardio");
+});
+
+test("la hoja de desviación dice de qué número a qué número", () => {
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+
+  const hoja = app.slice(app.indexOf("function planUpdateRows"), app.indexOf("async function offerGuidedPlanUpdate"));
+
+  // El mensaje era "tus N series se alejan del plan actual", sin decir de qué
+  // a qué. La comparación concreta ES el mensaje: plan 50 kg → hoy 42,5 kg.
+  assert.match(hoja, /`Plan: \$\{antes\}`/);
+  assert.match(hoja, /`Hoy: \$\{hoy\}`/);
+
+  // Solo lo que se ha movido: preguntar por las repeticiones cuando solo cambió
+  // el peso convierte una decisión de un segundo en un formulario de tres.
+  assert.match(hoja, /if \("targetLoadKg" in proposal\)/);
+  assert.match(hoja, /if \("repMin" in proposal \|\| "repMax" in proposal\)/);
+
+  // Los botones nombran el número en el que se queda el plan.
+  assert.match(hoja, /`Dejar el plan en \$\{resumenPlan\}`/);
+  assert.match(hoja, /`Cambiar el plan a \$\{resumenHoy\}`/);
+
+  // Concordancia: decía "Tus 1 series efectivas".
+  assert.match(hoja, /countLabel\(proposal\.observedSetCount, "serie efectiva"\)/);
+
+  // Tocar fuera NO puede contestar por el usuario: la firma de la desviación se
+  // marca como preguntada antes de abrir, así que un toque despistado cerraba
+  // la hoja como "no" y no volvía a salir nunca para esos mismos números.
+  assert.doesNotMatch(hoja, /overlay\.addEventListener\("pointerdown"/);
+
+  // Y el foco inicial va a un botón: enfocar un número abre el teclado del
+  // móvil justo encima de la pregunta.
+  assert.match(hoja, /initialFocus: today/);
+});
+
 test("guardar una serie arranca el descanso, corregirla no", () => {
   const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
 

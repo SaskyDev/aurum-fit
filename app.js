@@ -54,8 +54,8 @@ import {
   skipPlannedSet,
   guidedExerciseDeviation,
   validateLabelPhotoFile,
-} from "./core.js?v=92";
-import { BODY_FIGURES } from "./body-paths.js?v=92";
+} from "./core.js?v=93";
+import { BODY_FIGURES } from "./body-paths.js?v=93";
 
 const defaultTargets = { calories: 2200, protein: 170, steps: 10000 };
 const defaultPreferences = {
@@ -3087,41 +3087,95 @@ function renderSetForm(session, sessionExercise, reference, planOrder = null) {
   return form;
 }
 
-function openPlanUpdateSheet(exercise, proposal) {
+// El plan de hoy frente a lo que de verdad ha pasado, campo a campo. Solo
+// entra lo que se ha movido: preguntar por las repeticiones cuando solo cambió
+// el peso convierte una decisión en un formulario.
+function planUpdateRows(plan, proposal) {
+  const kg = (valor) => (valor === null || valor === undefined
+    ? "sin peso de referencia"
+    : `${Number(valor).toLocaleString("es-ES", { maximumFractionDigits: 2 })} kg`);
+  const rango = (min, max) => (min === max ? `${min} reps` : `${min}-${max} reps`);
+  const filas = [];
+  if ("targetLoadKg" in proposal) {
+    filas.push({ etiqueta: "Peso", antes: kg(plan.targetLoadKg), hoy: kg(proposal.targetLoadKg) });
+  }
+  if ("repMin" in proposal || "repMax" in proposal) {
+    filas.push({
+      etiqueta: "Repeticiones",
+      antes: rango(plan.repMin, plan.repMax),
+      hoy: rango(proposal.repMin ?? plan.repMin, proposal.repMax ?? plan.repMax),
+    });
+  }
+  return filas;
+}
+
+function openPlanUpdateSheet(exercise, plan, proposal) {
   return new Promise((resolve) => {
     const overlay = createElement("div", "workout-sheet-overlay");
     const sheet = createElement("section", "workout-sheet plan-update-sheet");
     sheet.setAttribute("role", "dialog");
     sheet.setAttribute("aria-modal", "true");
     sheet.setAttribute("aria-labelledby", `planUpdateTitle-${exercise.id}`);
-    const title = createElement("h3", "", "¿Actualizar el plan futuro?");
+
+    const title = createElement("h3", "", `${exercise.exerciseName}: hoy no ha salido como el plan`);
     title.id = `planUpdateTitle-${exercise.id}`;
-    const explanation = createElement(
-      "p",
-      "muted",
-      `Tus ${proposal.observedSetCount} series efectivas de hoy se alejan del plan actual. Puedes mantener este cambio solo hoy o guardar una nueva referencia para las próximas sesiones. Lo registrado hoy no se modifica.`,
-    );
+
+    // La comparación concreta es el mensaje. Sin ella la hoja solo decía que
+    // algo "se aleja del plan", sin decir de qué a qué, y no se entendía para
+    // qué aparecía.
+    const filas = planUpdateRows(plan, proposal);
+    const tabla = createElement("dl", "plan-update-diff");
+    filas.forEach(({ etiqueta, antes, hoy }) => {
+      const fila = createElement("div", "plan-update-diff-row");
+      fila.append(
+        createElement("dt", "", etiqueta),
+        createElement("dd", "plan-update-before", `Plan: ${antes}`),
+        createElement("dd", "plan-update-after", `Hoy: ${hoy}`),
+      );
+      tabla.appendChild(fila);
+    });
+
+    const explanation = createElement("p", "muted", [
+      `Lo de hoy ya está guardado: ${countLabel(proposal.observedSetCount, "serie efectiva")}.`,
+      "Esto solo decide con qué números empezarás la próxima vez. Decides tú;",
+      "la app no cambia el plan sola.",
+    ].join(" "));
+
     const form = createElement("form", "plan-update-form");
-    const load = makeSetField("Peso de referencia · kg", "targetLoadKg", {
-      min: 0, max: 2000, step: 0.25, inputMode: "decimal",
-    });
-    const repMin = makeSetField("Repeticiones mínimas", "repMin", {
-      min: 1, max: 1000, step: 1, inputMode: "numeric",
-    });
-    const repMax = makeSetField("Repeticiones máximas", "repMax", {
-      min: 1, max: 1000, step: 1, inputMode: "numeric",
-    });
-    load.input.value = proposal.targetLoadKg ?? exercise.targetLoadKg ?? "";
-    repMin.input.value = proposal.repMin ?? exercise.repMin;
-    repMax.input.value = proposal.repMax ?? exercise.repMax;
+    const campos = [];
+    if ("targetLoadKg" in proposal) {
+      const load = makeSetField("Peso del plan · kg", "targetLoadKg", {
+        min: 0, max: 2000, step: 0.25, inputMode: "decimal",
+      });
+      load.input.value = proposal.targetLoadKg ?? "";
+      campos.push(["targetLoadKg", load]);
+    }
+    if ("repMin" in proposal || "repMax" in proposal) {
+      const repMin = makeSetField("Reps mínimas del plan", "repMin", { min: 1, max: 1000, step: 1, inputMode: "numeric" });
+      const repMax = makeSetField("Reps máximas del plan", "repMax", { min: 1, max: 1000, step: 1, inputMode: "numeric" });
+      repMin.input.value = proposal.repMin ?? plan.repMin;
+      repMax.input.value = proposal.repMax ?? plan.repMax;
+      campos.push(["repMin", repMin], ["repMax", repMax]);
+    }
+    const campo = Object.fromEntries(campos);
+
+    // Los campos van plegados: el camino normal son dos botones que dicen en
+    // qué número se queda el plan. Ajustar a mano es para el caso raro.
+    const ajuste = createElement("details", "plan-update-adjust");
+    ajuste.append(createElement("summary", "", "Prefiero otro número"));
+    campos.forEach(([, field]) => ajuste.append(field.label));
+
     const actions = createElement("div", "workout-sheet-actions");
-    const today = createButton("Mantener solo hoy", "button-secondary", () => close(null));
-    const save = createElement("button", "button button-primary", "Actualizar próximas");
+    const resumenPlan = filas.map((fila) => fila.antes).join(" · ");
+    const resumenHoy = filas.map((fila) => fila.hoy).join(" · ");
+    const today = createButton(`Dejar el plan en ${resumenPlan}`, "button-secondary", () => close(null));
+    const save = createElement("button", "button button-primary", `Cambiar el plan a ${resumenHoy}`);
     save.type = "submit";
     actions.append(today, save);
-    form.append(load.label, repMin.label, repMax.label, actions);
-    sheet.append(title, explanation, form);
+    form.append(ajuste, actions);
+    sheet.append(title, tabla, explanation, form);
     overlay.appendChild(sheet);
+
     let settled = false;
     let releaseFocus = () => {};
     const close = (result) => {
@@ -3134,24 +3188,29 @@ function openPlanUpdateSheet(exercise, proposal) {
     };
     form.addEventListener("submit", (event) => {
       event.preventDefault();
-      const min = Number(repMin.input.value);
-      const max = Number(repMax.input.value);
-      if (!Number.isInteger(min) || !Number.isInteger(max) || min < 1 || max > 1000 || min > max) {
-        showNotice("Revisa el rango: el mínimo no puede superar al máximo.", { error: true });
-        return;
+      const resultado = {};
+      if (campo.targetLoadKg) {
+        resultado.targetLoadKg = campo.targetLoadKg.input.value === "" ? null : Number(campo.targetLoadKg.input.value);
       }
-      close({
-        targetLoadKg: load.input.value === "" ? null : Number(load.input.value),
-        repMin: min,
-        repMax: max,
-      });
+      if (campo.repMin) {
+        const min = Number(campo.repMin.input.value);
+        const max = Number(campo.repMax.input.value);
+        if (!Number.isInteger(min) || !Number.isInteger(max) || min < 1 || max > 1000 || min > max) {
+          showNotice("Revisa el rango: el mínimo no puede superar al máximo.", { error: true });
+          return;
+        }
+        Object.assign(resultado, { repMin: min, repMax: max });
+      }
+      close(resultado);
     });
-    overlay.addEventListener("pointerdown", (event) => {
-      if (event.target === overlay) close(null);
-    });
+    // A propósito no se cierra tocando fuera. Antes sí, y valía como "no":
+    // un toque despistado contestaba por ti y la pregunta no volvía a salir
+    // para esa misma desviación. Es una decisión, no un desplegable.
     document.body.appendChild(overlay);
     document.body.classList.add("overlay-open");
-    releaseFocus = trapModalFocus(overlay, { initialFocus: repMin.input, onEscape: () => close(null) });
+    // El foco va al botón, no a un campo: enfocar un número abre el teclado del
+    // móvil encima de la propia pregunta.
+    releaseFocus = trapModalFocus(overlay, { initialFocus: today, onEscape: () => close(null) });
   });
 }
 
@@ -3170,7 +3229,7 @@ async function offerGuidedPlanUpdate(session, exercise) {
   const signature = JSON.stringify(changes);
   if (promptedDeviationSignatures.get(exercise.id) === signature) return;
   promptedDeviationSignatures.set(exercise.id, signature);
-  const accepted = await openPlanUpdateSheet(exercise, { ...changes, observedSetCount });
+  const accepted = await openPlanUpdateSheet(exercise, plan, { ...changes, observedSetCount });
   if (!accepted) return;
   commit(next => {
     const livePlan = next.training.routines.find(item => item.id === current.id)?.days
@@ -4214,7 +4273,7 @@ function backfillExerciseMuscles() {
 
 async function loadCatalog() {
   try {
-    const response = await fetch("./data/exercises.es.json?v=92", { cache: "no-cache" });
+    const response = await fetch("./data/exercises.es.json?v=93", { cache: "no-cache" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     if (!Array.isArray(payload.exercises)) throw new Error("Estructura no válida");

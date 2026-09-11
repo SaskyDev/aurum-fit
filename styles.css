@@ -1710,7 +1710,12 @@ progress::-moz-progress-bar {
 .weekday-choice input:checked + span { border-color: var(--accent-ink); background: var(--accent); color: var(--on-accent); }
 .weekday-choice input:focus-visible + span { outline: 2px solid var(--accent-ink); outline-offset: 3px; }
 /* Plan guiado: controles existentes, dos columnas legibles incluso en móvil. */
-.routine-mode-picker, .guided-plan-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+.guided-plan-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+/* Las dos modalidades son la decisión que más cuesta a quien empieza, así que
+   cada una explica qué pasa al entrenar en vez de compartir una línea de texto
+   debajo. Reutiliza tal cual el patrón de Fuerza/Cardio. */
+.routine-mode-note { display: block; margin-top: var(--space-2); color: var(--ink-soft); font-size: .74rem; line-height: 1.45; }
+.routine-mode-note strong { color: var(--ink); }
 .guided-plan-fields { grid-column: 1 / -1; margin-block: var(--space-3); }
 .guided-plan-fields label, .guided-plan-fields input { min-width: 0; width: 100%; }
 .guided-plan-editor { margin-block: var(--space-3); }
@@ -5135,9 +5140,46 @@ th {
 .exercise-note-form,
 .plan-update-form { display: grid; gap: 10px; }
 .exercise-note-form textarea { min-height: 112px; resize: vertical; }
-.plan-update-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.plan-update-form label:first-child { grid-column: 1 / -1; }
-.plan-update-form .workout-sheet-actions { grid-column: 1 / -1; }
+.plan-update-form { gap: 12px; }
+
+/* La comparación plan → hoy es el mensaje de la hoja, así que se lee antes que
+   cualquier campo. Antes solo había un formulario relleno y no se sabía de qué
+   número venías. */
+.plan-update-diff { display: grid; gap: 8px; margin: 0; }
+.plan-update-diff-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 2px 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-inset);
+}
+.plan-update-diff dt {
+  grid-column: 1 / -1;
+  color: var(--ink-soft);
+  font-size: .72rem;
+  font-weight: 850;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.plan-update-diff dd { margin: 0; font-size: .92rem; font-weight: 700; }
+.plan-update-before { color: var(--ink-soft); }
+.plan-update-after { color: var(--accent-ink); }
+
+.plan-update-adjust > summary { cursor: pointer; color: var(--ink-soft); font-size: .82rem; }
+.plan-update-adjust[open] {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 4px;
+}
+.plan-update-adjust[open] > summary { grid-column: 1 / -1; margin-bottom: 2px; }
+.plan-update-adjust label:only-of-type { grid-column: 1 / -1; }
+
+/* Los botones dicen en qué número se queda el plan, así que llevan texto
+   largo: en 390 px no caben dos en una fila sin partirse mal. */
+.plan-update-form .workout-sheet-actions { grid-template-columns: minmax(0, 1fr); }
 
 .compact-rest-bar {
   position: fixed;
