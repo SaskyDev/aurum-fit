@@ -3,7 +3,8 @@ import test from "node:test";
 import { createEmptyState, createRoutine, createRoutineWithWeekdays, validateState,
   addExerciseToRoutineDay, updateRoutineExercisePlan, startSessionFromRoutineDay,
   computeMuscleVolume, exercisePersonalRecords, addSetToExercise, completeSession,
-  skipPlannedSet, pendingPlannedSets, duplicateSet, updateSet, guidedPlanDeviation } from "../core.js";
+  skipPlannedSet, pendingPlannedSets, duplicateSet, updateSet, guidedPlanDeviation,
+  seedDemoData, removeDemoData } from "../core.js";
 
 test("modo de rutina: compatibilidad log, creación guiada y rechazo de valores desconocidos", () => {
   const state = createEmptyState();
@@ -17,6 +18,25 @@ test("modo de rutina: compatibilidad log, creación guiada y rechazo de valores 
   assert.throws(() => createRoutine(state, "Inválida", { mode: "other" }), /modo/i);
   guided.mode = "other";
   assert.match(validateState(state), /rutina/i);
+});
+
+test("la demo guiada muestra ambos modos, anuladas, calibración y progreso; quitarla restaura los datos", () => {
+  const state = createEmptyState();
+  const real = createRoutineWithWeekdays(state, "Real", [0]);
+  addExerciseToRoutineDay(state, real.id, real.days[0].id, "Press real", { exerciseId: "dataset-0025" });
+  const before = structuredClone(state);
+  seedDemoData(state, { now: "2026-09-11T10:00:00.000Z" });
+  assert.equal(state.meta.demoSeedVersion, 2);
+  assert.equal(validateState(state), null);
+  assert.deepEqual(new Set(state.training.routines.filter(r => r.isDemo).map(r => r.mode)), new Set(["log", "guided"]));
+  const all = state.training.routines.flatMap(r => r.days.flatMap(d => d.exercises));
+  assert.ok(all.some(e => e.targetLoadKg === null));
+  assert.ok(all.every(e => !("demoLoad" in e)));
+  assert.ok(state.training.sessions.some(s => s.exercises.some(e => e.sets.some(set => set.status === "skipped"))));
+  const loads = state.training.sessions.flatMap(s => s.exercises.filter(e => e.exerciseId === "dataset-0025").flatMap(e => e.sets.filter(set => set.status === "completed" && set.setType === "effective").map(set => set.loadKg)));
+  assert.ok(new Set(loads).size > 3);
+  removeDemoData(state);
+  assert.deepEqual(state, before);
 });
 
 test("la desviación ofrece cambios en ambos sentidos sin mutar el plan ni confundir un rango válido", () => {

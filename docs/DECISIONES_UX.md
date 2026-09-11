@@ -3,7 +3,7 @@
 Lo que hemos decidido nosotros y por qué. Lo que viene de mirar Brenzo está en
 `REFERENCIA_BRENZO.md`; aquí solo queda lo que ya es nuestro.
 
-Actualizado: 10 de septiembre de 2026.
+Actualizado: 11 de septiembre de 2026.
 
 ## Decisiones aplicadas
 
@@ -31,10 +31,11 @@ Actualizado: 10 de septiembre de 2026.
   números. Lo que no cambia en ninguno de los dos: **nunca se registra como
   realizado algo que el usuario no haya confirmado.**
 
-## Decidido y pendiente de construir
+## Decisiones aplicadas · rutinas guiadas
 
-> Lo de aquí abajo está acordado pero **todavía no existe en la app**. Se mueve a
-> "Decisiones aplicadas" cuando esté construido y verificado.
+Construidas y verificadas en los diez commits `Paso 1` a `Paso 10` de la rama
+`claude/gifted-thompson-45fcwz`. El recorrido está en `PRUEBAS_MANUALES.md` y la
+evidencia automática y visual en `RUTINAS_GUIADAS_QA.md`.
 
 ### Dos modalidades de rutina
 

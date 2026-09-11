@@ -48,8 +48,8 @@ import {
   skipPlannedSet,
   guidedPlanDeviation,
   validateLabelPhotoFile,
-} from "./core.js?v=82";
-import { BODY_FIGURES } from "./body-paths.js?v=82";
+} from "./core.js?v=83";
+import { BODY_FIGURES } from "./body-paths.js?v=83";
 
 const defaultTargets = { calories: 2200, protein: 170, steps: 10000 };
 const defaultPreferences = {
@@ -299,11 +299,11 @@ function showNotice(message, { error = false, area = "trainingNotice" } = {}) {
   noticeTimers.set(area, timerId);
 }
 
-function commit(change, successMessage = "Guardado automáticamente.") {
+function commit(change, successMessage = "Guardado automáticamente.", { preserveUpdatedAt = false } = {}) {
   try {
     const next = structuredClone(state);
     change(next);
-    state = persistState(localStorage, next);
+    state = persistState(localStorage, next, preserveUpdatedAt ? next.meta.updatedAt : new Date().toISOString());
     render();
     if (successMessage) showNotice(successMessage);
     return true;
@@ -3804,7 +3804,7 @@ function backfillExerciseMuscles() {
 
 async function loadCatalog() {
   try {
-    const response = await fetch("./data/exercises.es.json?v=82", { cache: "no-cache" });
+    const response = await fetch("./data/exercises.es.json?v=83", { cache: "no-cache" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     if (!Array.isArray(payload.exercises)) throw new Error("Estructura no válida");
@@ -4681,7 +4681,7 @@ $("removeDemoDataBtn").addEventListener("click", async () => {
   if (!confirmed) return;
   const saved = commit((next) => {
     removeDemoData(next);
-  }, "");
+  }, "", { preserveUpdatedAt: true });
   if (saved) {
     showNotice("Datos demo retirados. Los datos reales se han conservado.", { area: "appNotice" });
   }

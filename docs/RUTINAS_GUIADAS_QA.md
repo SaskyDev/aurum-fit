@@ -93,3 +93,22 @@ Alex confirmó usar la suite canónica `node --test tests/*.test.js`:
 - TDD rojo/verde; mutación que excluye null de calibración detectada.
 - `QA_CALIBRATION=1 node scripts/qa-guided-browser.mjs`: ambos temas, comprobación
   de campo y placeholder vacíos, confirmación y foto original inalterada.
+
+## Paso 10 — demostración y cierre
+
+- La demo incluye rutinas en ambos modos, una serie anulada y un ejercicio guiado
+  sin peso objetivo. La propiedad ad hoc `demoLoad` desaparece: el modelo usa
+  `targetLoadKg` y conserva la progresión semanal.
+- `demoSeedVersion` sube a 2. Antes de cargar se guarda únicamente la metadata
+  técnica necesaria para que quitar la demo restaure exactamente el estado
+  inicial —incluido su sello de actualización—, incluso si un ejercicio real
+  comparte identificador con el catálogo.
+- La prueba de dominio exige más de tres cargas distintas para Press de banca y
+  restaura el estado funcional previo. La mutación que aplana la fórmula de
+  progreso pone la prueba roja.
+- `scripts/qa-guided-demo.mjs` comprueba a 390 × 844 px, en claro y oscuro, que
+  la gráfica existe, que su línea de carga no es plana y que quitar la demo no
+  cambia datos del usuario.
+- Cierre: suite canónica, ocho mutaciones guiadas, sintaxis, contraste, paleta y
+  recorridos E2E en verde. La interacción táctil física queda reservada a la
+  prueba de Alex en iPhone antes de publicar.

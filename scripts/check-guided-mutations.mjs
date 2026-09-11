@@ -10,6 +10,8 @@ const mutations = [
   ["anulación", 'planOrder, status: "skipped", completedAt: null', 'planOrder, status: "completed", completedAt: null'],
   ["desviación", 'return Object.keys(changes).length ? changes : null;', 'return null;'],
   ["calibración", 'if (actual.loadKg !== plan.targetLoadKg)', 'if (plan.targetLoadKg !== null && actual.loadKg !== plan.targetLoadKg)'],
+  ["demo", 'state.meta.demoSeedVersion = 2;', 'state.meta.demoSeedVersion = 1;'],
+  ["progresión demo", 'planned.targetLoadKg + Math.floor((60 - offset) / 7) * 2.5;', 'planned.targetLoadKg;'],
 ];
 const core = fs.readFileSync(new URL("../core.js", import.meta.url), "utf8");
 const tests = fs.readFileSync(new URL("../tests/guided.test.js", import.meta.url), "utf8");

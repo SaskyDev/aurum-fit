@@ -31,8 +31,10 @@ Nutrición sobre un modelo local versionado, sin cuentas ni backend.
 - Entrenamiento centrado primero en rutinas; una sesión en curso se puede
   continuar sin ocultar los planes y el entrenamiento libre queda como última opción.
 - Copia histórica del día para que editar la rutina no cambie sesiones pasadas.
-- Rutinas simples que guardan qué ejercicios corresponden a cada día; peso,
-  repeticiones, RIR, tipo y nota se registran al entrenar.
+- Rutinas en dos modos: `Solo registro`, que conserva el cuaderno actual, y
+  `Guiada`, que prepara series, rango de repeticiones y peso objetivo opcional.
+- Primera referencia guiada sin peso inventado, anulación neutral de series y
+  decisión explícita antes de trasladar una desviación al plan futuro.
 - Series independientes con repeticiones, peso en kg, RIR, nota y tipo: efectiva,
   aproximación o calentamiento.
 - Ejercicios de la sesión en acordeón: uno abierto cada vez, conservando sus
@@ -40,7 +42,8 @@ Nutrición sobre un modelo local versionado, sin cuentas ni backend.
 - Temporizador compacto con descansos de 30 segundos, 1, 2 o 3 minutos y una
   duración personalizada entre 00:01 y 59:59.
 - El descanso arranca solo al guardar una serie, usando tu descanso por defecto.
-  Se puede desactivar en Ajustes y no se dispara al corregir una serie.
+  Se puede desactivar en Ajustes, no se dispara al corregir una serie y admite
+  sumar 30 segundos, 1 minuto o 2 minutos solo al descanso actual.
 - Alternativas, ejercicios no realizados o extras que solo afectan a la sesión actual.
 - Guardado automático, recuperación tras recarga y copia local previa.
 - Opción explícita para descartar una sesión en curso y liberar otra rutina.
@@ -110,7 +113,11 @@ python3 -m http.server 8000
 Para ejecutar las comprobaciones:
 
 ```bash
-node --test
+node --test tests/*.test.js
+node scripts/check-guided-mutations.mjs
+node scripts/qa-guided-browser.mjs
+QA_CALIBRATION=1 node scripts/qa-guided-browser.mjs
+node scripts/qa-guided-demo.mjs
 ```
 
 La versión de caché vive repartida entre `SHELL_VERSION` (`service-worker.js`) y

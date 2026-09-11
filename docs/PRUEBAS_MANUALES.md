@@ -1,5 +1,47 @@
 # Pruebas manuales reproducibles
 
+Última revisión: 11 de septiembre de 2026.
+
+## Rutinas guiadas (QA-GUIDED-001)
+
+1. Crear una rutina de fuerza en modo `Guiada`.
+2. Añadir un ejercicio con 3 series, rango 8–12 y peso vacío.
+3. Comprobar que la primera sesión dice «Primera vez: vamos a tomar tu
+   referencia» y no inventa ningún peso.
+4. Marcar la primera serie con peso, repeticiones y RIR: debe guardarse una sola
+   vez y arrancar el descanso si está activado en Ajustes.
+5. Usar `+30 s`, `+1 min` y `+2 min`: solo cambia ese descanso, no el valor por
+   defecto.
+6. Deslizar una serie realizada a la derecha para duplicarla y a la izquierda
+   para pedir su borrado. En iPhone, confirmar que el check no bloquea el gesto.
+7. Anular una serie pendiente: debe aparecer tachada y gris en el entrenamiento,
+   el historial del ejercicio y el resumen del Diario.
+8. Registrar una carga o repeticiones fuera del plan: la app pregunta si se
+   actualiza la rutina, pero conserva la serie aunque se responda que no.
+9. Finalizar y comprobar que pendientes/anuladas no cuentan en volumen, mapa
+   muscular, récords ni progreso.
+
+## Demostración guiada (QA-GUIDED-002)
+
+1. En `Ajustes > Datos`, exportar una copia si se va a probar con datos reales.
+2. Pulsar `Cargar datos de demostración`.
+3. Comprobar que existen rutinas `Solo registro` y `Guiada`, una serie anulada y
+   un ejercicio guiado sin peso objetivo.
+4. En Diario, elegir `Press de banca con barra` y comprobar que la línea de peso
+   progresa; no debe ser plana.
+5. Volver a `Ajustes > Datos` y pulsar `Quitar datos de demostración`.
+6. Comprobar que las rutinas, sesiones, comidas, objetivos y ajustes anteriores
+   quedan exactamente como estaban.
+
+Automatización equivalente:
+
+```bash
+node scripts/qa-guided-browser.mjs
+QA_CALIBRATION=1 node scripts/qa-guided-browser.mjs
+node scripts/qa-guided-demo.mjs
+node scripts/check-guided-mutations.mjs
+```
+
 ## Incremento 1: sesión libre y series
 
 1. Ejecutar `python3 -m http.server 8000`.

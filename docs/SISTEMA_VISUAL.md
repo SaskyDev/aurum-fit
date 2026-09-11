@@ -1,7 +1,15 @@
 # Sistema visual
 
 Fecha: 24 de julio de 2026.
-Última revisión: 5 de septiembre de 2026.
+Última revisión: 11 de septiembre de 2026.
+
+## Rutina guiada
+
+La fila planificada reutiliza la rejilla y campos de la serie existente, en una
+sola tarjeta legible a 390 px. El check representa una acción, nunca un estado
+implícito. Una anulación usa gris y tachado; el rojo queda reservado para errores
+reales. La nota opcional se pliega para reducir densidad. Los botones táctiles
+principales mantienen al menos 44 px y el foco visible.
 
 ## Auditoría de la interfaz anterior
 

@@ -1,7 +1,7 @@
 # Modelo local v2
 
 Fecha: 24 de julio de 2026.
-Última revisión: 10 de septiembre de 2026.
+Última revisión: 11 de septiembre de 2026.
 
 ## Objetivo del incremento
 
@@ -71,15 +71,18 @@ ordenados. Un mismo bloque puede repetirse varios días de la semana mediante
 antiguo `weekday` se conserva como compatibilidad y representa el primer día
 asignado cuando existe.
 
-El plan decide qué ejercicios corresponden al día, pero no prescribe series,
-repeticiones, peso ni RIR.
+En modo `log`, el plan solo decide qué ejercicios corresponden al día. En modo
+`guided`, también prescribe series, rango de repeticiones y una carga opcional.
+El RIR, tipo de serie y nota de lo realizado se deciden durante la sesión.
 
 Al iniciar desde un día, la sesión copia:
 
 - nombre de la rutina;
 - nombre del día;
 - identidad, nombre y orden de cada ejercicio.
-- una sesión vacía para registrar únicamente lo que se haga ese día.
+- en `log`, una sesión vacía para registrar únicamente lo realizado;
+- en `guided`, una foto independiente del plan. Sus huecos pendientes se
+  derivan de esa foto y no son series realizadas.
 
 Por eso añadir o reordenar ejercicios posteriormente en la rutina no puede
 reescribir el pasado.
@@ -139,24 +142,24 @@ concreta**, comparándola con el historial sin ella. Exige superar, no igualar:
 si igualar contase, cinco series al mismo peso máximo cantarían récord cinco
 veces y la palabra dejaría de significar algo.
 
-## Rutinas guiadas · decidido, pendiente de construir
+## Rutinas guiadas · implementadas
 
-> Acordado pero **todavía no está en el código**. El porqué de producto está en
-> `DECISIONES_UX.md`; aquí queda la forma de los datos.
+Construidas y verificadas el 11 de septiembre de 2026. El porqué de producto
+está en `DECISIONES_UX.md`; aquí queda la forma vigente de los datos.
 
-### Lo que ya existe a medias
+### Base completada
 
-El ejercicio de rutina **ya admite un plan**: `plannedSets`, `repMin`, `repMax` y
-`note`, con validación (`validateRoutineExercisePlan`), actualizador
-(`updateRoutineExercisePlan`) y normalización en `validateState`. Está marcado
-como `hasLegacyPlan` y **ninguna pantalla lo rellena**. No es modelo nuevo: es
-completar algo a medio construir.
+El ejercicio de rutina reutiliza el plan que ya existía a medias:
+`plannedSets`, `repMin`, `repMax` y `note`, con validación
+(`validateRoutineExercisePlan`), actualizador (`updateRoutineExercisePlan`) y
+normalización en `validateState`. La interfaz guiada ya permite configurarlo y
+añade `targetLoadKg`; las rutinas de registro no heredan esos objetivos.
 
-### Lo que falta
+### Campos añadidos
 
 - **`mode` en la rutina — implementado (paso 1)**: `"log"` (por defecto) o
   `"guided"`. Ausente se normaliza a `"log"` en `validateState`, para que las
-  rutinas ya guardadas sigan siendo válidas. La interfaz aún está pendiente.
+  rutinas ya guardadas sigan siendo válidas.
 - **`targetLoadKg` en el ejercicio de rutina — implementado (paso 2)**.
   **Admite nulo a propósito** — es el caso de "primera vez, aún sin referencia".
   Distinto de `0`, igual que en el récord personal: `Number(null)` es `0` y
@@ -201,7 +204,8 @@ al responder la pregunta de desviación.
 
 ## Reglas de seguridad
 
-- La serie es la unidad guardada y tiene estado `completed`.
+- La serie es la unidad guardada y tiene estado `completed` cuando ocurrió o
+  `skipped` cuando una prevista se anuló; ningún otro estado cuenta como hecho.
 - Cada serie tiene un único tipo: `effective`, `approach` o `warmup`.
 - Solo las efectivas completan las series previstas y alimentan la gráfica
   principal de peso/repeticiones.

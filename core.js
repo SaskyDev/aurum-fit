@@ -1709,7 +1709,14 @@ export function removeDemoData(state) {
   state.training.exercises = state.training.exercises.filter(
     (exercise) => !exercise.isDemo || referencedExerciseIds.has(exercise.id),
   );
-  state.meta.demoSeedVersion = null;
+  const restore = state.meta.demoRestoreMeta;
+  if (restore) {
+    for (const key of ["demoSeedVersion", "publicCleanupVersion", "updatedAt"]) {
+      if (restore[key]?.present) state.meta[key] = restore[key].value;
+      else delete state.meta[key];
+    }
+    delete state.meta.demoRestoreMeta;
+  } else if ("demoSeedVersion" in state.meta) state.meta.demoSeedVersion = null;
   return state;
 }
 
@@ -1754,6 +1761,13 @@ export function cleanupPublishedData(state) {
 export function seedDemoData(state, { now = new Date().toISOString() } = {}) {
   ensureExtendedState(state);
   removeDemoData(state);
+  state.meta.demoRestoreMeta = Object.fromEntries(
+    ["demoSeedVersion", "publicCleanupVersion", "updatedAt"].map((key) => [
+      key,
+      { present: Object.hasOwn(state.meta, key), value: state.meta[key] },
+    ]),
+  );
+  const existingExerciseIds = new Set(state.training.exercises.map(exercise => exercise.id));
   const preservedActiveSessionId = state.training.activeSessionId;
   state.training.activeSessionId = null;
   try {
@@ -1768,6 +1782,7 @@ export function seedDemoData(state, { now = new Date().toISOString() } = {}) {
     {
       id: "demo-routine-push",
       name: "Demo · Empuje",
+      mode: "guided",
       days: [
         {
           id: "demo-day-push", name: "Entrenamiento", weekdays: [1, 4],
@@ -1783,6 +1798,7 @@ export function seedDemoData(state, { now = new Date().toISOString() } = {}) {
     {
       id: "demo-routine-pull",
       name: "Demo · Tirón",
+      mode: "log",
       days: [
         {
           id: "demo-day-pull", name: "Entrenamiento", weekdays: [2, 5],
@@ -1798,6 +1814,7 @@ export function seedDemoData(state, { now = new Date().toISOString() } = {}) {
     {
       id: "demo-routine-legs",
       name: "Demo · Pierna",
+      mode: "guided",
       days: [
         {
           id: "demo-day-legs", name: "Entrenamiento", weekdays: [3, 6],
@@ -1805,7 +1822,7 @@ export function seedDemoData(state, { now = new Date().toISOString() } = {}) {
             ["dataset-0043", "Sentadilla con barra", 4, 6, 8, 80],
             ["dataset-0085", "Peso muerto rumano con barra", 3, 8, 10, 75],
             ["dataset-0585", "Extensión de piernas en máquina", 3, 10, 12, 45],
-            ["dataset-1373", "Elevación de gemelos de pie", 4, 12, 15, 50],
+            ["dataset-1373", "Elevación de gemelos de pie", 4, 12, 15, null],
           ],
         },
       ],
@@ -1813,7 +1830,7 @@ export function seedDemoData(state, { now = new Date().toISOString() } = {}) {
   ];
   const demoDaysByWeekday = new Map();
   routineSpecs.forEach((routineSpec) => {
-    const routine = createRoutine(state, routineSpec.name, { id: routineSpec.id, now });
+    const routine = createRoutine(state, routineSpec.name, { id: routineSpec.id, now, mode: routineSpec.mode });
     routine.isDemo = true;
     routineSpec.days.forEach((daySpec) => {
       const day = addRoutineDay(state, routine.id, daySpec.name, { id: daySpec.id, now });
@@ -1825,7 +1842,7 @@ export function seedDemoData(state, { now = new Date().toISOString() } = {}) {
         setRoutineDayWeekdays(state, routine.id, day.id, availableWeekdays, now);
         availableWeekdays.forEach((weekday) => assignedWeekdays.add(weekday));
       }
-      daySpec.exercises.forEach(([exerciseId, name, plannedSets, repMin, repMax, demoLoad]) => {
+      daySpec.exercises.forEach(([exerciseId, name, plannedSets, repMin, repMax, targetLoadKg]) => {
         const routineExercise = addExerciseToRoutineDay(state, routine.id, day.id, name, {
           exerciseId,
           routineExerciseId: `demo-routine-exercise-${day.id}-${exerciseId}`,
@@ -1833,13 +1850,13 @@ export function seedDemoData(state, { now = new Date().toISOString() } = {}) {
           repMin,
           repMax,
           note: "Datos de ejemplo",
+          targetLoadKg,
           now,
         });
-        routineExercise.demoLoad = demoLoad;
         const localExercise = state.training.exercises.find((exercise) => exercise.id === exerciseId);
-        if (localExercise) localExercise.isDemo = true;
+        if (localExercise && !existingExerciseIds.has(localExercise.id)) localExercise.isDemo = true;
       });
-      routineDayWeekdays(day).forEach((weekday) => {
+      daySpec.weekdays.forEach((weekday) => {
         demoDaysByWeekday.set(weekday, { routine, day });
       });
     });
@@ -1885,7 +1902,9 @@ export function seedDemoData(state, { now = new Date().toISOString() } = {}) {
       const planned = scheduled.day.exercises.find(
         (exercise) => exercise.exerciseId === sessionExercise.exerciseId,
       );
-      const load = Number(planned?.demoLoad ?? 20) + Math.floor((60 - offset) / 7) * 2.5;
+      const load = planned.targetLoadKg === null
+        ? null
+        : planned.targetLoadKg + Math.floor((60 - offset) / 7) * 2.5;
       if (exerciseIndex === 0 && load > 0) {
         addSetToExercise(state, session.id, sessionExercise.id, {
           reps: 5,
@@ -1897,7 +1916,13 @@ export function seedDemoData(state, { now = new Date().toISOString() } = {}) {
       }
       const setCount = Math.min(planned?.plannedSets ?? 3, 4);
       for (let setIndex = 0; setIndex < setCount; setIndex += 1) {
+        if (sessionExercise.routineExerciseId && offset % 10 === 0 && setIndex === setCount - 1) {
+          skipPlannedSet(state, session.id, sessionExercise.id, setIndex + 1,
+            { id: `demo-set-${dateKey}-${exerciseIndex}-${setIndex}`, now: date.toISOString() });
+          continue;
+        }
         addSetToExercise(state, session.id, sessionExercise.id, {
+          ...(sessionExercise.routineExerciseId ? { planOrder: setIndex + 1 } : {}),
           reps: Math.max(planned?.repMin ?? 8, (planned?.repMax ?? 10) - (setIndex % 2)),
           loadKg: load,
           rir: Math.min(3, 1 + setIndex),
@@ -1953,7 +1978,7 @@ export function seedDemoData(state, { now = new Date().toISOString() } = {}) {
     { id: "demo-label-yogurt", isDemo: true, name: "Yogur alto en proteína", brand: "Marca de ejemplo", calories100: 59, protein100: 10, carbs100: 4, fat100: 0.5, photoName: "etiqueta-ejemplo.jpg" },
     { id: "demo-label-pasta", isDemo: true, name: "Pasta seca", brand: "Marca de ejemplo", calories100: 350, protein100: 12, carbs100: 70, fat100: 1.5, photoName: "paquete-ejemplo.jpg" },
   );
-  state.meta.demoSeedVersion = 1;
+  state.meta.demoSeedVersion = 2;
   state.meta.publicCleanupVersion = PUBLIC_CLEANUP_VERSION;
   return state;
   } finally {
