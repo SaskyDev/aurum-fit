@@ -1728,6 +1728,12 @@ progress::-moz-progress-bar {
 .set-form.planned-set-form .set-type-options { grid-column: 1 / -1; }
 .planned-set-note { grid-column: 1 / -1; }
 .planned-set-note summary { cursor: pointer; padding: 8px 0; color: var(--ink-soft); }
+/* Anulada = constancia neutral, nunca error ni trabajo realizado. */
+.set-skipped { color: #9ca3af; border-color: var(--line); background: var(--surface); }
+:root[data-theme="light"] .set-skipped { color: #616975; }
+.set-skipped > span { text-decoration: line-through; }
+.set-skipped .set-number { color: inherit; border-color: var(--line); background: transparent; }
+.set-row.set-skipped { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 12px; }
 .routine-exercise-form:has(.guided-plan-fields) { grid-template-columns: minmax(0, 1fr); }
 .weekday-choice input:disabled + span {
   cursor: not-allowed;

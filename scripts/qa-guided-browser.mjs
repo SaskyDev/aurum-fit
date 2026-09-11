@@ -9,12 +9,13 @@ fs.mkdirSync(output, { recursive: true });
 try {
   for (const theme of ["dark", "light"]) {
     const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, reducedMotion: "reduce", serviceWorkers: "block" });
-    if (["creation", "check"].includes(process.env.QA_MUTATE)) {
+    if (["creation", "check", "annul"].includes(process.env.QA_MUTATE)) {
       await context.route("**/app.js*", async route => {
         const response = await route.fetch();
         const mutations = {
           creation: ['mode: selectedType === "cardio" ? "log" : document.querySelector(\'input[name="routineMode"]:checked\')?.value ?? "log",', 'mode: "log",'],
           check: ['const workoutSet = addSetToExercise(next, session.id, sessionExercise.id, input);', 'return;'],
+          annul: ['next => skipPlannedSet(next, session.id, sessionExercise.id, planOrder)', 'next => undefined'],
         };
         const source = (await response.text()).replace(...mutations[process.env.QA_MUTATE]);
         await route.fulfill({ response, body: source });
@@ -93,6 +94,18 @@ try {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.locator('#trainingNotice').waitFor({ state: 'hidden' });
     await page.screenshot({ path: `${output}/training-${theme}.png`, fullPage: true });
+    await page.getByRole('button', { name: 'Anular serie 2', exact: true }).tap();
+    saved = await read();
+    assert.equal(saved.training.sessions[0].exercises[0].sets.find(item => item.planOrder === 2).status, "skipped");
+    assert.equal(await page.locator('.set-skipped').count(), 1);
+    await page.locator('#finishSessionBtn').click();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Finalizar', exact: true }).click();
+    await page.goto('http://localhost:8000/#diario');
+    // El resumen completo de un día mantiene la anulación sin inventar trabajo.
+    await page.locator('.timeline-open').first().click();
+    assert.ok(await page.locator('.day-detail-overlay .set-skipped').count() > 0);
+    assert.equal(await page.locator('.day-detail-overlay .set-skipped > span').first().evaluate(el => getComputedStyle(el).textDecorationLine), 'line-through');
+    await page.screenshot({ path: `${output}/diary-${theme}.png`, fullPage: true });
     assert.deepEqual(errors, []);
     console.log(`Creación guiada: ${theme}, 390px, táctil, movimiento reducido OK`);
     await context.close();

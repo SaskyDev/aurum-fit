@@ -63,3 +63,12 @@ Alex confirmó usar la suite canónica `node --test tests/*.test.js`:
   swipe táctil derecha duplica e izquierda pide confirmar borrado.
 - Contactos táctiles emulados mediante CDP, no ratón; pendiente de validación
   física en el iPhone de Alex. Capturas en `/tmp/aurum-guided-qa/`.
+
+## Paso 7 — anular y revisar el Diario
+
+- Anular está junto al check; volver a pendiente no registra automáticamente.
+- Sesión, historial por ejercicio y resumen completo del día muestran anulación
+  neutral, gris y tachada, sin carga/repeticiones inventadas ni acciones de copiar.
+- Contadores del ejercicio solo suman realizadas.
+- Recorrido E2E anula, finaliza una sesión con trabajo real y abre el Diario.
+  La mutación `QA_MUTATE=annul` elimina la operación y el recorrido falla.

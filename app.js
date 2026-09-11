@@ -45,9 +45,10 @@ import {
   updateSet,
   updateRoutineExercisePlan,
   pendingPlannedSets,
+  skipPlannedSet,
   validateLabelPhotoFile,
-} from "./core.js?v=79";
-import { BODY_FIGURES } from "./body-paths.js?v=79";
+} from "./core.js?v=80";
+import { BODY_FIGURES } from "./body-paths.js?v=80";
 
 const defaultTargets = { calories: 2200, protein: 170, steps: 10000 };
 const defaultPreferences = {
@@ -1449,6 +1450,7 @@ function openDailyDetail(date) {
       const sets = createElement("ol", "day-set-list");
       exercise.sets.slice().sort((a, b) => a.order - b.order).forEach((workoutSet) => {
         const set = createElement("li", "day-set-row");
+        set.classList.toggle("set-skipped", workoutSet.status === "skipped");
         set.append(
           createElement("span", "set-number", String(workoutSet.order)),
           createElement("span", "", formatSet(workoutSet)),
@@ -2609,6 +2611,7 @@ function sessionSetCount(session) {
 }
 
 function formatSet(workoutSet) {
+  if (workoutSet.status === "skipped") return "Serie anulada · no realizada";
   const parts = [`${workoutSet.reps} rep${workoutSet.reps === 1 ? "" : "s"}`];
   if (workoutSet.loadKg !== null) parts.push(`${workoutSet.loadKg} kg`);
   if (workoutSet.rir !== null && workoutSet.rir !== undefined) {
@@ -2802,6 +2805,14 @@ function renderSetForm(session, sessionExercise, reference, planOrder = null) {
   });
   cancel.hidden = true;
   actions.append(submit, cancel);
+  if (planOrder !== null) {
+    const annul = createButton("Anular", "button-quiet", () => commit(
+      next => skipPlannedSet(next, session.id, sessionExercise.id, planOrder),
+      "Serie anulada. No cuenta como realizada.",
+    ));
+    annul.setAttribute("aria-label", `Anular serie ${planOrder}`);
+    actions.append(annul);
+  }
   const loadStepper = createElement("div", "load-stepper");
   const loadDown = createElement("button", "load-stepper-button", "−");
   loadDown.type = "button";
@@ -3113,6 +3124,7 @@ function createExerciseHistoryPanel(sessionExercise) {
     const sets = createElement("ol", "exercise-history-sets");
     exercise.sets.slice().sort((a, b) => a.order - b.order).forEach((workoutSet) => {
       const row = createElement("li", "exercise-history-set");
+      row.classList.toggle("set-skipped", workoutSet.status === "skipped");
       row.append(
         createElement("span", "set-number", String(workoutSet.order)),
         createElement("span", "", formatSet(workoutSet)),
@@ -3162,6 +3174,7 @@ function activateExerciseView(article, sessionExerciseId, view) {
 }
 
 function renderSessionExercise(session, sessionExercise) {
+  const completedCount = sessionExercise.sets.filter(item => item.status === "completed").length;
   const article = createElement("details", "session-exercise");
   article.dataset.sessionExerciseId = sessionExercise.id;
   article.open = expandedSessionExerciseId
@@ -3179,8 +3192,8 @@ function renderSessionExercise(session, sessionExercise) {
       "",
       sessionExercise.isExtra
         ? "Extra solo hoy"
-        : sessionExercise.sets.length
-          ? `${countLabel(sessionExercise.sets.length, "serie")} registrada${sessionExercise.sets.length === 1 ? "" : "s"}`
+        : completedCount
+          ? `${countLabel(completedCount, "serie")} realizada${completedCount === 1 ? "" : "s"}`
           : "Pulsa para registrar la primera serie",
     ),
   );
@@ -3189,8 +3202,8 @@ function renderSessionExercise(session, sessionExercise) {
     "exercise-summary-status",
     sessionExercise.status === "skipped"
       ? "Omitido"
-      : sessionExercise.sets.length
-        ? `✓ ${sessionExercise.sets.length}`
+      : completedCount
+        ? `✓ ${completedCount}`
         : "Abrir",
   );
   summary.append(summaryText, summaryStatus);
@@ -3227,7 +3240,7 @@ function renderSessionExercise(session, sessionExercise) {
   titleBlock.appendChild(createLastReferenceCard(reference));
   header.appendChild(titleBlock);
   const statusBlock = createElement("div", "exercise-status-actions");
-  statusBlock.appendChild(createElement("span", "count-badge", countLabel(sessionExercise.sets.length, "serie")));
+  statusBlock.appendChild(createElement("span", "count-badge", `${countLabel(completedCount, "serie")} realizada${completedCount === 1 ? "" : "s"}`));
   if (!sessionExercise.isExtra && !sessionExercise.sets.length) {
     if (sessionExercise.status === "skipped") {
       statusBlock.appendChild(createButton(
@@ -3277,6 +3290,15 @@ function renderSessionExercise(session, sessionExercise) {
   const form = renderSetForm(session, sessionExercise, reference);
 
   sessionExercise.sets.forEach((workoutSet) => {
+    if (workoutSet.status === "skipped") {
+      const skippedRow = createElement("li", "set-row set-skipped");
+      skippedRow.append(createElement("span", "", `Serie ${workoutSet.planOrder} · anulada`));
+      skippedRow.append(createButton("Volver a pendiente", "button-quiet", () => commit(
+        next => deleteSet(next, session.id, sessionExercise.id, workoutSet.id), "Serie pendiente de nuevo.",
+      )));
+      list.append(skippedRow);
+      return;
+    }
     const duplicateCurrentSet = () => commit(
       (next) => duplicateSet(next, session.id, sessionExercise.id, workoutSet.id),
       `Serie ${workoutSet.order} duplicada con los mismos valores.`,
@@ -3748,7 +3770,7 @@ function backfillExerciseMuscles() {
 
 async function loadCatalog() {
   try {
-    const response = await fetch("./data/exercises.es.json?v=79", { cache: "no-cache" });
+    const response = await fetch("./data/exercises.es.json?v=80", { cache: "no-cache" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     if (!Array.isArray(payload.exercises)) throw new Error("Estructura no válida");
