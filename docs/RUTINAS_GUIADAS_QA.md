@@ -42,7 +42,7 @@ Alex confirmó usar la suite canónica `node --test tests/*.test.js`:
 
 ## Paso 5 — creación y edición guiadas
 
-- Selector Solo registro / Guiada en fuerza; cardio mantiene su flujo log.
+- Selector Registro / Planificada en fuerza; cardio mantiene su flujo de registro.
 - Campos reutilizan `makeSetField`; series/rango obligatorios, peso opcional.
 - Editar el plan y convertir una rutina log pide configurar cada ejercicio;
   conversión atómica mediante `commit`, sin botón de conversión inversa.
@@ -124,8 +124,8 @@ Alex confirmó usar la suite canónica `node --test tests/*.test.js`:
 
 ## Paso 11 — rediseño compacto v85
 
-- Biblioteca: etiqueta muscular y etiqueta independiente `Guiada` / `Solo
-  registro` sin aumentar la tarjeta.
+- Biblioteca: etiqueta muscular y etiqueta independiente `Planificada` /
+  `Registro` sin aumentar la tarjeta.
 - Cabecera: `Guía`, `Nota`, `Cambiar`, `Hoy no` y eliminación global compactas.
   Guía solo abre `instructionsEs` existente; no se genera texto.
 - `sessionNote` vive en la foto de la sesión y admite 300 caracteres. Nunca
@@ -150,7 +150,7 @@ Alex confirmó usar la suite canónica `node --test tests/*.test.js`:
   equilibradas en móvil (tres arriba y dos centradas abajo); todas conservan un
   área táctil de al menos 44 px. El cambio se cancela junto al estado del
   catálogo, no como una acción competidora en la cabecera.
-- `Solo registro` usa azul/verde informativo: describe el modo de la rutina,
+- `Registro` usa azul/verde informativo: describe el estilo de la rutina,
   no un estado inactivo o negativo.
 
 ## Cierre de interfaz y publicación local · 11 de septiembre de 2026
@@ -159,7 +159,7 @@ Alex confirmó usar la suite canónica `node --test tests/*.test.js`:
 
 - La rama reúne los diez pasos de rutinas guiadas y cuatro cierres de interfaz:
   borrador de entrenamiento libre, registro compacto, revisión de controles y
-  pulido del modo `Solo registro`.
+  pulido del estilo `Registro`.
 - La suite canónica termina en **124/124**. El recorrido móvil automatizado se
   ha repetido a **390 × 844 px** en oscuro, claro y movimiento reducido, sin
   desbordamiento horizontal.
@@ -172,7 +172,7 @@ Alex confirmó usar la suite canónica `node --test tests/*.test.js`:
 | --- | --- | --- |
 | Acciones sin icono en la vista `file://` | Un `<use>` SVG externo puede no resolver en esa superficie, aunque cargue desde HTTP. | Las acciones dinámicas del ejercicio usan trazos SVG internos; comprobar ambos modos en la QA móvil. |
 | Acciones alineadas a la izquierda con cuatro botones | La cuadrícula reservaba siempre cinco columnas. | En escritorio usar columnas `auto-fit`; en móvil mantener tres arriba y dos centradas abajo. |
-| Hueco grande antes de la primera serie en `Solo registro` | Se pintaba el mensaje “Aún no hay series registradas” entre las cabeceras y el formulario. | Si no hay series previas, no renderizar una fila vacía; agrupar cabeceras y primer registro en `compact-registration`. |
+| Hueco grande antes de la primera serie en `Registro` | Se pintaba el mensaje “Aún no hay series registradas” entre las cabeceras y el formulario. | Si no hay series previas, no renderizar una fila vacía; agrupar cabeceras y primer registro en `compact-registration`. |
 | “Añadir ejercicio solo hoy” quedaba pegado | Un selector CSS apuntaba a una jerarquía anterior del DOM. | Aplicar el margen al propio selector reutilizable, no a una ruta de DOM frágil. |
 | Entrenamiento libre contaminaba el Diario antes de empezar | Se creaba directamente una sesión activa. | Crear un borrador persistente y arrancar cronómetro/Diario solo con `Empezar`. |
 | Una sugerencia seguía visible después de añadirla | El catálogo no excluía los ejercicios ya presentes en la sesión. | Filtrar por los identificadores de la sesión salvo durante la sustitución explícita. |
@@ -191,3 +191,16 @@ Alex confirmó usar la suite canónica `node --test tests/*.test.js`:
    antigua muestra el diseño anterior, cerrar y reabrir la app instalada para
    que el service worker reclame la nueva caché; no editar archivos para
    “forzar” una caché manual.
+
+## Creación estructurada y nombres públicos · 11 de septiembre de 2026
+
+- Los nombres visibles quedan en `Registro` y `Planificada`; `log` y `guided`
+  se conservan únicamente como valores internos compatibles con datos previos.
+- `Los pones tú` y `Los prepara la rutina` son explicaciones, no el nombre del
+  estilo.
+- Una rutina de fuerza se crea de forma atómica al terminar el segundo paso:
+  nunca se guarda vacía. Registro exige al menos un ejercicio y Planificada
+  exige además el plan de cada ejercicio.
+- Un entrenamiento libre ya preparado se reabre de forma explícita desde la
+  Biblioteca; no se intenta crear un segundo borrador ni se inicia su reloj.
+- QA móvil ampliado para reabrir el borrador y crear una Planificada completa.

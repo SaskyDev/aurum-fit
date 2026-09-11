@@ -76,6 +76,9 @@ try {
     assert.equal(saved.training.activeSessionId, null);
     assert.equal(saved.training.sessions.at(-1).status, "draft");
     assert.equal(saved.training.sessions.at(-1).startedAt, null);
+    await page.locator("#freeDraftBackBtn").tap();
+    await page.locator("#startFreeSessionBtn").tap();
+    assert.equal(await page.locator("#freeWorkoutDraftPanel").isVisible(), true, "un borrador libre existente se puede reabrir");
     await page.locator("#exercisePicker summary").tap();
     await page.locator("#catalogSearch").fill("Press de banca");
     await page.getByRole("button", { name: "Añadir", exact: true }).first().tap();
@@ -93,17 +96,21 @@ try {
     await page.locator('label').filter({ has: page.locator('input[name="routineMode"][value="guided"]') }).tap();
     await page.locator("#newRoutineWeekdays label").first().tap();
     await page.locator('#createRoutineForm button[type="submit"]').tap();
+    assert.equal(await page.locator("#routineExercisesStep").isVisible(), true);
+    await page.screenshot({ path: `${output}/routine-builder-${profile.name}.png`, fullPage: true });
+    await page.locator("#newRoutineExerciseName").fill("Press de banca con barra");
+    await page.locator('#newRoutineExercisePlanFields [name="plannedSets"]').fill("3");
+    await page.locator('#newRoutineExercisePlanFields [name="repMin"]').fill("8");
+    await page.locator('#newRoutineExercisePlanFields [name="repMax"]').fill("12");
+    await page.locator('#newRoutineExercisePlanFields [name="targetLoadKg"]').fill("50");
+    await page.locator("#addNewRoutineExerciseBtn").tap();
+    await page.locator("#saveNewRoutineBtn").tap();
 
-    const routineCard = page.locator(".routine-overview-card").filter({ hasText: "QA Guiada" });
-    assert.equal(await routineCard.locator(".routine-mode-guided").textContent(), "Guiada");
-    await routineCard.tap();
-    const planForm = page.locator(".routine-exercise-form").first();
-    await planForm.locator('input[list="routineExerciseOptions"]').fill("Press de banca con barra");
-    await planForm.locator('[name="plannedSets"]').fill("3");
-    await planForm.locator('[name="repMin"]').fill("8");
-    await planForm.locator('[name="repMax"]').fill("12");
-    await planForm.locator('[name="targetLoadKg"]').fill("50");
-    await planForm.locator('button[type="submit"]').tap();
+    assert.equal(await page.locator("#routineDetailPanel").isVisible(), true);
+    saved = await page.evaluate((key) => JSON.parse(localStorage.getItem(key)), STORE_KEY);
+    const createdRoutine = saved.training.routines.find((routine) => routine.name === "QA Guiada");
+    assert.equal(createdRoutine.mode, "guided");
+    assert.equal(createdRoutine.days[0].exercises.length, 1);
     await page.locator(".routine-day").first().getByRole("button", { name: "Empezar", exact: true }).tap();
 
     assert.equal(await page.locator(".planned-set-form").count(), 3);

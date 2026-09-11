@@ -49,11 +49,11 @@ entrenar sea marcar ✓ serie a serie.
 La app hoy solo atiende a un tipo de usuario: el que ya sabe lo que va a hacer y
 solo quiere dejar constancia. Se añade el otro **sin sustituir al primero**:
 
-- **Solo registro** (actual, por defecto): la rutina lista ejercicios; los
+- **Registro** (por defecto): la rutina lista ejercicios; los
   números se escriben entrenando.
-- **Guiada**: la rutina lleva series, repeticiones y peso; entrenar es marcar.
+- **Planificada**: la rutina lleva series, repeticiones y peso; entrenar es marcar.
 
-Se puede pasar de registro a guiada, pero no al revés, para no borrar números ya
+Se puede pasar de Registro a Planificada, pero no al revés, para no borrar números ya
 puestos.
 
 ### El plan no cuenta como hecho
@@ -121,9 +121,15 @@ La atribución se conserva en `THIRD_PARTY_NOTICES.md`.
 - Las acciones de ejercicio son siempre icono + texto. En escritorio llenan el
   ancho disponible; en móvil se distribuyen en dos filas equilibradas, nunca
   quedan abandonadas a la izquierda.
-- `Solo registro` no se trata como una versión menor: usa una etiqueta azul
+- `Registro` no se trata como una versión menor: usa una etiqueta azul
   informativa y conserva Guía, Nota, Cambiar y Hoy no con la misma jerarquía que
-  una rutina Guiada.
+  una rutina Planificada.
+
+La creación de una rutina de fuerza tiene dos pasos. Primero se eligen nombre,
+estilo, color y días; después se añaden sus ejercicios. La rutina solo se
+persiste al terminar el segundo paso, por lo que nunca nace vacía. En
+`Planificada`, cada ejercicio incorpora su plan antes de guardar; en `Registro`,
+los valores se escriben durante el entrenamiento.
 - Un modo sin series registradas no muestra un mensaje vacío entre las
   cabeceras y la primera fila; la primera acción útil debe quedar inmediatamente
   debajo de `Set · Peso · Reps · RIR`.

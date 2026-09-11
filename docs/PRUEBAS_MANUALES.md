@@ -4,7 +4,7 @@
 
 ## Rutinas guiadas (QA-GUIDED-001)
 
-1. Crear una rutina de fuerza en modo `Guiada`.
+1. Crear una rutina de fuerza en estilo `Planificada`.
 2. Añadir un ejercicio con 3 series, rango 8–12 y peso vacío.
 3. Comprobar que la primera sesión dice «Primera vez: vamos a tomar tu
    referencia» y no inventa ningún peso.
@@ -28,7 +28,7 @@
 
 1. En `Ajustes > Datos`, exportar una copia si se va a probar con datos reales.
 2. Pulsar `Cargar datos de demostración`.
-3. Comprobar que existen rutinas `Solo registro` y `Guiada`, una serie anulada y
+3. Comprobar que existen rutinas `Registro` y `Planificada`, una serie anulada y
    un ejercicio guiado sin peso objetivo.
 4. En Diario, elegir `Press de banca con barra` y comprobar que la línea de peso
    progresa; no debe ser plana.

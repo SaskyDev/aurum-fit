@@ -21,10 +21,10 @@
         } catch {}
       })();
     </script>
-    <link rel="manifest" href="manifest.json?v=98" />
-    <link rel="icon" type="image/svg+xml" href="icon.svg?v=98" />
-    <link rel="apple-touch-icon" href="icon.svg?v=98" />
-    <link rel="stylesheet" href="styles.css?v=98" />
+    <link rel="manifest" href="manifest.json?v=99" />
+    <link rel="icon" type="image/svg+xml" href="icon.svg?v=99" />
+    <link rel="apple-touch-icon" href="icon.svg?v=99" />
+    <link rel="stylesheet" href="styles.css?v=99" />
   </head>
   <body>
     <main>
@@ -305,28 +305,28 @@
               <details id="createRoutineCard" class="create-routine-card surface">
                 <summary><span class="create-routine-plus" aria-hidden="true"><svg class="ui-icon"><use href="assets/icons.svg#plus"></use></svg></span><span><strong>Crear nueva rutina</strong><small>Elige nombre y días de repetición</small></span></summary>
                 <form id="createRoutineForm" class="create-routine-form">
-                  <label>Nombre de la rutina<input id="routineName" type="text" minlength="2" maxlength="80" placeholder="Ej. Push Pull Legs" required /></label>
-                  <fieldset class="routine-type-fieldset">
+                  <label class="routine-setup-basics">Nombre de la rutina<input id="routineName" type="text" minlength="2" maxlength="80" placeholder="Ej. Push Pull Legs" required /></label>
+                  <fieldset class="routine-type-fieldset routine-setup-basics">
                     <legend>Tipo de entrenamiento</legend>
                     <div class="routine-type-picker" aria-label="Tipo de entrenamiento">
                       <label><input type="radio" name="routineDayType" value="strength" checked /><span><strong>Fuerza</strong><small>Series, peso, reps y RIR</small></span></label>
                       <label><input type="radio" name="routineDayType" value="cardio" /><span><strong>Cardio</strong><small>Distancia, tiempo y ritmo</small></span></label>
                     </div>
                   </fieldset>
-                  <fieldset id="cardioActivityPicker" class="cardio-activity-fieldset" hidden>
+                  <fieldset id="cardioActivityPicker" class="cardio-activity-fieldset routine-setup-basics" hidden>
                     <legend>¿Qué actividad quieres hacer?</legend>
                     <div id="cardioActivityOptions" class="cardio-activity-picker" aria-label="Actividad cardio"></div>
                     <small id="cardioActivityHelp">Mostraremos solo las métricas que necesita esa actividad.</small>
                   </fieldset>
-                  <fieldset id="routineModePicker" class="routine-type-fieldset">
-                    <legend>¿Quién pone los números?</legend>
+                  <fieldset id="routineModePicker" class="routine-type-fieldset routine-setup-basics">
+                    <legend>Elige el estilo de rutina que mejor se adapte a ti</legend>
                     <div class="routine-type-picker routine-mode-picker" aria-label="Modo de la rutina">
-                      <label><input type="radio" name="routineMode" value="log" checked /><span><strong>Los pones tú</strong><small>La rutina solo recuerda qué ejercicios tocan cada día. El peso y las repeticiones los escribes mientras entrenas, como en un cuaderno.</small></span></label>
-                      <label><input type="radio" name="routineMode" value="guided" /><span><strong>Los prepara la rutina</strong><small>Dejas escritos ahora las series, las repeticiones y el peso de cada ejercicio. Entrenar es ir confirmando serie a serie.</small></span></label>
+                      <label><input type="radio" name="routineMode" value="log" checked /><span><strong>Registro</strong><small><b>Los pones tú.</b> Anotas peso, repeticiones y RIR durante el entrenamiento, como en un cuaderno.</small></span></label>
+                      <label><input type="radio" name="routineMode" value="guided" /><span><strong>Planificada</strong><small><b>Los prepara la rutina.</b> Defines series, rango de repeticiones y peso antes de entrenar; después solo confirmas o ajustas.</small></span></label>
                     </div>
-                    <small class="routine-mode-note">Si no lo tienes claro, empieza con <strong>Los pones tú</strong>: se puede convertir en rutina preparada más adelante, pero no al revés. En los dos casos solo cuenta lo que confirmes tú.</small>
+                    <small class="routine-mode-note">Si no lo tienes claro, empieza con <strong>Registro</strong>: podrás convertirla en Planificada más adelante, pero no al revés. En ambos estilos solo cuenta lo que confirmes tú.</small>
                   </fieldset>
-                  <fieldset class="routine-color-fieldset">
+                  <fieldset class="routine-color-fieldset routine-setup-basics">
                     <legend>Color de la rutina</legend>
                     <div class="routine-color-picker" aria-label="Color de la nueva rutina">
                       <label><input type="radio" name="routineAccentColor" value="auto" checked /><span class="routine-color-auto">Auto</span></label>
@@ -339,12 +339,26 @@
                     </div>
                     <small>Auto distingue Empuje, Tirón, Pierna y otros tipos. El color elegido no cambiará al añadir ejercicios.</small>
                   </fieldset>
-                  <fieldset class="weekday-fieldset">
+                  <fieldset class="weekday-fieldset routine-setup-basics">
                     <legend>¿Qué días se repite?</legend>
                     <div id="newRoutineWeekdays" class="weekday-selector" aria-label="Días de la nueva rutina"></div>
                     <small id="newRoutineWeekdaysHelp">Los días ocupados por otra rutina aparecen tachados y no se pueden elegir.</small>
                   </fieldset>
-                  <button class="button button-accent button-large" type="submit">Crear rutina</button>
+                  <section id="routineExercisesStep" class="routine-exercises-step" hidden>
+                    <button id="backRoutineBasicsBtn" class="button button-quiet routine-step-back" type="button">← Volver a los datos</button>
+                    <div class="routine-step-heading">
+                      <p id="newRoutineModeEyebrow" class="eyebrow">Rutina de Registro</p>
+                      <h3>Añade los ejercicios</h3>
+                      <p id="newRoutineExerciseHelp" class="muted">Podrás registrar los valores durante el entrenamiento.</p>
+                    </div>
+                    <ol id="newRoutineExerciseList" class="new-routine-exercise-list"></ol>
+                    <div class="new-routine-exercise-builder">
+                      <label>Ejercicio<input id="newRoutineExerciseName" type="text" minlength="2" maxlength="80" list="routineExerciseOptions" placeholder="Buscar o crear ejercicio" /></label>
+                      <div id="newRoutineExercisePlanFields"></div>
+                      <button id="addNewRoutineExerciseBtn" class="button button-secondary" type="button">+ Añadir ejercicio</button>
+                    </div>
+                  </section>
+                  <button id="saveNewRoutineBtn" class="button button-accent button-large" type="submit">Continuar: añadir ejercicios</button>
                 </form>
               </details>
               <button id="startFreeSessionBtn" class="free-routine-card surface" type="button">
@@ -687,6 +701,6 @@
 
     </main>
 
-    <script type="module" src="app.js?v=98"></script>
+    <script type="module" src="app.js?v=99"></script>
   </body>
 </html>
