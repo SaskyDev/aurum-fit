@@ -4448,9 +4448,9 @@ th {
 :root {
   --muscle-body: #232c25;
   --muscle-none: #232c25;
-  --muscle-low: #5b45b0;
-  --muscle-medium: #e0609a;
-  --muscle-high: #ffc861;
+  --muscle-low: #8c3b2f;
+  --muscle-medium: #d98324;
+  --muscle-high: #e8e84a;
   --muscle-secondary-ink: #8aa39a;
   --muscle-edge: #55685b;
 }
@@ -4458,9 +4458,9 @@ th {
 :root[data-theme="light"] {
   --muscle-body: #e2e7dd;
   --muscle-none: #e2e7dd;
-  --muscle-low: #d98324;
-  --muscle-medium: #a92a6d;
-  --muscle-high: #31215e;
+  --muscle-low: #c9a227;
+  --muscle-medium: #b05c17;
+  --muscle-high: #4f2d0d;
   --muscle-secondary-ink: #5d7266;
   --muscle-edge: #a3b39d;
 }
@@ -4532,10 +4532,42 @@ th {
 .muscle-map-detail[open] > summary { margin-bottom: var(--space-2); }
 .muscle-map-detail[open] > summary::after { content: "▴"; }
 
-/* Los ejercicios que trabajaron cada zona, debajo de sus números. El número
-   dice cuánto; esto dice de dónde viene. */
+/* Los ejercicios que trabajaron cada zona, a un toque. El número dice cuánto;
+   esto dice de dónde viene. Van plegados porque abiertos de golpe eran cuarenta
+   líneas seguidas y la tabla dejaba de poderse recorrer de un vistazo. */
+.muscle-zone-toggle {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  width: 100%;
+  min-height: 40px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.muscle-zone-toggle::after {
+  content: "▾";
+  color: var(--accent-ink);
+  font-size: .62rem;
+  transition: transform .15s ease;
+}
+.muscle-zone-toggle[aria-expanded="true"]::after { transform: rotate(180deg); }
+.muscle-row:has(.muscle-zone-toggle[aria-expanded="true"]) > * { border-bottom: 0; }
+
 .muscle-row-exercises > td { padding-top: 0; border-top: 0; }
-.muscle-exercise-list { display: grid; gap: 2px; margin: 0 0 var(--space-2); padding: 0; list-style: none; }
+.muscle-exercise-kind {
+  margin: var(--space-2) 0 4px;
+  color: var(--ink-soft);
+  font-size: .68rem;
+  font-weight: 850;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.muscle-exercise-list { display: grid; gap: 3px; margin: 0; padding: 0 0 var(--space-2); list-style: none; }
 .muscle-exercise {
   display: flex;
   gap: var(--space-2);
@@ -4543,8 +4575,7 @@ th {
   justify-content: space-between;
   font-size: .78rem;
 }
-.muscle-exercise-sets { flex: none; color: var(--ink-soft); font-size: .72rem; }
-.muscle-exercise-secondary { color: var(--ink-soft); }
+.muscle-exercise-sets { flex: none; color: var(--ink-soft); font-size: .72rem; font-variant-numeric: tabular-nums; }
 
 /* Qué figura se dibuja. Estaba solo en Ajustes, a cuatro toques del mapa. */
 .muscle-figure-switch { display: flex; gap: 6px; justify-content: flex-end; }

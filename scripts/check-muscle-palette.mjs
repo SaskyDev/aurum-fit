@@ -108,8 +108,11 @@ export const MUSCLE_RAMPS = {
   // sube y luego baja, así que "10+" y "1-4" se confunden en gris y con
   // daltonismo. Y un músculo en rojo sobre una figura humana se lee como dolor
   // o lesión: la app no diagnostica.
-  oscuro: ["#232c25", "#5b45b0", "#e0609a", "#ffc861"],
-  claro: ["#e2e7dd", "#d98324", "#a92a6d", "#31215e"],
+  oscuro: ["#232c25", "#8c3b2f", "#d98324", "#e8e84a"],
+  // El alto del tema claro es marrón quemado y NO granate. Sobre blanco, el
+  // paso alto es el más oscuro, y un granate ahí pintaba de color sangre
+  // justo el músculo más entrenado. Marrón se lee como brasa apagada.
+  claro: ["#e2e7dd", "#c9a227", "#b05c17", "#4f2d0d"],
 };
 
 if (import.meta.url === `file://${process.argv[1]}`) {

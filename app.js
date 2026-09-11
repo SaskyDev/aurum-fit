@@ -54,8 +54,8 @@ import {
   skipPlannedSet,
   guidedExerciseDeviation,
   validateLabelPhotoFile,
-} from "./core.js?v=95";
-import { BODY_FIGURES } from "./body-paths.js?v=95";
+} from "./core.js?v=96";
+import { BODY_FIGURES } from "./body-paths.js?v=96";
 
 const defaultTargets = { calories: 2200, protein: 170, steps: 10000 };
 const defaultPreferences = {
@@ -4273,7 +4273,7 @@ function backfillExerciseMuscles() {
 
 async function loadCatalog() {
   try {
-    const response = await fetch("./data/exercises.es.json?v=95", { cache: "no-cache" });
+    const response = await fetch("./data/exercises.es.json?v=96", { cache: "no-cache" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     if (!Array.isArray(payload.exercises)) throw new Error("Estructura no válida");
@@ -4315,6 +4315,8 @@ function figureFor(view) {
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 let muscleMapPeriod = "week";
+// Una zona abierta cada vez, como el acordeón de ejercicios de la sesión.
+let openMuscleZone = null;
 
 function muscleShapeElement(d) {
   const element = document.createElementNS(SVG_NS, "path");
@@ -4491,46 +4493,67 @@ function renderMuscleMap() {
     empty.appendChild(cell);
     rows.replaceChildren(empty);
   } else {
-    // Cada zona lleva debajo los ejercicios que la trabajaron. El número solo
-    // dice cuánto; esto dice de dónde viene, que es lo que permite decidir qué
-    // cambiar la semana que viene. Los datos ya venían en computeMuscleVolume,
-    // ordenados por series: aquí no se recalcula nada.
+    // Los ejercicios de cada zona van PLEGADOS. Abiertos todos a la vez eran
+    // cuarenta líneas seguidas, con los mismos nombres repetidos en cada zona
+    // que tocan, y la tabla dejaba de poderse recorrer de un vistazo. Ahora la
+    // tabla se lee como catorce números y el detalle está a un toque.
     rows.replaceChildren(...filas.flatMap(({ region, data }) => {
       const row = document.createElement("tr");
       row.className = "muscle-row";
       const nombre = document.createElement("th");
       nombre.scope = "row";
-      nombre.textContent = region.labelEs;
       const directas = document.createElement("td");
       directas.textContent = String(data.directSets);
       const secundarias = document.createElement("td");
       secundarias.textContent = String(data.secondarySets);
-      row.append(nombre, directas, secundarias);
 
       const ejercicios = data.exercises ?? [];
-      if (!ejercicios.length) return [row];
+      if (!ejercicios.length) {
+        nombre.textContent = region.labelEs;
+        row.append(nombre, directas, secundarias);
+        return [row];
+      }
+
+      const detalleId = `muscleZone-${region.id}`;
+      const toggle = createElement("button", "muscle-zone-toggle", region.labelEs);
+      toggle.type = "button";
+      toggle.setAttribute("aria-expanded", String(openMuscleZone === region.id));
+      toggle.setAttribute("aria-controls", detalleId);
+      toggle.addEventListener("click", () => {
+        openMuscleZone = openMuscleZone === region.id ? null : region.id;
+        renderMuscleMap();
+      });
+      nombre.appendChild(toggle);
+      row.append(nombre, directas, secundarias);
+
       const detalle = document.createElement("tr");
       detalle.className = "muscle-row-exercises";
+      detalle.id = detalleId;
+      detalle.hidden = openMuscleZone !== region.id;
       const celda = document.createElement("td");
       celda.colSpan = 3;
-      const lista = document.createElement("ul");
-      lista.className = "muscle-exercise-list";
-      ejercicios.forEach((ejercicio) => {
-        const item = document.createElement("li");
-        item.className = `muscle-exercise muscle-exercise-${ejercicio.kind}`;
-        const nombreEjercicio = document.createElement("span");
-        nombreEjercicio.textContent = ejercicio.name;
-        const cuenta = document.createElement("span");
-        cuenta.className = "muscle-exercise-sets";
-        // "de forma directa" o "con implicación": sin esto, dos ejercicios con
-        // las mismas series parecerían aportar lo mismo a la zona.
-        cuenta.textContent = ejercicio.kind === "direct"
-          ? countLabel(ejercicio.sets, "serie")
-          : `${countLabel(ejercicio.sets, "serie")} · implicación`;
-        item.append(nombreEjercicio, cuenta);
-        lista.appendChild(item);
+
+      // Separadas por tipo: un ejercicio directo y uno de implicación con el
+      // mismo número no aportan lo mismo a la zona, y mezclados lo parecían.
+      [["direct", "Trabajo directo"], ["secondary", "Con implicación"]].forEach(([kind, titulo]) => {
+        const grupo = ejercicios.filter((ejercicio) => ejercicio.kind === kind);
+        if (!grupo.length) return;
+        celda.appendChild(createElement("p", "muscle-exercise-kind", titulo));
+        const lista = document.createElement("ul");
+        lista.className = "muscle-exercise-list";
+        grupo.forEach((ejercicio) => {
+          const item = document.createElement("li");
+          item.className = "muscle-exercise";
+          const nombreEjercicio = document.createElement("span");
+          nombreEjercicio.textContent = ejercicio.name;
+          const cuenta = document.createElement("span");
+          cuenta.className = "muscle-exercise-sets";
+          cuenta.textContent = countLabel(ejercicio.sets, "serie");
+          item.append(nombreEjercicio, cuenta);
+          lista.appendChild(item);
+        });
+        celda.appendChild(lista);
       });
-      celda.appendChild(lista);
       detalle.appendChild(celda);
       return [row, detalle];
     }));

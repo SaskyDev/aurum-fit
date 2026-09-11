@@ -227,9 +227,21 @@ test("el detalle por zona nombra los ejercicios y se puede tocar", () => {
   // El número dice cuánto; el ejercicio dice de dónde viene, que es lo que
   // permite decidir qué cambiar. Los datos ya venían de computeMuscleVolume.
   assert.match(app, /detalle\.className = "muscle-row-exercises"/);
-  assert.match(app, /ejercicio\.kind === "direct"\s*\n\s*\? countLabel\(ejercicio\.sets, "serie"\)/);
-  assert.match(app, /`\$\{countLabel\(ejercicio\.sets, "serie"\)\} · implicación`/);
   assert.match(css, /\.muscle-exercise-list \{/);
+
+  // Directo e implicación van en grupos separados con su título. Mezclados,
+  // dos ejercicios con el mismo número parecían aportar lo mismo a la zona.
+  assert.match(app, /\[\["direct", "Trabajo directo"\], \["secondary", "Con implicación"\]\]/);
+  assert.match(app, /ejercicios\.filter\(\(ejercicio\) => ejercicio\.kind === kind\)/);
+  assert.match(app, /if \(!grupo\.length\) return;/, "un grupo vacío no puede dejar un título suelto");
+
+  // Y van plegados, una zona cada vez: abiertos todos a la vez eran cuarenta
+  // líneas seguidas y la tabla dejaba de poderse recorrer.
+  assert.match(app, /let openMuscleZone = null;/);
+  assert.match(app, /detalle\.hidden = openMuscleZone !== region\.id;/);
+  assert.match(app, /openMuscleZone = openMuscleZone === region\.id \? null : region\.id;/);
+  assert.match(app, /toggle\.setAttribute\("aria-expanded", String\(openMuscleZone === region\.id\)\)/);
+  assert.match(app, /toggle\.setAttribute\("aria-controls", detalleId\)/);
 
   // El summary era un <details> pelado, sin una sola regla de estilo: se leía
   // como texto muerto. Ahora es un control con objetivo táctil de 44 px.
