@@ -1451,7 +1451,7 @@ export function guidedPlanDeviation(plan, actual) {
   if (!plan.routineExerciseId || actual.planOrder === undefined || actual.status !== "completed"
     || (actual.setType ?? "effective") !== "effective") return null;
   const changes = {};
-  if (plan.targetLoadKg !== null && actual.loadKg !== plan.targetLoadKg) changes.targetLoadKg = actual.loadKg;
+  if (actual.loadKg !== plan.targetLoadKg) changes.targetLoadKg = actual.loadKg;
   if (actual.reps < plan.repMin || actual.reps > plan.repMax) {
     changes.repMin = actual.reps;
     changes.repMax = actual.reps;

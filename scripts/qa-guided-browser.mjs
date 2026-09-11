@@ -5,6 +5,7 @@ const runtime = process.env.PLAYWRIGHT_MODULE ?? "/Users/alex/.cache/codex-runti
 const { chromium } = await import(runtime);
 const browser = await chromium.launch({ headless: true });
 const output = process.env.QA_OUTPUT ?? "/tmp/aurum-guided-qa";
+const calibration = process.env.QA_CALIBRATION === "1";
 fs.mkdirSync(output, { recursive: true });
 try {
   for (const theme of ["dark", "light"]) {
@@ -46,12 +47,12 @@ try {
     await form.locator('[name="plannedSets"]').fill("3");
     await form.locator('[name="repMin"]').fill("8");
     await form.locator('[name="repMax"]').fill("12");
-    await form.locator('[name="targetLoadKg"]').fill("50");
+    if (!calibration) await form.locator('[name="targetLoadKg"]').fill("50");
     await form.locator('button[type="submit"]').click();
     const read = () => page.evaluate(key => JSON.parse(localStorage.getItem(key)), STORE_KEY);
     let saved = await read();
     assert.equal(saved.training.routines[0].mode, "guided");
-    assert.equal(saved.training.routines[0].days[0].exercises[0].targetLoadKg, 50);
+    assert.equal(saved.training.routines[0].days[0].exercises[0].targetLoadKg, calibration ? null : 50);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.locator("#trainingNotice").waitFor({ state: "hidden" });
     await page.screenshot({ path: `${output}/creation-${theme}.png`, fullPage: true });
@@ -60,6 +61,21 @@ try {
     saved = await read();
     assert.equal(saved.training.sessions[0].exercises[0].sets.length, 0);
     const planned = page.locator('.planned-set-form').first();
+    if (calibration) {
+      assert.equal(await page.getByText('Primera vez: vamos a tomar tu referencia.', { exact: true }).count(), 1);
+      assert.equal(await planned.locator('[name="loadKg"]').inputValue(), '');
+      assert.equal(await planned.locator('[name="loadKg"]').getAttribute('placeholder'), '');
+      await planned.locator('[name="loadKg"]').fill('22.5');
+      await planned.getByRole('button', { name: 'Completar serie 1', exact: true }).tap();
+      await page.getByRole('alertdialog').getByRole('button', { name: 'Actualizar plan', exact: true }).click();
+      saved = await read();
+      assert.equal(saved.training.routines[0].days[0].exercises[0].targetLoadKg, 22.5);
+      assert.equal(saved.training.sessions[0].exercises[0].targetLoadKg, null);
+      assert.deepEqual(errors, []);
+      console.log(`Calibración sin peso inventado: ${theme} OK`);
+      await context.close();
+      continue;
+    }
     assert.equal(await planned.locator('[name="loadKg"]').inputValue(), "50");
     await planned.getByRole('button', { name: 'Completar serie 1', exact: true }).tap();
     saved = await read();

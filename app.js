@@ -48,8 +48,8 @@ import {
   skipPlannedSet,
   guidedPlanDeviation,
   validateLabelPhotoFile,
-} from "./core.js?v=81";
-import { BODY_FIGURES } from "./body-paths.js?v=81";
+} from "./core.js?v=82";
+import { BODY_FIGURES } from "./body-paths.js?v=82";
 
 const defaultTargets = { calories: 2200, protein: 170, steps: 10000 };
 const defaultPreferences = {
@@ -2944,6 +2944,9 @@ async function offerGuidedPlanUpdate(session, exercise, actual) {
   const day = current?.days.find(item => item.id === session.source.routineDayId);
   const plan = day?.exercises.find(item => item.id === exercise.routineExerciseId);
   if (!plan) return; // Una rutina eliminada no impide guardar lo realizado.
+  // Tras aceptar una referencia no volver a preguntar por el mismo valor.
+  Object.keys(changes).forEach(key => { if (plan[key] === changes[key]) delete changes[key]; });
+  if (!Object.keys(changes).length) return;
   const description = [
     changes.targetLoadKg !== undefined ? `peso: ${changes.targetLoadKg === null ? "sin referencia" : `${changes.targetLoadKg} kg`}` : null,
     changes.repMin !== undefined ? `repeticiones: ${changes.repMin}` : null,
@@ -3260,6 +3263,11 @@ function renderSessionExercise(session, sessionExercise) {
     sessionExercise.isExtra ? "Ejercicio extra · solo hoy" : "Registra únicamente lo que hagas hoy",
   ));
   if (sessionExercise.planNote) titleBlock.appendChild(createElement("p", "muted", sessionExercise.planNote));
+  if (sessionExercise.routineExerciseId && sessionExercise.targetLoadKg === null
+    && !sessionExercise.sets.some(item => item.status === "completed" && item.loadKg !== null)) {
+    titleBlock.appendChild(createElement("p", "guided-calibration", "Primera vez: vamos a tomar tu referencia."));
+    titleBlock.appendChild(createElement("small", "muted", "No hay un peso previsto. Registra el que hayas utilizado; tú decides si guardarlo como referencia."));
+  }
 
   const reference = findLastComparableExercise(state, sessionExercise.exerciseId, session.id);
   titleBlock.appendChild(createPersonalRecordCard(sessionExercise.exerciseId));
@@ -3796,7 +3804,7 @@ function backfillExerciseMuscles() {
 
 async function loadCatalog() {
   try {
-    const response = await fetch("./data/exercises.es.json?v=81", { cache: "no-cache" });
+    const response = await fetch("./data/exercises.es.json?v=82", { cache: "no-cache" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     if (!Array.isArray(payload.exercises)) throw new Error("Estructura no válida");

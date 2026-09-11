@@ -9,6 +9,7 @@ const mutations = [
   ["herencia", 'plannedSets: guided ? routineExercise.plannedSets : 0,', 'plannedSets: 0,'],
   ["anulación", 'planOrder, status: "skipped", completedAt: null', 'planOrder, status: "completed", completedAt: null'],
   ["desviación", 'return Object.keys(changes).length ? changes : null;', 'return null;'],
+  ["calibración", 'if (actual.loadKg !== plan.targetLoadKg)', 'if (plan.targetLoadKg !== null && actual.loadKg !== plan.targetLoadKg)'],
 ];
 const core = fs.readFileSync(new URL("../core.js", import.meta.url), "utf8");
 const tests = fs.readFileSync(new URL("../tests/guided.test.js", import.meta.url), "utf8");

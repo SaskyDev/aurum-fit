@@ -32,6 +32,15 @@ test("la desviación ofrece cambios en ambos sentidos sin mutar el plan ni confu
   assert.equal(plan.targetLoadKg, 50);
 });
 
+test("calibrar propone solo el peso observado, incluyendo cero, sin adivinar uno inicial", () => {
+  const plan = { routineExerciseId: "first", repMin: 8, repMax: 12, targetLoadKg: null };
+  const actual = { status: "completed", planOrder: 1, setType: "effective", reps: 8, loadKg: null };
+  assert.equal(guidedPlanDeviation(plan, actual), null);
+  assert.deepEqual(guidedPlanDeviation(plan, { ...actual, loadKg: 0 }), { targetLoadKg: 0 });
+  assert.deepEqual(guidedPlanDeviation(plan, { ...actual, loadKg: 22.5 }), { targetLoadKg: 22.5 });
+  assert.equal(plan.targetLoadKg, null);
+});
+
 test("anular no completa: las series omitidas no cuentan y cada hueco del plan se resuelve una vez", () => {
   const state = createEmptyState();
   const routine = createRoutineWithWeekdays(state, "Guiada", [1], { mode: "guided" });

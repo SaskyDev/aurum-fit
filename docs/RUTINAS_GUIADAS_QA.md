@@ -83,3 +83,13 @@ Alex confirmó usar la suite canónica `node --test tests/*.test.js`:
   actual; la foto de la sesión permanece igual.
 - TDD y mutación de desviación detectada. E2E rechaza una bajada y acepta una
   subida, comprobando persistencia antes y después de responder.
+
+## Paso 9 — primera referencia
+
+- Sin carga objetivo aparece «Primera vez: vamos a tomar tu referencia» y el
+  campo está realmente vacío, sin reutilizar un peso anterior como sugerencia.
+- Tras registrar una carga (también 0), se pregunta antes de guardarla como
+  objetivo. No se insiste si ya se aceptó ese mismo valor.
+- TDD rojo/verde; mutación que excluye null de calibración detectada.
+- `QA_CALIBRATION=1 node scripts/qa-guided-browser.mjs`: ambos temas, comprobación
+  de campo y placeholder vacíos, confirmación y foto original inalterada.
