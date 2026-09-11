@@ -31,12 +31,14 @@ import {
   persistState,
   removeDemoData,
   removeExerciseFromRoutineDay,
+  removeExerciseFromRoutine,
   replaceSessionExerciseForToday,
-  restoreLastDeletedSet,
+  restoreLastTrainingUndo,
   routineDayType,
   routineDayWeekdays,
   seedDemoData,
   setSessionExerciseSkipped,
+  setSessionExerciseNote,
   setRoutineDayWeekday,
   setRoutineDayWeekdays,
   setRoutineAccentColor,
@@ -46,10 +48,10 @@ import {
   updateRoutineExercisePlan,
   pendingPlannedSets,
   skipPlannedSet,
-  guidedPlanDeviation,
+  guidedExerciseDeviation,
   validateLabelPhotoFile,
-} from "./core.js?v=83";
-import { BODY_FIGURES } from "./body-paths.js?v=83";
+} from "./core.js?v=85";
+import { BODY_FIGURES } from "./body-paths.js?v=85";
 
 const defaultTargets = { calories: 2200, protein: 170, steps: 10000 };
 const defaultPreferences = {
@@ -133,6 +135,8 @@ let selectedPlannedWorkout = null;
 let settingsView = "menu";
 const pendingSetSubmissions = new Set();
 const restTimerStates = new Map();
+let activeRestExerciseId = null;
+const promptedDeviationSignatures = new Map();
 // Qué años y meses del diario están desplegados, para que renderizar de nuevo
 // no cierre lo que la persona acaba de abrir.
 const diaryOpenGroups = new Set();
@@ -722,7 +726,8 @@ function timerFor(exerciseId) {
 }
 
 function stopExerciseTimer(exerciseId) {
-  const timer = timerFor(exerciseId);
+  const timer = restTimerStates.get(exerciseId);
+  if (!timer) return;
   if (timer.intervalId !== null) window.clearInterval(timer.intervalId);
   timer.intervalId = null;
   timer.running = false;
@@ -730,23 +735,53 @@ function stopExerciseTimer(exerciseId) {
 
 function stopAllRestTimers({ clear = false } = {}) {
   [...restTimerStates.keys()].forEach(stopExerciseTimer);
-  if (clear) restTimerStates.clear();
+  if (clear) {
+    restTimerStates.clear();
+    activeRestExerciseId = null;
+  }
+  renderCompactRestBar();
 }
 
 function renderExerciseTimer(exerciseId) {
-  const timer = timerFor(exerciseId);
-  const root = document.querySelector(`[data-rest-timer="${exerciseId}"]`);
-  if (!root) return;
-  const display = root.querySelector("[data-rest-display]");
-  const toggle = root.querySelector("[data-rest-toggle]");
-  const reset = root.querySelector("[data-rest-reset]");
-  display.textContent = formatTimer(timer.remaining);
-  display.classList.toggle("timer-running", timer.running);
-  toggle.textContent = timer.running ? "Pausar" : "Iniciar";
-  reset.disabled = timer.remaining === timer.duration && !timer.running;
-  root.querySelectorAll("[data-rest-seconds]").forEach((button) => {
-    button.classList.toggle("selected", Number(button.dataset.restSeconds) === timer.duration);
+  if (activeRestExerciseId === exerciseId) renderCompactRestBar();
+}
+
+function renderCompactRestBar() {
+  let root = document.getElementById("compactRestBar");
+  const activeSession = getActiveSession(state);
+  const timer = activeRestExerciseId ? restTimerStates.get(activeRestExerciseId) : null;
+  if (!activeSession || !timer || (timer.remaining <= 0 && !timer.running)) {
+    root?.remove();
+    return;
+  }
+  if (!root) {
+    root = createElement("aside", "compact-rest-bar");
+    root.id = "compactRestBar";
+    root.setAttribute("aria-label", "Temporizador de descanso");
+    document.body.appendChild(root);
+  }
+  const exercise = activeSession.exercises.find((item) => item.id === activeRestExerciseId);
+  const copyBlock = createElement("div", "compact-rest-copy");
+  copyBlock.append(
+    createElement("small", "", exercise ? `Descanso · ${exercise.exerciseName}` : "Descanso"),
+    createElement("strong", "compact-rest-time", formatTimer(timer.remaining)),
+  );
+  copyBlock.querySelector("strong").setAttribute("aria-live", "off");
+  const add = createButton("+30 s", "compact-rest-action", () => {
+    timer.remaining = Math.min(3599, timer.remaining + 30);
+    renderCompactRestBar();
   });
+  const toggle = createButton(timer.running ? "Pausa" : "Seguir", "compact-rest-action", () => {
+    toggleExerciseTimer(activeRestExerciseId);
+  });
+  toggle.setAttribute("aria-label", timer.running ? "Pausar descanso" : "Reanudar descanso");
+  const skip = createButton("Saltar", "compact-rest-skip", () => {
+    stopExerciseTimer(activeRestExerciseId);
+    timer.remaining = 0;
+    activeRestExerciseId = null;
+    renderCompactRestBar();
+  });
+  root.replaceChildren(copyBlock, add, toggle, skip);
 }
 
 function toggleExerciseTimer(exerciseId) {
@@ -785,96 +820,8 @@ function startRestAfterSet(exerciseId) {
   stopExerciseTimer(exerciseId);
   const timer = timerFor(exerciseId);
   timer.remaining = timer.duration;
+  activeRestExerciseId = exerciseId;
   toggleExerciseTimer(exerciseId);
-}
-
-function setExerciseTimerDuration(exerciseId, seconds) {
-  stopExerciseTimer(exerciseId);
-  const timer = timerFor(exerciseId);
-  timer.duration = seconds;
-  timer.remaining = seconds;
-  renderExerciseTimer(exerciseId);
-}
-
-function createExerciseRestTimer(exerciseId) {
-  const root = createElement("section", "exercise-rest-timer");
-  root.dataset.restTimer = exerciseId;
-  const heading = createElement("div", "exercise-timer-heading");
-  const label = createElement("span", "eyebrow", "Descanso de este ejercicio");
-  const display = createElement("strong", "timer-display", formatTimer(timerFor(exerciseId).duration));
-  display.dataset.restDisplay = "";
-  heading.append(label, display);
-  const controls = createElement("div", "timer-controls compact-timer-controls");
-  [[30, "30 s"], [60, "1 min"], [120, "2 min"], [180, "3 min"]].forEach(([seconds, text]) => {
-    const button = createButton(text, "button-secondary timer-preset", () => {
-      setExerciseTimerDuration(exerciseId, seconds);
-    });
-    button.dataset.restSeconds = String(seconds);
-  controls.appendChild(button);
-  });
-  const extensions = createElement("div", "timer-controls timer-extensions");
-  [[30, "+30 s"], [60, "+1 min"], [120, "+2 min"]].forEach(([seconds, label]) => {
-    extensions.append(createButton(label, "button-secondary", () => {
-      const timer = timerFor(exerciseId);
-      timer.remaining = Math.min(3599, timer.remaining + seconds);
-      renderExerciseTimer(exerciseId);
-    }));
-  });
-  const toggle = createButton("Iniciar", "button-accent", () => toggleExerciseTimer(exerciseId));
-  toggle.dataset.restToggle = "";
-  const reset = createButton("Reiniciar", "button-quiet timer-reset-button", () => {
-    stopExerciseTimer(exerciseId);
-    const timer = timerFor(exerciseId);
-    timer.remaining = timer.duration;
-    renderExerciseTimer(exerciseId);
-  });
-  reset.dataset.restReset = "";
-  const custom = createButton("+ Personalizar", "button-secondary timer-custom-button", () => {
-    editor.hidden = !editor.hidden;
-    if (!editor.hidden) minutes.focus();
-  });
-  const editor = createElement("form", "custom-timer-form");
-  editor.hidden = true;
-  const minutes = document.createElement("input");
-  minutes.type = "number";
-  minutes.min = "0";
-  minutes.max = "59";
-  minutes.step = "1";
-  minutes.value = "1";
-  minutes.inputMode = "numeric";
-  minutes.setAttribute("aria-label", "Minutos de descanso personalizados");
-  const separator = createElement("span", "", ":");
-  const seconds = document.createElement("input");
-  seconds.type = "number";
-  seconds.min = "0";
-  seconds.max = "59";
-  seconds.step = "1";
-  seconds.value = "0";
-  seconds.inputMode = "numeric";
-  seconds.setAttribute("aria-label", "Segundos de descanso personalizados");
-  const apply = createElement("button", "button button-accent", "Aplicar");
-  apply.type = "submit";
-  editor.append(minutes, separator, seconds, apply);
-  editor.addEventListener("submit", (event) => {
-    event.preventDefault();
-    const minuteValue = Number(minutes.value);
-    const secondValue = Number(seconds.value);
-    const duration = minuteValue * 60 + secondValue;
-    if (!Number.isInteger(minuteValue) || !Number.isInteger(secondValue)
-      || minuteValue < 0 || minuteValue > 59 || secondValue < 0 || secondValue > 59
-      || duration < 1 || duration > 3599) {
-      showNotice("El descanso personalizado debe estar entre 00:01 y 59:59.", { error: true });
-      return;
-    }
-    setExerciseTimerDuration(exerciseId, duration);
-    editor.hidden = true;
-    showNotice(`Descanso personalizado: ${formatTimer(duration)}.`);
-  });
-  controls.append(custom, toggle, reset);
-  root.append(heading, controls, extensions);
-  root.appendChild(editor);
-  window.requestAnimationFrame(() => renderExerciseTimer(exerciseId));
-  return root;
 }
 
 function dayTotals(day) {
@@ -953,6 +900,55 @@ function createButton(text, className, onClick) {
   return button;
 }
 
+function createExerciseQuickAction(label, iconName, action, onClick) {
+  const button = createButton("", "exercise-quick-action", onClick);
+  button.dataset.quickAction = action;
+  button.setAttribute("aria-label", label);
+  button.append(createIcon(iconName, "quick-action-icon"), createElement("span", "quick-action-label", label));
+  return button;
+}
+
+function trapModalFocus(overlay, { initialFocus, onEscape }) {
+  const previouslyFocused = document.activeElement;
+  const focusableSelector = [
+    "button:not([disabled])",
+    "input:not([disabled])",
+    "textarea:not([disabled])",
+    "select:not([disabled])",
+    '[href]',
+    '[tabindex]:not([tabindex="-1"])',
+  ].join(",");
+  const focusables = () => [...overlay.querySelectorAll(focusableSelector)]
+    .filter((element) => (
+      !element.hidden
+      && element.tabIndex >= 0
+      && element.getAttribute("aria-hidden") !== "true"
+    ));
+  const handleKeydown = (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onEscape();
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const items = focusables();
+    if (!items.length) return;
+    const currentIndex = items.indexOf(document.activeElement);
+    event.preventDefault();
+    const step = event.shiftKey ? -1 : 1;
+    const nextIndex = currentIndex === -1
+      ? (event.shiftKey ? items.length - 1 : 0)
+      : (currentIndex + step + items.length) % items.length;
+    items[nextIndex].focus();
+  };
+  document.addEventListener("keydown", handleKeydown);
+  window.requestAnimationFrame(() => initialFocus?.focus());
+  return () => {
+    document.removeEventListener("keydown", handleKeydown);
+    if (previouslyFocused instanceof HTMLElement && previouslyFocused.isConnected) previouslyFocused.focus();
+  };
+}
+
 function confirmDialog(message, {
   title = "Confirmar acción",
   confirmLabel = "Confirmar",
@@ -1018,6 +1014,220 @@ function confirmDialog(message, {
     document.body.appendChild(overlay);
     document.body.classList.add("overlay-open");
     confirmBtn.focus();
+  });
+}
+
+function openSetTypePicker(trigger, current = "effective") {
+  return new Promise((resolve) => {
+    const layer = createElement("div", "set-type-picker-layer");
+    const popover = createElement("div", "set-type-popover");
+    popover.setAttribute("role", "dialog");
+    popover.setAttribute("aria-label", "Tipo de serie");
+    const choices = [
+      ["warmup", "Calentamiento"],
+      ["approach", "Aproximación"],
+      ["effective", "Efectiva"],
+    ];
+    let settled = false;
+    const close = (value = null) => {
+      if (settled) return;
+      settled = true;
+      document.removeEventListener("keydown", onKeydown, true);
+      layer.remove();
+      trigger?.focus();
+      resolve(value);
+    };
+    const buttons = choices.map(([value, label]) => {
+      const button = createButton(label, `set-type-choice ${setTypeClass(value)}`, () => close(value));
+      button.setAttribute("aria-pressed", String(value === current));
+      popover.appendChild(button);
+      return button;
+    });
+    function onKeydown(event) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        close();
+      }
+      if (event.key === "Tab") {
+        const index = buttons.indexOf(document.activeElement);
+        if (index === -1) return;
+        event.preventDefault();
+        buttons[(index + (event.shiftKey ? -1 : 1) + buttons.length) % buttons.length].focus();
+      }
+    }
+    layer.addEventListener("pointerdown", (event) => {
+      if (event.target === layer) close();
+    });
+    layer.appendChild(popover);
+    document.body.appendChild(layer);
+    document.addEventListener("keydown", onKeydown, true);
+    (buttons.find((button) => button.getAttribute("aria-pressed") === "true") ?? buttons.at(-1)).focus();
+  });
+}
+
+function openNumericWheel({ label, value, min, max, step, nullable = false }) {
+  return new Promise((resolve) => {
+    const itemHeight = 44;
+    const numericCount = Math.round((max - min) / step) + 1;
+    const totalCount = numericCount + (nullable ? 1 : 0);
+    const valueAt = (index) => {
+      if (nullable && index === 0) return null;
+      const numericIndex = index - (nullable ? 1 : 0);
+      return Number((min + numericIndex * step).toFixed(2));
+    };
+    const indexFor = (raw) => {
+      if (nullable && (raw === null || raw === "" || raw === undefined)) return 0;
+      const numeric = Math.min(max, Math.max(min, Number(raw)));
+      return Math.min(totalCount - 1, Math.max(nullable ? 1 : 0,
+        Math.round((numeric - min) / step) + (nullable ? 1 : 0)));
+    };
+    let selectedIndex = indexFor(value);
+    let windowStart = 0;
+    let scrollTimer = null;
+    let settling = false;
+    let releaseFocus = () => {};
+    const overlay = createElement("div", "numeric-wheel-overlay");
+    const sheet = createElement("section", "numeric-wheel-sheet");
+    sheet.setAttribute("role", "dialog");
+    sheet.setAttribute("aria-modal", "true");
+    sheet.setAttribute("aria-label", `Editar ${label}`);
+    const header = createElement("header", "numeric-wheel-header");
+    const cancel = createButton("Cancelar", "button-link", () => close(undefined));
+    const title = createElement("strong", "", label);
+    const done = createButton("Listo", "button-link numeric-wheel-done", () => close(valueAt(selectedIndex)));
+    header.append(cancel, title, done);
+    const wheel = createElement("div", "numeric-wheel-viewport");
+    const list = createElement("div", "numeric-wheel-list");
+    list.setAttribute("role", "listbox");
+    list.setAttribute("aria-label", label);
+    wheel.appendChild(list);
+    const hint = createElement("p", "numeric-wheel-hint", "Desliza para ajustar · toca el valor central para escribir");
+
+    const displayValue = (itemValue) => itemValue === null
+      ? "—"
+      : Number.isInteger(itemValue) ? String(itemValue) : itemValue.toLocaleString("es-ES", { maximumFractionDigits: 2 });
+
+    const openDirectInput = () => {
+      const direct = document.createElement("input");
+      direct.className = "numeric-wheel-direct-input";
+      direct.type = "number";
+      direct.inputMode = step < 1 ? "decimal" : "numeric";
+      direct.min = String(min);
+      direct.max = String(max);
+      direct.step = String(step);
+      direct.value = valueAt(selectedIndex) ?? "";
+      direct.placeholder = nullable ? "Vacío" : String(min);
+      direct.setAttribute("aria-label", `Escribir ${label}`);
+      let inputClosed = false;
+      const finish = (commitValue = true) => {
+        if (inputClosed) return;
+        inputClosed = true;
+        if (commitValue) {
+          const raw = direct.value;
+          if (nullable && raw === "") selectedIndex = 0;
+          else if (raw !== "" && Number.isFinite(Number(raw))) selectedIndex = indexFor(raw);
+        }
+        renderWindow(selectedIndex);
+        direct.remove();
+        if (overlay.isConnected) done.focus();
+      };
+      direct.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          finish();
+        }
+        if (event.key === "Escape") {
+          event.preventDefault();
+          event.stopPropagation();
+          finish(false);
+        }
+      });
+      direct.addEventListener("blur", finish, { once: true });
+      wheel.appendChild(direct);
+      direct.focus();
+      direct.select();
+    };
+
+    const renderWindow = (centerIndex) => {
+      const radius = 55;
+      windowStart = Math.max(0, Math.min(totalCount - 1, centerIndex) - radius);
+      const end = Math.min(totalCount, windowStart + radius * 2 + 1);
+      if (end - windowStart < radius * 2 + 1) windowStart = Math.max(0, end - radius * 2 - 1);
+      const fragment = document.createDocumentFragment();
+      for (let index = windowStart; index < end; index += 1) {
+        const option = createElement("button", "numeric-wheel-option", displayValue(valueAt(index)));
+        option.type = "button";
+        option.dataset.wheelIndex = String(index);
+        option.setAttribute("role", "option");
+        option.setAttribute("aria-selected", String(index === selectedIndex));
+        option.tabIndex = index === selectedIndex ? 0 : -1;
+        option.addEventListener("click", () => {
+          if (index === selectedIndex) {
+            openDirectInput();
+            return;
+          }
+          selectedIndex = index;
+          list.scrollTo({ top: (index - windowStart) * itemHeight, behavior: scrollBehavior() });
+        });
+        fragment.appendChild(option);
+      }
+      settling = true;
+      list.replaceChildren(fragment);
+      list.scrollTop = (selectedIndex - windowStart) * itemHeight;
+      window.requestAnimationFrame(() => { settling = false; });
+    };
+
+    const updateSelection = () => {
+      if (settling) return;
+      const next = Math.min(totalCount - 1, Math.max(0,
+        windowStart + Math.round(list.scrollTop / itemHeight)));
+      if (next === selectedIndex) return;
+      selectedIndex = next;
+      list.querySelectorAll("[data-wheel-index]").forEach((option) => {
+        const selected = Number(option.dataset.wheelIndex) === selectedIndex;
+        option.setAttribute("aria-selected", String(selected));
+        option.tabIndex = selected ? 0 : -1;
+      });
+      const localIndex = selectedIndex - windowStart;
+      if (localIndex < 8 || localIndex > list.children.length - 9) renderWindow(selectedIndex);
+    };
+    list.addEventListener("scroll", () => {
+      window.clearTimeout(scrollTimer);
+      scrollTimer = window.setTimeout(updateSelection, 70);
+    }, { passive: true });
+    list.addEventListener("scrollend", updateSelection);
+    list.addEventListener("keydown", (event) => {
+      const movement = {
+        ArrowUp: -1,
+        ArrowDown: 1,
+        PageUp: -5,
+        PageDown: 5,
+        Home: -totalCount,
+        End: totalCount,
+      }[event.key];
+      if (movement === undefined) return;
+      event.preventDefault();
+      selectedIndex = Math.min(totalCount - 1, Math.max(0, selectedIndex + movement));
+      renderWindow(selectedIndex);
+      window.requestAnimationFrame(() => list.querySelector('[aria-selected="true"]')?.focus());
+    });
+
+    function close(result) {
+      window.clearTimeout(scrollTimer);
+      overlay.remove();
+      document.body.classList.remove("overlay-open");
+      releaseFocus();
+      resolve(result);
+    }
+    overlay.addEventListener("pointerdown", (event) => {
+      if (event.target === overlay) close(undefined);
+    });
+    sheet.append(header, wheel, hint);
+    overlay.appendChild(sheet);
+    document.body.appendChild(overlay);
+    document.body.classList.add("overlay-open");
+    renderWindow(selectedIndex);
+    releaseFocus = trapModalFocus(overlay, { initialFocus: done, onEscape: () => close(undefined) });
   });
 }
 
@@ -2516,7 +2726,16 @@ function renderRoutineManager() {
     const icon = createElement("span", `routine-icon routine-icon-tone-${(routineIndex % 3) + 1}`);
     icon.appendChild(createMuscleIcon(theme.group));
     const text = createElement("span", "routine-overview-copy");
-    text.appendChild(createElement("span", "routine-focus-tag", theme.label));
+    const tags = createElement("span", "routine-tag-row");
+    tags.append(
+      createElement("span", "routine-focus-tag", theme.label),
+      createElement(
+        "span",
+        `routine-mode-tag routine-mode-${routine.mode ?? "log"}`,
+        routine.mode === "guided" ? "Guiada" : "Solo registro",
+      ),
+    );
+    text.appendChild(tags);
     text.append(
       createElement("strong", "", routine.name),
       createElement(
@@ -2724,222 +2943,187 @@ function setInputHints(reference, order) {
   };
 }
 
-function applySetInputHints(reference, order, { load, reps, rir }) {
-  const hints = setInputHints(reference, order);
-  load.placeholder = hints.load;
-  reps.placeholder = hints.reps;
-  rir.placeholder = hints.rir;
-}
-
-function stepLoadValue(input, delta) {
-  const rawBase = input.value === "" ? input.placeholder : input.value;
-  const base = Number(rawBase);
-  const next = Math.max(0, (Number.isFinite(base) ? base : 0) + delta);
-  input.value = String(Math.round(next * 2) / 2);
-  input.focus();
-}
-
 function renderSetForm(session, sessionExercise, reference, planOrder = null) {
-  const form = createElement("form", "set-form");
+  const form = createElement("form", "set-form compact-set-form");
   if (planOrder !== null) {
     form.classList.add("planned-set-form");
     form.dataset.planOrder = String(planOrder);
   }
-  form.setAttribute("aria-label", "Registrar serie. Última referencia usada como guía visual si existe.");
+  const order = planOrder ?? sessionExercise.sets.length + 1;
+  form.setAttribute("aria-label", `Registrar serie ${order}`);
   form.noValidate = true;
-  const reps = makeSetField("Repeticiones", "reps", {
-    min: 1,
-    max: 1000,
-    step: 1,
-    inputMode: "numeric",
-  });
-  reps.input.required = true;
-  const load = makeSetField("Peso (kg)", "loadKg", {
-    min: 0,
-    max: 2000,
-    step: 0.5,
-    inputMode: "decimal",
-  });
-  const rir = makeSetField("RIR opcional", "rir", {
-    min: 0,
-    max: 5,
-    step: 1,
-    inputMode: "numeric",
-  });
-  const note = makeSetField("Nota opcional", "note", {
-    type: "text",
-    maxLength: 300,
-    full: true,
-    placeholder: "Técnica, agarre o contexto",
-  });
-
-  const setTypeGroup = createElement("fieldset", "set-type-field set-type-options");
-  const setTypeLegend = createElement("legend", "", "Tipo");
-  setTypeGroup.appendChild(setTypeLegend);
-  const setTypeInputs = new Map();
-  [
-    ["effective", "Efectiva", "Efectiva"],
-    ["approach", "Aprox.", "Aproximación"],
-    ["warmup", "Calent.", "Calentamiento"],
-  ].forEach(([value, label, fullLabel], index) => {
-    const option = createElement("label", `set-type-option ${setTypeClass(value)}`);
+  const hints = setInputHints(reference, order);
+  const values = {
+    loadKg: planOrder !== null ? sessionExercise.targetLoadKg ?? "" : "",
+    reps: planOrder !== null ? sessionExercise.repMin : "",
+    rir: "",
+  };
+  const hidden = Object.fromEntries(["loadKg", "reps", "rir"].map((name) => {
     const input = document.createElement("input");
-    input.type = "radio";
-    input.name = "setType";
-    input.value = value;
-    input.checked = index === 0;
-    const labelSpan = createElement("span", "", label);
-    labelSpan.dataset.fullLabel = fullLabel;
-    option.append(input, labelSpan);
-    setTypeInputs.set(value, input);
-    setTypeGroup.appendChild(option);
-  });
-
-  const actions = createElement("div", "form-actions full");
-  const submit = createElement("button", "button button-accent set-check-button", "✓ Completar serie");
-  submit.type = "submit";
-  const cancel = createButton("Cancelar edición", "button-link", () => {
-    form.reset();
-    form.dataset.editingSetId = "";
-    submit.textContent = "✓ Completar serie";
-    cancel.hidden = true;
-  });
-  cancel.hidden = true;
-  actions.append(submit, cancel);
-  if (planOrder !== null) {
-    const annul = createButton("Anular", "button-quiet", () => commit(
-      next => skipPlannedSet(next, session.id, sessionExercise.id, planOrder),
-      "Serie anulada. No cuenta como realizada.",
-    ));
-    annul.setAttribute("aria-label", `Anular serie ${planOrder}`);
-    actions.append(annul);
-  }
-  const loadStepper = createElement("div", "load-stepper");
-  const loadDown = createElement("button", "load-stepper-button", "−");
-  loadDown.type = "button";
-  loadDown.setAttribute("aria-label", "Bajar peso 0,5 kg");
-  loadDown.addEventListener("click", () => stepLoadValue(load.input, -0.5));
-  const loadUp = createElement("button", "load-stepper-button", "+");
-  loadUp.type = "button";
-  loadUp.setAttribute("aria-label", "Subir peso 0,5 kg");
-  loadUp.addEventListener("click", () => stepLoadValue(load.input, 0.5));
-  loadStepper.append(loadDown, load.input, loadUp);
-  const columnHeadings = createElement("div", "set-form-headings");
-  columnHeadings.append(
-    createElement("span", "", "Set"),
-    createElement("span", "", "Peso (kg)"),
-    createElement("span", "", "Reps"),
-    createElement("span", "", "RIR"),
-    createElement("span", "", "Tipo"),
-  );
-  const newSetNumber = createElement("span", "set-number set-form-number", String(planOrder ?? sessionExercise.sets.length + 1));
-  load.label.classList.add("set-field-load");
-  reps.label.classList.add("set-field-reps");
-  rir.label.classList.add("set-field-rir");
-  load.label.replaceChildren(createElement("span", "set-field-label", "Peso · kg"), loadStepper);
-  reps.label.replaceChildren(createElement("span", "set-field-label", "Reps"), reps.input);
-  rir.label.replaceChildren(createElement("span", "set-field-label", "RIR"), rir.input);
-  applySetInputHints(reference, sessionExercise.sets.length + 1, {
-    load: load.input,
-    reps: reps.input,
-    rir: rir.input,
-  });
-  if (planOrder !== null) {
-    load.input.value = sessionExercise.targetLoadKg ?? "";
-    load.input.placeholder = "";
-    reps.input.value = sessionExercise.repMin;
-    reps.input.placeholder = "";
-    rir.input.placeholder = "";
-    submit.textContent = `✓ Completar serie ${planOrder}`;
-    submit.setAttribute("aria-label", `Completar serie ${planOrder}`);
-    form.setAttribute("aria-label", `Serie ${planOrder} prevista: ${sessionExercise.repMin}–${sessionExercise.repMax} repeticiones. Revisa lo realizado antes de marcar.`);
-  }
-  const error = createElement("p", "set-form-error full");
+    input.type = "hidden";
+    input.name = name;
+    input.value = values[name];
+    return [name, input];
+  }));
+  const setNumber = createElement("span", "set-number set-form-number", String(order));
+  const error = createElement("p", "set-form-error");
   error.hidden = true;
-  const noteControl = planOrder !== null ? createElement("details", "planned-set-note full") : note.label;
-  if (planOrder !== null) noteControl.append(createElement("summary", "", "Nota opcional"), note.label);
-  form.append(columnHeadings, newSetNumber, load.label, reps.label, rir.label, setTypeGroup, noteControl, error, actions);
 
-  form.addEventListener("submit", async (event) => {
+  const createNumericCell = (name, label, options) => {
+    const button = createElement("button", `compact-set-cell compact-set-${name}`);
+    button.type = "button";
+    const paint = () => {
+      const current = hidden[name].value;
+      const fallback = planOrder === null ? hints[options.hintKey] : "";
+      button.textContent = current === "" ? (fallback || "—") : current;
+      button.classList.toggle("is-hint", current === "" && Boolean(fallback));
+      button.setAttribute("aria-label", `${label}: ${current || fallback || "sin valor"}. Toca para editar.`);
+    };
+    button.addEventListener("click", async () => {
+      const result = await openNumericWheel({
+        label,
+        value: hidden[name].value === "" ? (hints[options.hintKey] || null) : hidden[name].value,
+        min: options.min,
+        max: options.max,
+        step: options.step,
+        nullable: options.nullable,
+      });
+      if (result === undefined) return;
+      hidden[name].value = result ?? "";
+      paint();
+    });
+    paint();
+    return button;
+  };
+  const load = createNumericCell("loadKg", "Peso en kilos", {
+    min: 0, max: 2000, step: 0.25, nullable: true, hintKey: "load",
+  });
+  const reps = createNumericCell("reps", "Repeticiones", {
+    min: 1, max: 1000, step: 1, nullable: false, hintKey: "reps",
+  });
+  const rir = createNumericCell("rir", "RIR", {
+    min: 0, max: 5, step: 1, nullable: true, hintKey: "rir",
+  });
+  const submit = createElement("button", "set-check-button", "✓");
+  submit.type = "button";
+  submit.setAttribute("aria-label", `Completar serie ${order}`);
+  submit.addEventListener("click", async () => {
+    if (!hidden.reps.value) {
+      error.textContent = "Indica las repeticiones antes de completar la serie.";
+      error.hidden = false;
+      showNotice(error.textContent, { error: true });
+      return;
+    }
+    const type = await openSetTypePicker(submit, form.dataset.setType ?? "effective");
+    if (!type) return;
+    form.dataset.setType = type;
+    form.requestSubmit();
+  });
+  form.append(setNumber, load, reps, rir, submit, hidden.loadKg, hidden.reps, hidden.rir, error);
+
+  form.addEventListener("submit", (event) => {
     event.preventDefault();
     error.hidden = true;
-    error.textContent = "";
-    rir.input.classList.remove("field-error");
-    if (rir.input.value !== "" && Number(rir.input.value) > 5) {
-      if (Number(rir.input.value) <= 10) {
-        rir.input.value = "5";
-        showNotice("RIR máximo permitido: 5. Lo he ajustado a 5.", { error: true });
-      } else {
-        rir.input.classList.add("field-error");
-        error.textContent = "El RIR debe estar entre 0 y 5. Si no lo sabes, déjalo vacío.";
-        error.hidden = false;
-        showNotice(error.textContent, { error: true });
-        return;
-      }
-    }
-    const submissionKey = `${session.id}:${sessionExercise.id}`;
+    const submissionKey = `${session.id}:${sessionExercise.id}:${order}`;
     const input = {
-      reps: reps.input.value,
-      loadKg: load.input.value,
-      rir: rir.input.value,
-      setType: form.elements.setType.value,
-      note: note.input.value,
+      reps: hidden.reps.value,
+      loadKg: hidden.loadKg.value,
+      rir: hidden.rir.value,
+      setType: form.dataset.setType ?? "effective",
+      note: "",
       ...(planOrder !== null ? { planOrder } : {}),
     };
-    const editingSetId = form.dataset.editingSetId;
     const restSeconds = timerFor(sessionExercise.id).duration;
     let logro = null;
-    let completedSet = null;
-    // El aviso se da después del commit, no antes, porque hasta que la serie no
-    // está guardada no se puede saber si superó un récord.
     const saved = runOnce(submit, () => commit((next) => {
-      if (editingSetId) {
-        updateSet(next, session.id, sessionExercise.id, editingSetId, input);
-        return;
-      }
       const workoutSet = addSetToExercise(next, session.id, sessionExercise.id, input);
-      completedSet = workoutSet;
       logro = recordSummary(next, sessionExercise.exerciseId, workoutSet.id);
-      // Lo lee el render() que commit() lanza justo después.
       freshSet = { id: workoutSet.id, record: Boolean(logro) };
     }, null), submissionKey);
-    if (saved) {
-      showNotice(editingSetId
-        ? "Serie corregida y guardada."
-        : [
-          "Serie guardada.",
-          logro,
-          autoRestTimerEnabled() ? `Descanso de ${formatTimer(restSeconds)} en marcha.` : null,
-        ].filter(Boolean).join(" "));
-      form.reset();
-      if (!editingSetId && autoRestTimerEnabled()) startRestAfterSet(sessionExercise.id);
-      if (completedSet) await offerGuidedPlanUpdate(session, sessionExercise, completedSet);
-    }
+    if (!saved) return;
+    showNotice([
+      "Serie guardada.",
+      logro,
+      autoRestTimerEnabled() ? `Descanso de ${formatTimer(restSeconds)} en marcha.` : null,
+    ].filter(Boolean).join(" "));
+    if (autoRestTimerEnabled()) startRestAfterSet(sessionExercise.id);
   });
-
-  form.startEditing = (workoutSet) => {
-    applySetInputHints(reference, workoutSet.order, {
-      load: load.input,
-      reps: reps.input,
-      rir: rir.input,
-    });
-    reps.input.value = workoutSet.reps;
-    load.input.value = workoutSet.loadKg ?? "";
-    rir.input.value = workoutSet.rir ?? "";
-    const selectedType = workoutSet.setType ?? (workoutSet.isWarmup ? "warmup" : "effective");
-    (setTypeInputs.get(selectedType) ?? setTypeInputs.get("effective")).checked = true;
-    note.input.value = workoutSet.note ?? "";
-    form.dataset.editingSetId = workoutSet.id;
-    submit.textContent = "Guardar corrección";
-    cancel.hidden = false;
-    reps.input.focus();
-  };
   return form;
 }
 
-async function offerGuidedPlanUpdate(session, exercise, actual) {
-  const changes = guidedPlanDeviation(exercise, actual);
-  if (!changes) return;
+function openPlanUpdateSheet(exercise, proposal) {
+  return new Promise((resolve) => {
+    const overlay = createElement("div", "workout-sheet-overlay");
+    const sheet = createElement("section", "workout-sheet plan-update-sheet");
+    sheet.setAttribute("role", "dialog");
+    sheet.setAttribute("aria-modal", "true");
+    sheet.setAttribute("aria-labelledby", `planUpdateTitle-${exercise.id}`);
+    const title = createElement("h3", "", "Editar próximas sesiones");
+    title.id = `planUpdateTitle-${exercise.id}`;
+    const explanation = createElement(
+      "p",
+      "muted",
+      `Hemos agrupado ${proposal.observedSetCount} series efectivas. Lo de hoy no cambiará.`,
+    );
+    const form = createElement("form", "plan-update-form");
+    const load = makeSetField("Peso de referencia · kg", "targetLoadKg", {
+      min: 0, max: 2000, step: 0.25, inputMode: "decimal",
+    });
+    const repMin = makeSetField("Repeticiones mínimas", "repMin", {
+      min: 1, max: 1000, step: 1, inputMode: "numeric",
+    });
+    const repMax = makeSetField("Repeticiones máximas", "repMax", {
+      min: 1, max: 1000, step: 1, inputMode: "numeric",
+    });
+    load.input.value = proposal.targetLoadKg ?? exercise.targetLoadKg ?? "";
+    repMin.input.value = proposal.repMin ?? exercise.repMin;
+    repMax.input.value = proposal.repMax ?? exercise.repMax;
+    const actions = createElement("div", "workout-sheet-actions");
+    const today = createButton("Solo hoy", "button-secondary", () => close(null));
+    const save = createElement("button", "button button-primary", "Guardar próximas");
+    save.type = "submit";
+    actions.append(today, save);
+    form.append(load.label, repMin.label, repMax.label, actions);
+    sheet.append(title, explanation, form);
+    overlay.appendChild(sheet);
+    let settled = false;
+    let releaseFocus = () => {};
+    const close = (result) => {
+      if (settled) return;
+      settled = true;
+      overlay.remove();
+      document.body.classList.remove("overlay-open");
+      releaseFocus();
+      resolve(result);
+    };
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const min = Number(repMin.input.value);
+      const max = Number(repMax.input.value);
+      if (!Number.isInteger(min) || !Number.isInteger(max) || min < 1 || max > 1000 || min > max) {
+        showNotice("Revisa el rango: el mínimo no puede superar al máximo.", { error: true });
+        return;
+      }
+      close({
+        targetLoadKg: load.input.value === "" ? null : Number(load.input.value),
+        repMin: min,
+        repMax: max,
+      });
+    });
+    overlay.addEventListener("pointerdown", (event) => {
+      if (event.target === overlay) close(null);
+    });
+    document.body.appendChild(overlay);
+    document.body.classList.add("overlay-open");
+    releaseFocus = trapModalFocus(overlay, { initialFocus: repMin.input, onEscape: () => close(null) });
+  });
+}
+
+async function offerGuidedPlanUpdate(session, exercise) {
+  if (exercise.isSubstitution || exercise.substitutedFrom) return;
+  const deviation = guidedExerciseDeviation(exercise);
+  if (!deviation) return;
+  const { observedSetCount, ...changes } = deviation;
   const current = state.training.routines.find(item => item.id === session.source.routineId);
   const day = current?.days.find(item => item.id === session.source.routineDayId);
   const plan = day?.exercises.find(item => item.id === exercise.routineExerciseId);
@@ -2947,22 +3131,20 @@ async function offerGuidedPlanUpdate(session, exercise, actual) {
   // Tras aceptar una referencia no volver a preguntar por el mismo valor.
   Object.keys(changes).forEach(key => { if (plan[key] === changes[key]) delete changes[key]; });
   if (!Object.keys(changes).length) return;
-  const description = [
-    changes.targetLoadKg !== undefined ? `peso: ${changes.targetLoadKg === null ? "sin referencia" : `${changes.targetLoadKg} kg`}` : null,
-    changes.repMin !== undefined ? `repeticiones: ${changes.repMin}` : null,
-  ].filter(Boolean).join(" · ");
-  if (!(await confirmDialog(`Has registrado algo distinto al plan (${description}). ¿Usarlo como referencia para las próximas sesiones? Lo de hoy ya está guardado.`, {
-    title: "¿Actualizar el plan?", confirmLabel: "Actualizar plan", cancelLabel: "Solo hoy",
-  }))) return;
+  const signature = JSON.stringify(changes);
+  if (promptedDeviationSignatures.get(exercise.id) === signature) return;
+  promptedDeviationSignatures.set(exercise.id, signature);
+  const accepted = await openPlanUpdateSheet(exercise, { ...changes, observedSetCount });
+  if (!accepted) return;
   commit(next => {
     const livePlan = next.training.routines.find(item => item.id === current.id)?.days
       .find(item => item.id === day.id)?.exercises.find(item => item.id === plan.id);
     if (!livePlan) throw new Error("El plan ya no existe. La serie realizada sigue guardada.");
-    updateRoutineExercisePlan(next, current.id, day.id, plan.id, { ...livePlan, ...changes });
+    updateRoutineExercisePlan(next, current.id, day.id, plan.id, { ...livePlan, ...accepted });
   }, "Plan actualizado para próximas sesiones. La sesión actual conserva su plan original.");
 }
 
-function attachSetSwipe(row, foreground, { onDuplicate, onDelete }) {
+function attachSetSwipe(row, foreground, { onRight = null, onLeft = null }) {
   let startX = 0;
   let startY = 0;
   let currentX = 0;
@@ -2980,8 +3162,8 @@ function attachSetSwipe(row, foreground, { onDuplicate, onDelete }) {
     dragging = false;
     if (pointerId !== null) foreground.releasePointerCapture?.(pointerId);
     pointerId = null;
-    if (currentX > 86) onDuplicate();
-    if (currentX < -86) onDelete();
+    if (currentX > 86 && onRight) onRight();
+    if (currentX < -86 && onLeft) onLeft();
     reset();
   };
   foreground.addEventListener("pointerdown", (event) => {
@@ -3006,9 +3188,9 @@ function attachSetSwipe(row, foreground, { onDuplicate, onDelete }) {
       pointerId = null;
       return;
     }
-    currentX = Math.max(-112, Math.min(112, deltaX));
-    row.classList.toggle("swiping-right", currentX > 12);
-    row.classList.toggle("swiping-left", currentX < -12);
+    currentX = Math.max(onLeft ? -112 : 0, Math.min(onRight ? 112 : 0, deltaX));
+    row.classList.toggle("swiping-right", Boolean(onRight) && currentX > 12);
+    row.classList.toggle("swiping-left", Boolean(onLeft) && currentX < -12);
     foreground.style.transform = `translateX(${currentX}px)`;
   });
   foreground.addEventListener("pointerup", finish);
@@ -3202,9 +3384,109 @@ function activateExerciseView(article, sessionExerciseId, view) {
   });
 }
 
+function openExerciseGuide(sessionExercise) {
+  const entry = catalog.find((item) => item.id === sessionExercise.exerciseId)
+    ?? catalogEntryForName(sessionExercise.exerciseName);
+  if (!entry?.instructionsEs) {
+    showNotice("Este ejercicio todavía no tiene una guía verificada en el catálogo.", { error: true });
+    return;
+  }
+  const overlay = createElement("div", "workout-sheet-overlay");
+  const sheet = createElement("section", "workout-sheet exercise-guide-sheet");
+  sheet.setAttribute("role", "dialog");
+  sheet.setAttribute("aria-modal", "true");
+  const title = createElement("h3", "", sessionExercise.exerciseName);
+  title.id = `exerciseGuideTitle-${sessionExercise.id}`;
+  sheet.setAttribute("aria-labelledby", title.id);
+  let releaseFocus = () => {};
+  const dismiss = () => {
+    overlay.remove();
+    document.body.classList.remove("overlay-open");
+    releaseFocus();
+  };
+  const close = createButton("Cerrar", "button-link", dismiss);
+  sheet.append(
+    createElement("p", "eyebrow", "Guía del catálogo"),
+    title,
+    createElement("p", "exercise-guide-copy", entry.instructionsEs),
+    createElement("small", "muted", "Contenido del catálogo; no sustituye una valoración profesional."),
+    close,
+  );
+  overlay.appendChild(sheet);
+  overlay.addEventListener("pointerdown", (event) => {
+    if (event.target === overlay) close.click();
+  });
+  document.body.appendChild(overlay);
+  document.body.classList.add("overlay-open");
+  releaseFocus = trapModalFocus(overlay, { initialFocus: close, onEscape: dismiss });
+}
+
+function openSessionNoteSheet(session, sessionExercise) {
+  const overlay = createElement("div", "workout-sheet-overlay");
+  const sheet = createElement("section", "workout-sheet exercise-note-sheet");
+  sheet.setAttribute("role", "dialog");
+  sheet.setAttribute("aria-modal", "true");
+  const form = createElement("form", "exercise-note-form");
+  const title = createElement("h3", "", `Nota · ${sessionExercise.exerciseName}`);
+  title.id = `exerciseNoteTitle-${sessionExercise.id}`;
+  sheet.setAttribute("aria-labelledby", title.id);
+  const copy = createElement("p", "muted", "Solo para este ejercicio en la sesión de hoy.");
+  const textarea = document.createElement("textarea");
+  textarea.name = "sessionNote";
+  textarea.maxLength = 300;
+  textarea.rows = 4;
+  textarea.value = sessionExercise.sessionNote ?? "";
+  textarea.placeholder = "Sensaciones, técnica, molestias, ajuste del banco…";
+  textarea.setAttribute("aria-label", "Nota del ejercicio en esta sesión");
+  const counter = createElement("small", "muted", `${textarea.value.length}/300`);
+  textarea.addEventListener("input", () => { counter.textContent = `${textarea.value.length}/300`; });
+  const actions = createElement("div", "workout-sheet-actions");
+  const cancel = createButton("Cancelar", "button-secondary", () => close());
+  const save = createElement("button", "button button-primary", "Guardar nota");
+  save.type = "submit";
+  actions.append(cancel, save);
+  form.append(title, copy, textarea, counter, actions);
+  sheet.appendChild(form);
+  overlay.appendChild(sheet);
+  let closed = false;
+  let releaseFocus = () => {};
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    overlay.remove();
+    document.body.classList.remove("overlay-open");
+    releaseFocus();
+  };
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const saved = commit(
+      next => setSessionExerciseNote(next, session.id, sessionExercise.id, textarea.value),
+      textarea.value.trim() ? "Nota guardada para esta sesión." : "Nota eliminada de esta sesión.",
+    );
+    if (saved) close();
+  });
+  overlay.addEventListener("pointerdown", (event) => {
+    if (event.target === overlay) close();
+  });
+  document.body.appendChild(overlay);
+  document.body.classList.add("overlay-open");
+  releaseFocus = trapModalFocus(overlay, { initialFocus: textarea, onEscape: close });
+}
+
+function openExerciseReplacement(sessionExercise) {
+  replacementTargetExerciseId = sessionExercise.id;
+  $("catalogSearch").value = "";
+  const picker = document.querySelector(".exercise-picker");
+  picker.open = true;
+  renderCatalogResults();
+  picker.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
+  window.requestAnimationFrame(() => $("catalogSearch").focus());
+  showNotice(`Busca una alternativa para ${sessionExercise.exerciseName}. La rutina original no cambiará.`);
+}
+
 function renderSessionExercise(session, sessionExercise) {
-  const completedCount = sessionExercise.sets.filter(item => item.status === "completed").length;
-  const article = createElement("details", "session-exercise");
+  const completedCount = sessionExercise.sets.filter((item) => item.status === "completed").length;
+  const article = createElement("details", "session-exercise session-exercise-compact");
   article.dataset.sessionExerciseId = sessionExercise.id;
   article.open = expandedSessionExerciseId
     ? expandedSessionExerciseId === sessionExercise.id
@@ -3212,6 +3494,7 @@ function renderSessionExercise(session, sessionExercise) {
   if (article.open) expandedSessionExerciseId = sessionExercise.id;
   article.classList.toggle("session-exercise-skipped", sessionExercise.status === "skipped");
   article.classList.toggle("session-exercise-extra", Boolean(sessionExercise.isExtra));
+
   const summary = createElement("summary", "session-exercise-summary");
   const summaryText = createElement("div");
   summaryText.append(
@@ -3219,183 +3502,227 @@ function renderSessionExercise(session, sessionExercise) {
     createElement(
       "small",
       "",
-      sessionExercise.isExtra
-        ? "Extra solo hoy"
-        : completedCount
-          ? `${countLabel(completedCount, "serie")} realizada${completedCount === 1 ? "" : "s"}`
-          : "Pulsa para registrar la primera serie",
+      sessionExercise.pendingPlanRemoved
+        ? "Retirado del plan · lo realizado se conserva"
+        : sessionExercise.isExtra
+          ? "Extra solo hoy"
+          : completedCount
+            ? `${completedCount}/${sessionExercise.plannedSets ?? completedCount} series realizadas`
+            : "Pulsa para registrar",
     ),
   );
-  const summaryStatus = createElement(
-    "span",
-    "exercise-summary-status",
-    sessionExercise.status === "skipped"
-      ? "Omitido"
-      : completedCount
-        ? `✓ ${completedCount}`
-        : "Abrir",
+  summary.append(
+    summaryText,
+    createElement("span", "exercise-summary-status", sessionExercise.status === "skipped" ? "Hoy no" : completedCount ? `✓ ${completedCount}` : "Abrir"),
   );
-  summary.append(summaryText, summaryStatus);
   article.addEventListener("toggle", () => {
-    if (!article.open) return;
+    if (!article.open) {
+      if (sessionExercise.routineExerciseId) void offerGuidedPlanUpdate(session, sessionExercise);
+      return;
+    }
     expandedSessionExerciseId = sessionExercise.id;
-    [...restTimerStates.keys()]
-      .filter((exerciseId) => exerciseId !== sessionExercise.id)
-      .forEach(stopExerciseTimer);
     document.querySelectorAll(".session-exercise[open]").forEach((other) => {
       if (other !== article) other.open = false;
     });
   });
-  const header = createElement("div", "exercise-header");
-  const titleBlock = document.createElement("div");
+
+  const header = createElement("header", "exercise-header compact-exercise-header");
+  const heading = createElement("div", "compact-exercise-heading");
   const source = exerciseSource(sessionExercise.exerciseId);
-  titleBlock.appendChild(createElement(
-    "span",
-    "exercise-source",
-    sessionExercise.isSubstitution
+  heading.append(
+    createElement("span", "exercise-source", sessionExercise.isSubstitution
       ? `Alternativa solo hoy · antes: ${sessionExercise.substitutedFrom?.exerciseName ?? "otro ejercicio"}`
-      : source?.type === "dataset" ? "Catálogo auditado · revisión pendiente" : "Ejercicio personal",
-  ));
-  titleBlock.appendChild(createElement("h3", "", sessionExercise.exerciseName));
-  titleBlock.appendChild(createElement(
-    "p",
-    "exercise-plan",
-    sessionExercise.isExtra ? "Ejercicio extra · solo hoy" : "Registra únicamente lo que hagas hoy",
-  ));
-  if (sessionExercise.planNote) titleBlock.appendChild(createElement("p", "muted", sessionExercise.planNote));
-  if (sessionExercise.routineExerciseId && sessionExercise.targetLoadKg === null
-    && !sessionExercise.sets.some(item => item.status === "completed" && item.loadKg !== null)) {
-    titleBlock.appendChild(createElement("p", "guided-calibration", "Primera vez: vamos a tomar tu referencia."));
-    titleBlock.appendChild(createElement("small", "muted", "No hay un peso previsto. Registra el que hayas utilizado; tú decides si guardarlo como referencia."));
+      : source?.type === "dataset" ? "Catálogo auditado" : "Ejercicio personal"),
+    createElement("h3", "", sessionExercise.exerciseName),
+  );
+  if (sessionExercise.planNote) heading.appendChild(createElement("p", "muted compact-plan-note", sessionExercise.planNote));
+  if (sessionExercise.sessionNote) heading.appendChild(createElement("p", "session-note-preview", sessionExercise.sessionNote));
+
+  const actions = createElement("div", "exercise-quick-actions");
+  const guideEntry = catalog.find((item) => item.id === sessionExercise.exerciseId)
+    ?? catalogEntryForName(sessionExercise.exerciseName);
+  const guide = createExerciseQuickAction("Guía", "guide", "guide", () => openExerciseGuide(sessionExercise));
+  guide.disabled = !guideEntry?.instructionsEs;
+  if (guide.disabled) guide.title = "Este ejercicio no tiene instrucciones en el catálogo";
+  const note = createExerciseQuickAction(
+    sessionExercise.sessionNote ? "Nota guardada" : "Nota",
+    "note",
+    "note",
+    () => openSessionNoteSheet(session, sessionExercise),
+  );
+  const change = createExerciseQuickAction("Cambiar", "swap", "change", () => openExerciseReplacement(sessionExercise));
+  change.disabled = sessionExercise.sets.length > 0 || sessionExercise.status === "skipped";
+  const today = createExerciseQuickAction(
+    sessionExercise.status === "skipped" ? "Incluir" : "Hoy no",
+    sessionExercise.status === "skipped" ? "check" : "skip",
+    "skip",
+    () => commit(
+      next => setSessionExerciseSkipped(next, session.id, sessionExercise.id, sessionExercise.status !== "skipped"),
+      sessionExercise.status === "skipped" ? "Ejercicio incluido de nuevo." : "Marcado como no realizado solo hoy.",
+    ),
+  );
+  today.disabled = sessionExercise.sets.length > 0;
+  actions.append(guide, note, change, today);
+  if (session.source?.routineId && sessionExercise.routineExerciseId && !sessionExercise.pendingPlanRemoved) {
+    const plannedExerciseId = sessionExercise.substitutedFrom?.exerciseId ?? sessionExercise.exerciseId;
+    const plannedExerciseName = sessionExercise.substitutedFrom?.exerciseName ?? sessionExercise.exerciseName;
+    const remove = createExerciseQuickAction("Eliminar", "trash", "delete", async () => {
+      const hasWork = completedCount > 0;
+      const message = hasWork
+        ? "Se retirará de todos los días de esta rutina. Las series ya realizadas seguirán en el Diario y se quitarán solo las pendientes."
+        : "Se retirará de todos los días y variantes de esta rutina. Podrás deshacer la acción.";
+      if (!(await confirmDialog(message, {
+        title: `Eliminar ${plannedExerciseName}`,
+        confirmLabel: "Eliminar de la rutina",
+        cancelLabel: "Cancelar",
+        danger: true,
+      }))) return;
+      commit(
+        next => removeExerciseFromRoutine(next, session.source.routineId, plannedExerciseId, { sessionId: session.id }),
+        "Ejercicio retirado de toda la rutina. Puedes deshacerlo.",
+      );
+    });
+    remove.classList.add("exercise-delete-action");
+    actions.appendChild(remove);
   }
+  header.append(heading, actions);
 
   const reference = findLastComparableExercise(state, sessionExercise.exerciseId, session.id);
-  titleBlock.appendChild(createPersonalRecordCard(sessionExercise.exerciseId));
-  titleBlock.appendChild(createLastReferenceCard(reference));
-  header.appendChild(titleBlock);
-  const statusBlock = createElement("div", "exercise-status-actions");
-  statusBlock.appendChild(createElement("span", "count-badge", `${countLabel(completedCount, "serie")} realizada${completedCount === 1 ? "" : "s"}`));
-  if (!sessionExercise.isExtra && !sessionExercise.sets.length) {
-    if (sessionExercise.status === "skipped") {
-      statusBlock.appendChild(createButton(
-        "Volver a incluir hoy",
-        "button-secondary",
-        () => commit(
-          (next) => setSessionExerciseSkipped(next, session.id, sessionExercise.id, false),
-          "Ejercicio incluido de nuevo en el entrenamiento de hoy.",
-        ),
-      ));
-    } else {
-      const exceptionMenu = createElement("details", "exercise-exception-menu");
-      const exceptionSummary = createElement(
-        "summary",
-        "exercise-exception-summary",
-        "¿No puedes realizar este ejercicio hoy?",
-      );
-      const exceptionActions = createElement("div", "exercise-exception-actions");
-      const alternative = createButton("Elegir una alternativa para hoy", "button-secondary", () => {
-        replacementTargetExerciseId = sessionExercise.id;
-        $("catalogSearch").value = "";
-        const picker = document.querySelector(".exercise-picker");
-        picker.open = true;
-        renderCatalogResults();
-        window.requestAnimationFrame(() => $("catalogSearch").focus());
-        showNotice(
-          `Busca una alternativa para ${sessionExercise.exerciseName}. La rutina original no cambiará.`,
-        );
-      });
-      const notPerformed = createButton("Marcar como no realizado", "button-quiet", () => commit(
-        (next) => setSessionExerciseSkipped(next, session.id, sessionExercise.id, true),
-        "Ejercicio marcado como no realizado hoy. La rutina original no ha cambiado.",
-      ));
-      exceptionActions.append(
-        createElement("p", "muted", "Estas opciones solo afectan al entrenamiento de hoy."),
-        alternative,
-        notPerformed,
-      );
-      exceptionMenu.append(exceptionSummary, exceptionActions);
-      statusBlock.appendChild(exceptionMenu);
-    }
-  }
-  header.appendChild(statusBlock);
+  const references = createElement("div", "exercise-reference-pair");
+  references.append(createPersonalRecordCard(sessionExercise.exerciseId), createLastReferenceCard(reference));
 
-  const content = createElement("div", "set-area");
-  const list = createElement("ol", "set-list");
-  const form = renderSetForm(session, sessionExercise, reference);
+  const headings = createElement("div", "set-list-headings");
+  ["Set", "Peso", "Reps", "RIR", "Estado"].forEach((label) => headings.appendChild(createElement("span", "", label)));
+  const list = createElement("ol", "set-list compact-set-list");
 
-  sessionExercise.sets.forEach((workoutSet) => {
+  const editCompletedValue = async (workoutSet, field) => {
+    const options = field === "loadKg"
+      ? { label: "Peso en kilos", value: workoutSet.loadKg, min: 0, max: 2000, step: 0.25, nullable: true }
+      : field === "reps"
+        ? { label: "Repeticiones", value: workoutSet.reps, min: 1, max: 1000, step: 1 }
+        : { label: "RIR", value: workoutSet.rir, min: 0, max: 5, step: 1, nullable: true };
+    const value = await openNumericWheel(options);
+    if (value === undefined) return;
+    commit(next => updateSet(next, session.id, sessionExercise.id, workoutSet.id, {
+      reps: field === "reps" ? value : workoutSet.reps,
+      loadKg: field === "loadKg" ? value : workoutSet.loadKg,
+      rir: field === "rir" ? value : workoutSet.rir,
+      setType: workoutSet.setType ?? (workoutSet.isWarmup ? "warmup" : "effective"),
+      note: workoutSet.note ?? "",
+      ...(workoutSet.planOrder === undefined ? {} : { planOrder: workoutSet.planOrder }),
+    }), "Serie actualizada.");
+  };
+
+  sessionExercise.sets.slice().sort((a, b) => a.order - b.order).forEach((workoutSet) => {
     if (workoutSet.status === "skipped") {
-      const skippedRow = createElement("li", "set-row set-skipped");
-      skippedRow.append(createElement("span", "", `Serie ${workoutSet.planOrder} · anulada`));
-      skippedRow.append(createButton("Volver a pendiente", "button-quiet", () => commit(
-        next => deleteSet(next, session.id, sessionExercise.id, workoutSet.id), "Serie pendiente de nuevo.",
-      )));
-      list.append(skippedRow);
+      const row = createElement("li", "set-row compact-set-row set-skipped");
+      const foreground = createElement("div", "set-row-content compact-set-row-content");
+      foreground.append(
+        createElement("span", "set-number", String(workoutSet.planOrder ?? workoutSet.order)),
+        createElement("span", "set-cell", "—"),
+        createElement("span", "set-cell", "Anulada"),
+        createElement("span", "set-cell", "—"),
+        createButton("↺", "set-restore-button", () => commit(
+          next => deleteSet(next, session.id, sessionExercise.id, workoutSet.id),
+          "La serie vuelve a estar pendiente.",
+        )),
+      );
+      foreground.lastElementChild.setAttribute("aria-label", `Volver a dejar pendiente la serie ${workoutSet.planOrder}`);
+      row.appendChild(foreground);
+      list.appendChild(row);
       return;
     }
-    const duplicateCurrentSet = () => commit(
-      (next) => duplicateSet(next, session.id, sessionExercise.id, workoutSet.id),
-      `Serie ${workoutSet.order} duplicada con los mismos valores.`,
-    );
+
     const deleteCurrentSet = async () => {
-      if (!(await confirmDialog(`¿Borrar la serie ${workoutSet.order}? Podrás deshacerla después.`, { title: "Borrar serie", confirmLabel: "Borrar", danger: true }))) return;
-      commit((next) => {
-        deleteSet(next, session.id, sessionExercise.id, workoutSet.id);
-      }, "Serie borrada. Puedes deshacerla.");
+      if (!(await confirmDialog(`¿Borrar la serie ${workoutSet.order}? Podrás deshacerla.`, {
+        title: "Borrar serie", confirmLabel: "Borrar", danger: true,
+      }))) return;
+      commit(next => deleteSet(next, session.id, sessionExercise.id, workoutSet.id), "Serie borrada. Puedes deshacerla.");
     };
-    const row = createElement("li", "set-row swipe-set-row");
+    const row = createElement("li", "set-row compact-set-row swipe-set-row");
     if (freshSet && freshSet.id === workoutSet.id) {
       row.classList.add("is-fresh");
       if (freshSet.record) row.classList.add("is-record");
       freshSet = null;
-      // Las clases se quitan al acabar la animación. No es cosmético: cambiar
-      // de pestaña no relanza render(), así que sin esto la fila se quedaría
-      // marcada indefinidamente y cualquier estilo que alguien añada mañana a
-      // .is-fresh se volvería permanente sin que se note al escribirlo.
       row.addEventListener("animationend", () => {
         row.classList.remove("is-fresh", "is-record");
       }, { once: true });
     }
-    row.append(
-      createElement("span", "set-swipe-action set-swipe-duplicate", "Duplicar"),
-      createElement("span", "set-swipe-action set-swipe-delete", "Borrar"),
-    );
-    const foreground = createElement("div", "set-row-content");
+    const allowDuplicate = !sessionExercise.routineExerciseId;
+    if (allowDuplicate) row.appendChild(createElement("span", "set-swipe-action set-swipe-duplicate", "Duplicar"));
+    row.appendChild(createElement("span", "set-swipe-action set-swipe-delete", "Borrar"));
+    const foreground = createElement("div", "set-row-content compact-set-row-content completed-set-row");
     foreground.appendChild(createElement("span", "set-number set-complete", String(workoutSet.order)));
-    const loadCell = createElement("strong", "set-cell set-load", workoutSet.loadKg === null ? "—" : `${workoutSet.loadKg} kg`);
-    loadCell.dataset.label = "Peso";
-    const repsCell = createElement("span", "set-cell set-reps", `${workoutSet.reps}`);
-    repsCell.dataset.label = "Reps";
-    const rirCell = createElement("span", "set-cell set-rir", workoutSet.rir ?? "—");
-    rirCell.dataset.label = "RIR";
-    foreground.append(loadCell, repsCell, rirCell);
-    foreground.appendChild(createElement("span", `set-type-badge ${setTypeClass(workoutSet)}`, setTypeText(workoutSet)));
-    const actions = createElement("div", "item-actions set-row-actions");
-    actions.append(
-      createButton("Duplicar", "button-quiet", duplicateCurrentSet),
-      createButton("Editar", "button-secondary", () => form.startEditing(workoutSet)),
-      createButton("Borrar", "button-danger", deleteCurrentSet),
-    );
-    foreground.appendChild(actions);
-    if (workoutSet.note) foreground.appendChild(createElement("small", "set-row-note", workoutSet.note));
+    const load = createButton(workoutSet.loadKg === null ? "—" : String(workoutSet.loadKg), "set-cell compact-set-value", () => editCompletedValue(workoutSet, "loadKg"));
+    const reps = createButton(String(workoutSet.reps), "set-cell compact-set-value", () => editCompletedValue(workoutSet, "reps"));
+    const rir = createButton(workoutSet.rir ?? "—", "set-cell compact-set-value", () => editCompletedValue(workoutSet, "rir"));
+    load.setAttribute("aria-label", `Peso: ${workoutSet.loadKg ?? "sin valor"} kilos. Toca para editar.`);
+    reps.setAttribute("aria-label", `Repeticiones: ${workoutSet.reps}. Toca para editar.`);
+    rir.setAttribute("aria-label", `RIR: ${workoutSet.rir ?? "vacío"}. Toca para editar.`);
+    const type = createButton("✓", `set-check-button is-complete ${setTypeClass(workoutSet)}`, async () => {
+      const selected = await openSetTypePicker(type, workoutSet.setType ?? "effective");
+      if (!selected) return;
+      commit(next => updateSet(next, session.id, sessionExercise.id, workoutSet.id, {
+        reps: workoutSet.reps,
+        loadKg: workoutSet.loadKg,
+        rir: workoutSet.rir,
+        setType: selected,
+        note: workoutSet.note ?? "",
+        ...(workoutSet.planOrder === undefined ? {} : { planOrder: workoutSet.planOrder }),
+      }), `Serie marcada como ${setTypeText(selected).toLowerCase()}.`);
+    });
+    type.setAttribute("aria-label", `Serie ${workoutSet.order} completada como ${setTypeText(workoutSet)}. Toca para cambiar el tipo.`);
+    type.title = setTypeText(workoutSet);
+    foreground.append(load, reps, rir, type);
     row.appendChild(foreground);
-    attachSetSwipe(row, foreground, { onDuplicate: duplicateCurrentSet, onDelete: deleteCurrentSet });
+    const keyboardDelete = createButton("Borrar serie", "set-row-keyboard-action", deleteCurrentSet);
+    row.appendChild(keyboardDelete);
+    let duplicateCurrentSet = null;
+    if (allowDuplicate) {
+      duplicateCurrentSet = () => commit(
+        next => duplicateSet(next, session.id, sessionExercise.id, workoutSet.id),
+        `Serie ${workoutSet.order} duplicada.`,
+      );
+    }
+    attachSetSwipe(row, foreground, { onRight: duplicateCurrentSet, onLeft: deleteCurrentSet });
     list.appendChild(row);
   });
 
-  pendingPlannedSets(sessionExercise).forEach(order => {
-    const row = createElement("li", "set-row planned-set-row");
-    const foreground = createElement("div", "set-row-content");
-    foreground.append(renderSetForm(session, sessionExercise, reference, order));
-    row.append(foreground);
-    list.append(row);
+  pendingPlannedSets(sessionExercise).forEach((order) => {
+    const annul = () => commit(
+      next => skipPlannedSet(next, session.id, sessionExercise.id, order),
+      `Serie ${order} anulada. No cuenta como trabajo.`,
+    );
+    const row = createElement("li", "set-row compact-set-row planned-set-row swipe-set-row");
+    row.appendChild(createElement("span", "set-swipe-action set-swipe-delete", "Anular"));
+    const foreground = createElement("div", "set-row-content compact-set-row-content");
+    foreground.appendChild(renderSetForm(session, sessionExercise, reference, order));
+    row.append(foreground, createButton("Anular serie", "set-row-keyboard-action", annul));
+    attachSetSwipe(row, foreground, { onLeft: annul });
+    list.appendChild(row);
   });
 
-  if (!list.children.length) {
-    const empty = createElement("li", "empty-state");
-    empty.textContent = "Aún no hay series. Registra la primera en el formulario inferior.";
-    list.appendChild(empty);
+  if (!list.children.length && sessionExercise.status !== "skipped") {
+    list.appendChild(createElement("li", "compact-empty-set", "Aún no hay series registradas."));
   }
+
+  const currentPanel = createElement("section", "exercise-view-panel exercise-current-panel");
+  currentPanel.dataset.exerciseView = "current";
+  const setArea = createElement("div", "set-area compact-set-area");
+  if (sessionExercise.status === "skipped") {
+    setArea.append(header, createElement("p", "empty-state", "Este ejercicio no se realizará hoy. Puedes volver a incluirlo arriba."));
+  } else {
+    setArea.append(header, references, headings, list);
+    const freeForm = renderSetForm(session, sessionExercise, reference);
+    if (sessionExercise.routineExerciseId) {
+      const extra = createElement("details", "guided-extra-set compact-extra-set");
+      extra.append(createElement("summary", "", "+ Registrar serie extra"), freeForm);
+      setArea.appendChild(extra);
+    } else {
+      setArea.appendChild(freeForm);
+    }
+  }
+  currentPanel.appendChild(setArea);
 
   const viewTabs = createElement("div", "exercise-view-tabs");
   viewTabs.setAttribute("role", "tablist");
@@ -3407,21 +3734,7 @@ function renderSessionExercise(session, sessionExercise) {
     button.addEventListener("click", () => activateExerciseView(article, sessionExercise.id, view));
     viewTabs.appendChild(button);
   });
-  const historyPanel = createExerciseHistoryPanel(sessionExercise);
-  const currentPanel = createElement("section", "exercise-view-panel exercise-current-panel");
-  currentPanel.dataset.exerciseView = "current";
-  const progressPanel = createExerciseProgressPanel(sessionExercise);
-  if (sessionExercise.status === "skipped") {
-    content.append(header, createElement("p", "empty-state", "Este ejercicio se ha marcado como no realizado hoy."));
-  } else {
-    const extraForm = sessionExercise.routineExerciseId ? createElement("details", "guided-extra-set") : null;
-    if (extraForm) {
-      extraForm.append(createElement("summary", "", "+ Registrar serie extra"), form);
-    }
-    content.append(header, list, extraForm ?? form, createExerciseRestTimer(sessionExercise.id));
-  }
-  currentPanel.appendChild(content);
-  article.append(summary, viewTabs, historyPanel, currentPanel, progressPanel);
+  article.append(summary, viewTabs, createExerciseHistoryPanel(sessionExercise), currentPanel, createExerciseProgressPanel(sessionExercise));
   window.requestAnimationFrame(() => activateExerciseView(
     article,
     sessionExercise.id,
@@ -3477,6 +3790,11 @@ function renderTraining() {
   }
 
   $("undoBar").hidden = !state.training.undo;
+  if (state.training.undo) {
+    $("undoBarMessage").textContent = state.training.undo.type === "remove_routine_exercise"
+      ? "Ejercicio retirado de toda la rutina."
+      : "Serie borrada.";
+  }
   renderCatalogResults();
   updateActiveSessionElapsed();
 }
@@ -3692,7 +4010,9 @@ function renderCatalogResults() {
   });
 
   $("catalogCount").textContent = `${catalog.length.toLocaleString("es-ES")} ejercicios`;
-  $("catalogStatus").textContent = `${matches.length.toLocaleString("es-ES")} resultados · catálogo auditado, sin imágenes ni GIF.`;
+  $("catalogStatus").textContent = replacementTargetExerciseId
+    ? `Cambiando solo hoy · ${matches.length.toLocaleString("es-ES")} alternativas. La rutina original no cambiará.`
+    : `${matches.length.toLocaleString("es-ES")} resultados · catálogo auditado, sin imágenes ni GIF.`;
   container.replaceChildren();
   matches.slice(0, catalogResultLimit).forEach((entry) => {
     const card = createElement("article", "catalog-card");
@@ -3804,7 +4124,7 @@ function backfillExerciseMuscles() {
 
 async function loadCatalog() {
   try {
-    const response = await fetch("./data/exercises.es.json?v=83", { cache: "no-cache" });
+    const response = await fetch("./data/exercises.es.json?v=85", { cache: "no-cache" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     if (!Array.isArray(payload.exercises)) throw new Error("Estructura no válida");
@@ -4053,6 +4373,7 @@ function render() {
   renderRoutineManager();
   renderTraining();
   renderSettings();
+  renderCompactRestBar();
 }
 
 const tabIds = new Set([
@@ -4397,7 +4718,13 @@ $("cardioSessionForm").addEventListener("submit", (event) => {
   }), `Actividad de ${definition.label.toLowerCase()} guardada. Las métricas derivadas se calcularon automáticamente.`);
 });
 
-$("backToRoutinesBtn").addEventListener("click", () => {
+$("backToRoutinesBtn").addEventListener("click", async () => {
+  const active = getActiveSession(state);
+  if (active) {
+    for (const exercise of active.exercises.filter((item) => item.routineExerciseId)) {
+      await offerGuidedPlanUpdate(active, exercise);
+    }
+  }
   trainingView = "routines";
   renderTraining();
   window.scrollTo({ top: 0, behavior: scrollBehavior() });
@@ -4429,6 +4756,9 @@ $("discardSessionFromRoutinesBtn").addEventListener("click", confirmDiscardActiv
 $("finishSessionBtn").addEventListener("click", async () => {
   const active = getActiveSession(state);
   if (!active) return;
+  for (const exercise of active.exercises.filter((item) => item.routineExerciseId)) {
+    await offerGuidedPlanUpdate(active, exercise);
+  }
   const omittedExercises = active.exercises.filter((exercise) => exercise.status === "skipped").length;
   const untouchedExercises = active.exercises.filter((exercise) => (
     exercise.status !== "skipped" && !exercise.sets.length
@@ -4465,11 +4795,15 @@ $("addExerciseForm").addEventListener("submit", (event) => {
 $("cancelReplacementBtn").addEventListener("click", () => {
   replacementTargetExerciseId = null;
   renderCatalogResults();
-  showNotice("Alternativa cancelada.");
+  showNotice("Cambio de ejercicio cancelado.");
 });
 
 $("undoSetBtn").addEventListener("click", () => {
-  commit((next) => restoreLastDeletedSet(next), "Serie recuperada.");
+  const undoType = state.training.undo?.type;
+  commit(
+    next => restoreLastTrainingUndo(next),
+    undoType === "remove_routine_exercise" ? "Ejercicio restaurado en toda la rutina." : "Serie recuperada.",
+  );
 });
 
 ["catalogSearch", "catalogCategory", "catalogEquipment", "catalogTarget"].forEach((id) => {

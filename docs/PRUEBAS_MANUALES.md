@@ -9,16 +9,19 @@
 3. Comprobar que la primera sesión dice «Primera vez: vamos a tomar tu
    referencia» y no inventa ningún peso.
 4. Marcar la primera serie con peso, repeticiones y RIR: debe guardarse una sola
-   vez y arrancar el descanso si está activado en Ajustes.
-5. Usar `+30 s`, `+1 min` y `+2 min`: solo cambia ese descanso, no el valor por
-   defecto.
-6. Deslizar una serie realizada a la derecha para duplicarla y a la izquierda
-   para pedir su borrado. En iPhone, confirmar que el check no bloquea el gesto.
-7. Anular una serie pendiente: debe aparecer tachada y gris en el entrenamiento,
+   vez después de elegir el tipo y arrancar el descanso si está activado.
+5. Tocar peso, reps y RIR: debe aparecer la rueda; peso encaja cada 0,25 kg y
+   tocar el centro permite escribir. Usar `+30 s`, pausa y `Saltar` en la barra.
+6. En guiada no debe aparecer duplicar. Deslizar una realizada a la izquierda
+   pide confirmación y `Deshacer` restaura esa serie.
+7. Deslizar una pendiente a la izquierda: debe aparecer tachada y gris en entrenamiento,
    el historial del ejercicio y el resumen del Diario.
-8. Registrar una carga o repeticiones fuera del plan: la app pregunta si se
-   actualiza la rutina, pero conserva la serie aunque se responda que no.
-9. Finalizar y comprobar que pendientes/anuladas no cuentan en volumen, mapa
+8. Añadir una nota y comprobar que no cambia la nota de la rutina. Registrar
+   varias efectivas fuera del plan y cerrar el ejercicio: la propuesta debe
+   aparecer agregada y editable, conservando lo realizado aunque se elija `Solo hoy`.
+9. Eliminar el ejercicio: debe desaparecer de todos los bloques; si había series,
+   estas siguen en la sesión. `Deshacer` restaura todas las posiciones.
+10. Finalizar y comprobar que pendientes/anuladas no cuentan en volumen, mapa
    muscular, récords ni progreso.
 
 ## Demostración guiada (QA-GUIDED-002)
@@ -37,7 +40,6 @@ Automatización equivalente:
 
 ```bash
 node scripts/qa-guided-browser.mjs
-QA_CALIBRATION=1 node scripts/qa-guided-browser.mjs
 node scripts/qa-guided-demo.mjs
 node scripts/check-guided-mutations.mjs
 ```

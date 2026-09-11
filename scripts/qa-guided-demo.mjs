@@ -27,7 +27,13 @@ try {
     await page.locator('#loadDemoDataBtn').click();
     await page.getByRole('alertdialog').getByRole('button', { name: 'Cargar demo', exact: true }).click();
     await page.locator('#progressExerciseSelect').selectOption('dataset-0025');
-    assert.equal((await read()).meta.demoSeedVersion, 2);
+    const demo = await read();
+    assert.equal(demo.meta.demoSeedVersion, 3);
+    const recentCutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    assert.ok(demo.training.sessions.some((session) => (
+      new Date(session.endedAt ?? 0).getTime() >= recentCutoff
+      && session.exercises.some((exercise) => exercise.sets.some((set) => set.status === "skipped"))
+    )), "La demo debe dejar una anulación reciente fácil de encontrar");
     const chart = page.locator('#exerciseProgressChart');
     await chart.scrollIntoViewIfNeeded();
     assert.ok(await chart.locator('svg').count());

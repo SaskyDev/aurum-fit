@@ -436,9 +436,14 @@ export function validateState(state) {
         || !Number.isInteger(sessionExercise.order)
         || !["active", "skipped"].includes(sessionExercise.status ?? "active")
         || !Array.isArray(sessionExercise.sets)
+        || (sessionExercise.sessionNote !== undefined
+          && (typeof sessionExercise.sessionNote !== "string" || sessionExercise.sessionNote.length > MAX_NOTE_LENGTH))
+        || (sessionExercise.pendingPlanRemoved !== undefined
+          && typeof sessionExercise.pendingPlanRemoved !== "boolean")
       ) {
         return "Hay un ejercicio de sesión no válido.";
       }
+      sessionExercise.sessionNote ??= "";
       if (sessionExercise.routineExerciseId !== undefined) {
         try {
           if (typeof sessionExercise.routineExerciseId !== "string") throw new Error();
@@ -1051,6 +1056,76 @@ export function removeExerciseFromRoutineDay(
   return removed;
 }
 
+export function removeExerciseFromRoutine(
+  state,
+  routineId,
+  exerciseId,
+  { sessionId = state.training.activeSessionId, now = new Date().toISOString() } = {},
+) {
+  const routine = findRoutine(state, routineId);
+  const placements = [];
+  routine.days.forEach((routineDay) => {
+    routineDay.exercises.forEach((exercise, index) => {
+      if (exercise.exerciseId === exerciseId) {
+        placements.push({ routineDayId: routineDay.id, index, exercise: copy(exercise) });
+      }
+    });
+    routineDay.exercises = routineDay.exercises.filter((exercise) => exercise.exerciseId !== exerciseId);
+    recalculateOrder(routineDay.exercises);
+  });
+  if (!placements.length) throw new Error("El ejercicio ya no pertenece a esta rutina.");
+
+  let sessionChange = null;
+  const session = state.training.sessions.find((item) => (
+    item.id === sessionId
+    && item.status === "in_progress"
+    && item.source?.routineId === routineId
+  ));
+  if (session) {
+    const removedPlanIds = new Set(placements.map((placement) => placement.exercise.id));
+    const index = session.exercises.findIndex((exercise) => (
+      exercise.exerciseId === exerciseId
+      || exercise.substitutedFrom?.exerciseId === exerciseId
+      || removedPlanIds.has(exercise.routineExerciseId)
+    ));
+    if (index !== -1) {
+      const sessionExercise = session.exercises[index];
+      const hasCompletedWork = sessionExercise.sets.some((set) => set.status === "completed");
+      if (hasCompletedWork) {
+        sessionChange = {
+          kind: "kept_work",
+          sessionId: session.id,
+          sessionExerciseId: sessionExercise.id,
+          previousPendingPlanRemoved: sessionExercise.pendingPlanRemoved,
+        };
+        // El trabajo realizado permanece intacto, pero ya no quedan huecos del
+        // plan por resolver después de retirar el ejercicio de la rutina.
+        sessionExercise.pendingPlanRemoved = true;
+      } else {
+        sessionChange = {
+          kind: "removed",
+          sessionId: session.id,
+          index,
+          exercise: copy(sessionExercise),
+        };
+        session.exercises.splice(index, 1);
+        recalculateOrder(session.exercises);
+      }
+    }
+  }
+
+  routine.updatedAt = now;
+  state.training.undo = {
+    type: "remove_routine_exercise",
+    routineId,
+    exerciseId,
+    placements,
+    sessionChange,
+    removedAt: now,
+  };
+  return state.training.undo;
+}
+
 export function getActiveSession(state) {
   if (!state.training.activeSessionId) return null;
   return state.training.sessions.find(
@@ -1171,6 +1246,7 @@ export function startSessionFromRoutineDay(
         repMin: guided ? routineExercise.repMin : null,
         repMax: guided ? routineExercise.repMax : null,
         planNote: guided ? routineExercise.note ?? "" : "",
+        sessionNote: "",
         ...(guided ? {
           targetLoadKg: routineExercise.targetLoadKg ?? null,
           routineExerciseId: routineExercise.id,
@@ -1220,6 +1296,7 @@ export function addExerciseToSession(
     repMin: null,
     repMax: null,
     planNote: "",
+    sessionNote: "",
     sets: [],
   };
   session.exercises.push(sessionExercise);
@@ -1417,6 +1494,16 @@ function findEditableSessionExercise(state, sessionId, sessionExerciseId) {
   return sessionExercise;
 }
 
+export function setSessionExerciseNote(state, sessionId, sessionExerciseId, note) {
+  const sessionExercise = findEditableSessionExercise(state, sessionId, sessionExerciseId);
+  const value = String(note ?? "").trim();
+  if (value.length > MAX_NOTE_LENGTH) {
+    throw new Error(`La nota no puede superar ${MAX_NOTE_LENGTH} caracteres.`);
+  }
+  sessionExercise.sessionNote = value;
+  return sessionExercise;
+}
+
 export function addSetToExercise(
   state,
   sessionId,
@@ -1443,6 +1530,7 @@ export function addSetToExercise(
 }
 
 export function pendingPlannedSets(exercise) {
+  if (exercise.pendingPlanRemoved) return [];
   return Array.from({ length: exercise.plannedSets ?? 0 }, (_, index) => index + 1)
     .filter((order) => !exercise.sets.some((item) => item.planOrder === order));
 }
@@ -1457,6 +1545,31 @@ export function guidedPlanDeviation(plan, actual) {
     changes.repMax = actual.reps;
   }
   return Object.keys(changes).length ? changes : null;
+}
+
+export function guidedExerciseDeviation(exercise) {
+  // Una alternativa pertenece solo a esta sesión. Sus datos se conservan en
+  // el Diario, pero nunca deben convertirse en objetivos del ejercicio que
+  // ocupaba originalmente este hueco de la rutina.
+  if (!exercise?.routineExerciseId || exercise.isSubstitution || exercise.substitutedFrom) return null;
+  const effectiveSets = (exercise.sets ?? []).filter((set) => (
+    set.status === "completed"
+    && set.planOrder !== undefined
+    && (set.setType ?? "effective") === "effective"
+  ));
+  if (!effectiveSets.length) return null;
+
+  const changes = { observedSetCount: effectiveSets.length };
+  const lastSet = effectiveSets[effectiveSets.length - 1];
+  if (lastSet.loadKg !== exercise.targetLoadKg) changes.targetLoadKg = lastSet.loadKg;
+  const reps = effectiveSets.map((set) => set.reps);
+  const observedMin = Math.min(...reps);
+  const observedMax = Math.max(...reps);
+  if (observedMin < exercise.repMin || observedMax > exercise.repMax) {
+    changes.repMin = observedMin;
+    changes.repMax = observedMax;
+  }
+  return Object.keys(changes).length > 1 ? changes : null;
 }
 
 function assertPendingPlanSlot(exercise, order) {
@@ -1575,6 +1688,47 @@ export function restoreLastDeletedSet(state) {
   });
   state.training.undo = null;
   return undo.set;
+}
+
+export function restoreLastTrainingUndo(state) {
+  const undo = state.training.undo;
+  if (!undo) throw new Error("No hay nada que deshacer.");
+  if (undo.type === "delete_set") return restoreLastDeletedSet(state);
+  if (undo.type !== "remove_routine_exercise") throw new Error("La acción ya no se puede deshacer.");
+
+  const routine = findRoutine(state, undo.routineId);
+  undo.placements.forEach((placement) => {
+    const day = routine.days.find((item) => item.id === placement.routineDayId);
+    if (!day) return;
+    const index = Math.min(placement.index, day.exercises.length);
+    day.exercises.splice(index, 0, copy(placement.exercise));
+    recalculateOrder(day.exercises);
+  });
+
+  if (undo.sessionChange?.kind === "removed") {
+    const session = state.training.sessions.find((item) => (
+      item.id === undo.sessionChange.sessionId && item.status === "in_progress"
+    ));
+    if (session) {
+      const index = Math.min(undo.sessionChange.index, session.exercises.length);
+      session.exercises.splice(index, 0, copy(undo.sessionChange.exercise));
+      recalculateOrder(session.exercises);
+    }
+  } else if (undo.sessionChange?.kind === "kept_work") {
+    const exercise = findEditableSessionExercise(
+      state,
+      undo.sessionChange.sessionId,
+      undo.sessionChange.sessionExerciseId,
+    );
+    if (undo.sessionChange.previousPendingPlanRemoved === undefined) {
+      delete exercise.pendingPlanRemoved;
+    } else {
+      exercise.pendingPlanRemoved = undo.sessionChange.previousPendingPlanRemoved;
+    }
+  }
+
+  state.training.undo = null;
+  return undo;
 }
 
 export function completeSession(state, sessionId, now = new Date().toISOString()) {
@@ -1862,6 +2016,7 @@ export function seedDemoData(state, { now = new Date().toISOString() } = {}) {
     });
   });
 
+  let recentSkippedSetAdded = false;
   for (let offset = 60; offset >= 1; offset -= 1) {
     const date = new Date(createdAt);
     date.setHours(18, 0, 0, 0);
@@ -1916,9 +2071,19 @@ export function seedDemoData(state, { now = new Date().toISOString() } = {}) {
       }
       const setCount = Math.min(planned?.plannedSets ?? 3, 4);
       for (let setIndex = 0; setIndex < setCount; setIndex += 1) {
-        if (sessionExercise.routineExerciseId && offset % 10 === 0 && setIndex === setCount - 1) {
+        const shouldAddRecentSkip = sessionExercise.routineExerciseId
+          && !recentSkippedSetAdded
+          && offset <= 7
+          && exerciseIndex === 0
+          && setIndex === setCount - 1;
+        const shouldAddOlderSkip = sessionExercise.routineExerciseId
+          && offset % 10 === 0
+          && exerciseIndex === 0
+          && setIndex === setCount - 1;
+        if (shouldAddRecentSkip || shouldAddOlderSkip) {
           skipPlannedSet(state, session.id, sessionExercise.id, setIndex + 1,
             { id: `demo-set-${dateKey}-${exerciseIndex}-${setIndex}`, now: date.toISOString() });
+          if (shouldAddRecentSkip) recentSkippedSetAdded = true;
           continue;
         }
         addSetToExercise(state, session.id, sessionExercise.id, {
@@ -1978,7 +2143,7 @@ export function seedDemoData(state, { now = new Date().toISOString() } = {}) {
     { id: "demo-label-yogurt", isDemo: true, name: "Yogur alto en proteína", brand: "Marca de ejemplo", calories100: 59, protein100: 10, carbs100: 4, fat100: 0.5, photoName: "etiqueta-ejemplo.jpg" },
     { id: "demo-label-pasta", isDemo: true, name: "Pasta seca", brand: "Marca de ejemplo", calories100: 350, protein100: 12, carbs100: 70, fat100: 1.5, photoName: "paquete-ejemplo.jpg" },
   );
-  state.meta.demoSeedVersion = 2;
+  state.meta.demoSeedVersion = 3;
   state.meta.publicCleanupVersion = PUBLIC_CLEANUP_VERSION;
   return state;
   } finally {

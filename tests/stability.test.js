@@ -192,7 +192,7 @@ test("las confirmaciones usan un diálogo accesible propio y no window.confirm",
   assert.match(styles, /\.overlay-open \{ overflow: hidden; \}/);
 
   const confirmaciones = app.match(/await confirmDialog\(/g) ?? [];
-  // La décima confirmación decide si una desviación actualiza el plan guiado.
+  // La eliminación global de un ejercicio añade una confirmación destructiva.
   assert.equal(confirmaciones.length, 10);
 });
 
@@ -291,7 +291,7 @@ test("el submit de serie conserva el bloqueo aunque renderice otro formulario", 
   const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
   assert.match(app, /const pendingSetSubmissions = new Set\(\)/);
   assert.match(app, /pendingSetSubmissions\.has\(key\)/);
-  assert.match(app, /const submissionKey = `\$\{session\.id\}:\$\{sessionExercise\.id\}`/);
+  assert.match(app, /const submissionKey = `\$\{session\.id\}:\$\{sessionExercise\.id\}:\$\{order\}`/);
   // Se comprueba que el bloqueo envuelve al commit entero, no el literal del
   // mensaje: el aviso pasó a darse después del commit, porque hasta que la
   // serie no está guardada no se sabe si superó un récord. Lo que no puede
@@ -322,10 +322,10 @@ test("la navegación principal tiene tres destinos y Diario es el inicio", () =>
 test("el catálogo espera una búsqueda y la sesión distingue los tres tipos de serie", () => {
   const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
   assert.match(app, /No mostramos todo el catálogo de golpe/);
-  assert.match(app, /\["effective", "Efectiva", "Efectiva"\]/);
-  assert.match(app, /\["approach", "Aprox\.", "Aproximación"\]/);
-  assert.match(app, /\["warmup", "Calent\.", "Calentamiento"\]/);
-  assert.match(app, /set-type-options/);
+  assert.match(app, /\["effective", "Efectiva"\]/);
+  assert.match(app, /\["approach", "Aproximación"\]/);
+  assert.match(app, /\["warmup", "Calentamiento"\]/);
+  assert.match(app, /openSetTypePicker/);
   assert.doesNotMatch(app, /placeholder: "(?:10|60|2)"/);
 });
 
@@ -340,21 +340,19 @@ test("el catálogo reconoce variantes unilaterales en español", () => {
   assert.ok(catalog.exercises.some((exercise) => exercise.nameEs === "Jalón unilateral en polea"));
 });
 
-test("la interfaz limita el catálogo y coloca un temporizador dentro del ejercicio abierto", () => {
+test("la interfaz limita el catálogo y mantiene el descanso fuera del ejercicio", () => {
   const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
   const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
   const css = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
   assert.match(app, /let catalogResultLimit = 4/);
   assert.match(app, /Ver todos \(\$\{matches\.length\.toLocaleString/);
-  assert.match(app, /createExerciseRestTimer\(sessionExercise\.id\)/);
+  assert.match(app, /function renderCompactRestBar/);
   assert.match(app, /document\.querySelectorAll\("\.session-exercise\[open\]"\)/);
-  assert.match(app, /button-quiet timer-reset-button/);
-  assert.match(css, /\.timer-reset-button/);
+  assert.match(app, /compact-rest-action/);
+  assert.match(css, /\.compact-rest-bar/);
   assert.doesNotMatch(html, /id="restTimerDisplay"/);
-  assert.match(app, /¿No puedes realizar este ejercicio hoy\?/);
-  assert.match(app, /Elegir una alternativa para hoy/);
-  assert.match(app, /Marcar como no realizado/);
-  assert.match(app, /Volver a incluir hoy/);
+  assert.match(app, /createExerciseQuickAction\("Cambiar", "swap", "change"/);
+  assert.match(app, /sessionExercise\.status === "skipped" \? "Incluir" : "Hoy no"/);
   assert.doesNotMatch(app, /"Sustituir solo hoy"|"Omitir hoy"/);
 });
 
@@ -443,12 +441,12 @@ test("la nueva estructura separa Rutinas, Entrenamiento y el detalle completo de
   assert.match(app, /startSessionFromRoutineDay\(next, selected\.routineId, selected\.routineDayId/);
 });
 
-test("los días son reversibles y cada ejercicio ofrece duplicado, historial, actual y progreso", () => {
+test("los días son reversibles y cada ejercicio conserva vistas con acciones compactas", () => {
   const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
   const css = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
 
   assert.match(app, /setRoutineDayWeekdays\(next, routine\.id, routineDay\.id, updated\)/);
-  assert.match(app, /duplicateSet\(next, session\.id, sessionExercise\.id, workoutSet\.id/);
+  assert.match(app, /const allowDuplicate = !sessionExercise\.routineExerciseId/);
   assert.match(app, /\["history", "Historial"\]/);
   assert.match(app, /\["current", "Actual"\]/);
   assert.match(app, /\["progress", "Progreso"\]/);
@@ -457,16 +455,15 @@ test("los días son reversibles y cada ejercicio ofrece duplicado, historial, ac
   assert.match(app, /attachSetSwipe/);
   assert.match(app, /set-swipe-duplicate/);
   assert.match(app, /set-swipe-delete/);
-  assert.match(app, /RIR máximo permitido: 5/);
-  assert.match(app, /set-type-options/);
+  assert.match(app, /label: "RIR", value: workoutSet\.rir, min: 0, max: 5/);
+  assert.match(app, /openSetTypePicker/);
   assert.match(app, /setInputHints/);
-  assert.match(app, /load-stepper/);
-  assert.match(app, /stepLoadValue/);
-  assert.match(app, /set-field-label/);
-  assert.match(app, /dataset\.fullLabel = fullLabel/);
-  assert.match(app, /dataset\.label = "Peso"/);
-  assert.match(app, /Registra la primera en el formulario inferior/);
-  assert.match(app, /Última referencia usada como guía visual/);
+  assert.match(app, /step: 0\.25/);
+  assert.match(app, /compact-set-form/);
+  assert.match(app, /compact-set-row-content/);
+  assert.match(app, /set-row-keyboard-action/);
+  assert.match(app, /Aún no hay series registradas/);
+  assert.match(app, /exercise-reference-pair/);
   assert.match(app, /chart-legend exercise-chart-legend/);
   assert.match(app, /Todas tus sesiones anteriores, sin modificar el histórico/);
   assert.match(app, /Mejor serie efectiva de cada entrenamiento/);
@@ -645,9 +642,9 @@ test("guardar una serie arranca el descanso, corregirla no", () => {
 
   assert.match(app, /function startRestAfterSet\(exerciseId\)/);
   // Solo en series nuevas: corregir un número no es acabar de entrenar.
-  assert.match(app, /if \(!editingSetId && autoRestTimerEnabled\(\)\) startRestAfterSet\(sessionExercise\.id\);/);
+  assert.match(app, /if \(autoRestTimerEnabled\(\)\) startRestAfterSet\(sessionExercise\.id\);/);
   // Y después de guardar, no antes: si fallara la validación no debe arrancar.
-  const submit = app.slice(app.indexOf("const saved = runOnce(submit"), app.indexOf("form.startEditing"));
+  const submit = app.slice(app.indexOf("const saved = runOnce(submit"), app.indexOf("async function offerGuidedPlanUpdate"));
   assert.ok(
     submit.indexOf("const saved") < submit.indexOf("startRestAfterSet"),
     "el descanso no puede arrancar antes de saber si la serie se guardó",
@@ -881,11 +878,10 @@ test("guardar una serie la destaca una vez y solo canta récord si había uno", 
   // lo que ese bloque usa .01ms y no 0.
   assert.match(app, /addEventListener\("animationend"[\s\S]{0,160}?classList\.remove\("is-fresh", "is-record"\)[\s\S]{0,60}?once: true/);
 
-  // Corregir una serie ya guardada no destella: ahí no acabas de entrenar,
-  // estás arreglando un número. Misma regla que el descanso automático.
-  const guardado = app.slice(app.indexOf("const saved = runOnce(submit"), app.indexOf("form.startEditing ="));
-  assert.match(guardado, /updateSet\([^)]*\);\s*return;/);
-  assert.doesNotMatch(guardado.slice(0, guardado.indexOf("return;")), /freshSet =/);
+  // Corregir una serie ya guardada no arranca descanso ni relanza el destello.
+  const correccion = app.slice(app.indexOf("const editCompletedValue"), app.indexOf("sessionExercise.sets.slice"));
+  assert.match(correccion, /updateSet\(next, session\.id/);
+  assert.doesNotMatch(correccion, /startRestAfterSet|freshSet =/);
 });
 
 test("el récord solo se canta cuando había un récord anterior que superar", () => {
@@ -903,4 +899,41 @@ test("el récord solo se canta cuando había un récord anterior que superar", (
 
   // Sin récord, no se dice nada: el aviso se compone filtrando lo que no hay.
   assert.match(app, /\[\s*"Serie guardada\.",\s*logro,[\s\S]*?\]\.filter\(Boolean\)\.join\(" "\)/);
+});
+
+test("el entrenamiento compacto concentra serie, referencia, rueda y descanso sin controles redundantes", () => {
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const css = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+
+  assert.match(app, /routine-mode-tag/);
+  assert.match(app, /Guiada/);
+  assert.match(app, /Solo registro/);
+  assert.match(app, /function openNumericWheel/);
+  assert.match(app, /step: 0\.25/);
+  assert.match(app, /function trapModalFocus/);
+  assert.match(app, /option\.tabIndex = index === selectedIndex \? 0 : -1/);
+  assert.match(app, /ArrowUp: -1/);
+  assert.match(app, /event\.stopPropagation\(\);[\s\S]*finish\(false\)/);
+  assert.match(app, /function openSetTypePicker/);
+  assert.match(app, /Calentamiento/);
+  assert.match(app, /Aproximación/);
+  assert.match(app, /Efectiva/);
+  assert.match(app, /function renderCompactRestBar/);
+  assert.match(app, /setSessionExerciseNote/);
+  assert.match(app, /removeExerciseFromRoutine/);
+  assert.match(app, /function createExerciseQuickAction/);
+  assert.match(app, /button\.dataset\.quickAction = action/);
+  assert.match(app, /\$\("cancelReplacementBtn"\)\.hidden = !replacementTargetExerciseId/);
+  assert.match(app, /if \(exercise\.isSubstitution \|\| exercise\.substitutedFrom\) return/);
+  assert.match(app, /plannedExerciseId = sessionExercise\.substitutedFrom\?\.exerciseId \?\? sessionExercise\.exerciseId/);
+  assert.match(app, /removeExerciseFromRoutine\(next, session\.source\.routineId, plannedExerciseId/);
+  assert.match(css, /\.numeric-wheel-sheet/);
+  assert.match(css, /scroll-snap-type: y mandatory/);
+  assert.match(css, /\.compact-rest-bar/);
+  assert.match(css, /\.exercise-reference-pair/);
+  assert.match(css, /\.routine-mode-log/);
+  assert.match(css, /\.catalog-status-row/);
+  assert.match(css, /\.exercise-quick-actions \{[\s\S]*grid-template-columns: repeat\(6, minmax\(0, 1fr\)\)/);
+  const compact = app.slice(app.indexOf("function renderSessionExercise(session"), app.indexOf("function renderTraining"));
+  assert.doesNotMatch(compact, /createExerciseRestTimer\(sessionExercise\.id\)/);
 });

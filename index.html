@@ -21,10 +21,10 @@
         } catch {}
       })();
     </script>
-    <link rel="manifest" href="manifest.json?v=83" />
-    <link rel="icon" type="image/svg+xml" href="icon.svg?v=83" />
-    <link rel="apple-touch-icon" href="icon.svg?v=83" />
-    <link rel="stylesheet" href="styles.css?v=83" />
+    <link rel="manifest" href="manifest.json?v=85" />
+    <link rel="icon" type="image/svg+xml" href="icon.svg?v=85" />
+    <link rel="apple-touch-icon" href="icon.svg?v=85" />
+    <link rel="stylesheet" href="styles.css?v=85" />
   </head>
   <body>
     <main>
@@ -417,7 +417,7 @@
           </div>
 
           <div id="undoBar" class="undo-bar" hidden>
-            <span>Serie borrada.</span>
+            <span id="undoBarMessage">Acción realizada.</span>
             <button id="undoSetBtn" class="button button-link" type="button">Deshacer</button>
           </div>
 
@@ -470,7 +470,6 @@
                   <h3 id="exercisePickerTitle">Añadir ejercicio extra hoy</h3>
                 </div>
                 <div class="picker-heading-actions">
-                  <button id="cancelReplacementBtn" class="button button-quiet" type="button" hidden>Cancelar alternativa</button>
                   <span id="catalogCount" class="count-badge">Cargando…</span>
                 </div>
               </div>
@@ -492,7 +491,10 @@
                   <select id="catalogTarget"><option value="">Todos</option></select>
                 </label>
               </div>
-              <p id="catalogStatus" class="field-help">Escribe para buscar. El ejercicio se guardará en el Diario, no en la rutina.</p>
+              <div class="catalog-status-row">
+                <p id="catalogStatus" class="field-help">Escribe para buscar. El ejercicio se guardará en el Diario, no en la rutina.</p>
+                <button id="cancelReplacementBtn" class="button replacement-cancel" type="button" hidden>Cancelar cambio</button>
+              </div>
               <div id="catalogResults" class="catalog-results"></div>
               <div id="catalogResultActions" class="catalog-result-actions"></div>
 
@@ -664,6 +666,6 @@
 
     </main>
 
-    <script type="module" src="app.js?v=83"></script>
+    <script type="module" src="app.js?v=85"></script>
   </body>
 </html>

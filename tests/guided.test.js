@@ -4,7 +4,8 @@ import { createEmptyState, createRoutine, createRoutineWithWeekdays, validateSta
   addExerciseToRoutineDay, updateRoutineExercisePlan, startSessionFromRoutineDay,
   computeMuscleVolume, exercisePersonalRecords, addSetToExercise, completeSession,
   skipPlannedSet, pendingPlannedSets, duplicateSet, updateSet, guidedPlanDeviation,
-  seedDemoData, removeDemoData } from "../core.js";
+  guidedExerciseDeviation, setSessionExerciseNote, removeExerciseFromRoutine,
+  restoreLastTrainingUndo, replaceSessionExerciseForToday, seedDemoData, removeDemoData } from "../core.js";
 
 test("modo de rutina: compatibilidad log, creación guiada y rechazo de valores desconocidos", () => {
   const state = createEmptyState();
@@ -26,17 +27,150 @@ test("la demo guiada muestra ambos modos, anuladas, calibración y progreso; qui
   addExerciseToRoutineDay(state, real.id, real.days[0].id, "Press real", { exerciseId: "dataset-0025" });
   const before = structuredClone(state);
   seedDemoData(state, { now: "2026-09-11T10:00:00.000Z" });
-  assert.equal(state.meta.demoSeedVersion, 2);
+  assert.equal(state.meta.demoSeedVersion, 3);
   assert.equal(validateState(state), null);
   assert.deepEqual(new Set(state.training.routines.filter(r => r.isDemo).map(r => r.mode)), new Set(["log", "guided"]));
   const all = state.training.routines.flatMap(r => r.days.flatMap(d => d.exercises));
   assert.ok(all.some(e => e.targetLoadKg === null));
   assert.ok(all.every(e => !("demoLoad" in e)));
   assert.ok(state.training.sessions.some(s => s.exercises.some(e => e.sets.some(set => set.status === "skipped"))));
+  const recentLimit = new Date("2026-09-04T10:00:00.000Z");
+  assert.ok(state.training.sessions.some(s => new Date(s.endedAt) >= recentLimit
+    && s.exercises.some(e => e.sets.some(set => set.status === "skipped"))));
   const loads = state.training.sessions.flatMap(s => s.exercises.filter(e => e.exerciseId === "dataset-0025").flatMap(e => e.sets.filter(set => set.status === "completed" && set.setType === "effective").map(set => set.loadKg)));
   assert.ok(new Set(loads).size > 3);
   removeDemoData(state);
   assert.deepEqual(state, before);
+});
+
+test("la nota del ejercicio pertenece a la sesión y no modifica la nota del plan", () => {
+  const state = createEmptyState();
+  const routine = createRoutineWithWeekdays(state, "Guiada", [1], { mode: "guided" });
+  const day = routine.days[0];
+  const plan = addExerciseToRoutineDay(state, routine.id, day.id, "Press", {
+    plannedSets: 3, repMin: 8, repMax: 12, targetLoadKg: 50, note: "Pausa de 2 s",
+  });
+  const session = startSessionFromRoutineDay(state, routine.id, day.id);
+  const exercise = session.exercises[0];
+
+  setSessionExerciseNote(state, session.id, exercise.id, "  Hombro estable y agarre cómodo  ");
+  assert.equal(exercise.sessionNote, "Hombro estable y agarre cómodo");
+  assert.equal(exercise.planNote, "Pausa de 2 s");
+  assert.equal(plan.note, "Pausa de 2 s");
+  assert.equal(validateState(state), null);
+  assert.throws(() => setSessionExerciseNote(state, session.id, exercise.id, "x".repeat(301)), /300/);
+});
+
+test("la desviación guiada agrupa las series efectivas y no reacciona a una sola aproximación", () => {
+  const exercise = {
+    routineExerciseId: "routine-exercise-1",
+    plannedSets: 3,
+    repMin: 8,
+    repMax: 12,
+    targetLoadKg: 50,
+    sets: [
+      { status: "completed", planOrder: 1, setType: "warmup", reps: 20, loadKg: 20 },
+      { status: "completed", planOrder: 2, setType: "effective", reps: 7, loadKg: 47.5 },
+      { status: "completed", planOrder: 3, setType: "effective", reps: 9, loadKg: 52.5 },
+      { status: "skipped", planOrder: 4 },
+    ],
+  };
+  assert.deepEqual(guidedExerciseDeviation(exercise), {
+    targetLoadKg: 52.5,
+    repMin: 7,
+    repMax: 9,
+    observedSetCount: 2,
+  });
+  assert.equal(guidedExerciseDeviation({ ...exercise, sets: exercise.sets.slice(0, 1) }), null);
+  assert.equal(exercise.targetLoadKg, 50);
+});
+
+test("eliminar un ejercicio de una rutina conserva el historial y deshacer restaura todas sus posiciones", () => {
+  const state = createEmptyState();
+  const routine = createRoutineWithWeekdays(state, "Torso", [1], { mode: "guided" });
+  const firstDay = routine.days[0];
+  const secondDay = structuredClone(firstDay);
+  secondDay.id = "day-second";
+  secondDay.name = "Variante";
+  secondDay.order = 2;
+  secondDay.weekdays = [];
+  secondDay.exercises = [];
+  routine.days.push(secondDay);
+  const first = addExerciseToRoutineDay(state, routine.id, firstDay.id, "Press", {
+    exerciseId: "press", plannedSets: 3, repMin: 8, repMax: 12, targetLoadKg: 50,
+  });
+  const second = addExerciseToRoutineDay(state, routine.id, secondDay.id, "Press", {
+    exerciseId: "press", plannedSets: 4, repMin: 6, repMax: 8, targetLoadKg: 55,
+  });
+  const session = startSessionFromRoutineDay(state, routine.id, firstDay.id);
+  const activeExercise = session.exercises[0];
+  addSetToExercise(state, session.id, activeExercise.id, {
+    planOrder: 1, reps: 10, loadKg: 50, setType: "effective",
+  });
+  const historical = structuredClone(session);
+  historical.id = "historical-session";
+  historical.status = "completed";
+  historical.endedAt = "2026-09-01T11:00:00.000Z";
+  state.training.sessions.push(historical);
+
+  const removed = removeExerciseFromRoutine(state, routine.id, "press", { sessionId: session.id });
+  assert.equal(removed.placements.length, 2);
+  assert.deepEqual(routine.days.map(day => day.exercises.length), [0, 0]);
+  assert.equal(activeExercise.pendingPlanRemoved, true);
+  assert.equal(activeExercise.sets.length, 1);
+  assert.deepEqual(state.training.sessions.find(item => item.id === historical.id), historical);
+  assert.deepEqual(pendingPlannedSets(activeExercise), []);
+  assert.equal(validateState(state), null);
+
+  restoreLastTrainingUndo(state);
+  assert.deepEqual(routine.days.map(day => day.exercises.map(item => item.id)), [[first.id], [second.id]]);
+  assert.equal(activeExercise.pendingPlanRemoved, undefined);
+  assert.deepEqual(pendingPlannedSets(activeExercise), [2, 3]);
+  assert.equal(validateState(state), null);
+});
+
+test("eliminar un ejercicio sin trabajo lo retira de la sesión activa y deshacer lo devuelve", () => {
+  const state = createEmptyState();
+  const routine = createRoutineWithWeekdays(state, "Torso", [1], { mode: "guided" });
+  const day = routine.days[0];
+  addExerciseToRoutineDay(state, routine.id, day.id, "Press", {
+    exerciseId: "press", plannedSets: 3, repMin: 8, repMax: 12, targetLoadKg: 50,
+  });
+  const session = startSessionFromRoutineDay(state, routine.id, day.id);
+  removeExerciseFromRoutine(state, routine.id, "press", { sessionId: session.id });
+  assert.equal(session.exercises.length, 0);
+  restoreLastTrainingUndo(state);
+  assert.equal(session.exercises[0].exerciseId, "press");
+});
+
+test("una sustitución solo de hoy no modifica el plan y permite eliminar el ejercicio original", () => {
+  const state = createEmptyState();
+  const routine = createRoutineWithWeekdays(state, "Torso", [1], { mode: "guided" });
+  const day = routine.days[0];
+  addExerciseToRoutineDay(state, routine.id, day.id, "Press", {
+    exerciseId: "press", plannedSets: 3, repMin: 8, repMax: 12, targetLoadKg: 50,
+  });
+  const session = startSessionFromRoutineDay(state, routine.id, day.id);
+  const exercise = session.exercises[0];
+  replaceSessionExerciseForToday(state, session.id, exercise.id, "Press con mancuernas", {
+    exerciseId: "dumbbell-press",
+  });
+  addSetToExercise(state, session.id, exercise.id, {
+    planOrder: 1, reps: 15, loadKg: 30, setType: "effective",
+  });
+
+  assert.equal(guidedExerciseDeviation(exercise), null);
+  removeExerciseFromRoutine(state, routine.id, exercise.substitutedFrom.exerciseId, { sessionId: session.id });
+  assert.equal(day.exercises.length, 0);
+  assert.equal(exercise.exerciseId, "dumbbell-press");
+  assert.equal(exercise.sets[0].loadKg, 30);
+  assert.equal(exercise.pendingPlanRemoved, true);
+  assert.deepEqual(pendingPlannedSets(exercise), []);
+
+  restoreLastTrainingUndo(state);
+  assert.equal(day.exercises[0].exerciseId, "press");
+  assert.equal(exercise.pendingPlanRemoved, undefined);
+  assert.deepEqual(pendingPlannedSets(exercise), [2, 3]);
 });
 
 test("la desviación ofrece cambios en ambos sentidos sin mutar el plan ni confundir un rango válido", () => {

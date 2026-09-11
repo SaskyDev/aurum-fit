@@ -5,11 +5,11 @@ Fecha: 24 de julio de 2026.
 
 ## Rutina guiada
 
-La fila planificada reutiliza la rejilla y campos de la serie existente, en una
-sola tarjeta legible a 390 px. El check representa una acción, nunca un estado
-implícito. Una anulación usa gris y tachado; el rojo queda reservado para errores
-reales. La nota opcional se pliega para reducir densidad. Los botones táctiles
-principales mantienen al menos 44 px y el foco visible.
+La fila planificada y la realizada comparten la rejilla
+`Set · Peso · Reps · RIR · Estado`, con 56 px medidos a 390 px. El check abre un
+selector de tipo y solo entonces guarda. Una anulación usa gris y tachado; el
+rojo queda reservado para borrar o para errores reales. Los botones táctiles
+mantienen al menos 44 px y foco visible.
 
 ## Auditoría de la interfaz anterior
 
@@ -59,7 +59,11 @@ No se usan imágenes, gradientes decorativos ni una marca difícil de renombrar.
 - `.daily-summary`, `.weekly-ring` y `.today-plan`: jerarquía compacta del Diario.
 - `.active-session-resume` y `.free-workout-option`: rutinas como entrada
   principal, continuación de sesión explícita y entrenamiento libre secundario.
-- `.exercise-rest-timer`: temporizador reducido dentro del único ejercicio abierto.
+- `.compact-rest-bar`: descanso flotante sobre la navegación, visible solo tras
+  completar una serie.
+- `.numeric-wheel-sheet`: rueda inferior nativa, virtualizada y con entrada por
+  teclado en el valor central.
+- `.exercise-reference-pair`: récord y última referencia en una franja común.
 - `.catalog-controls`: búsqueda progresiva y filtros de categoría, equipo y
   músculo para consultar 1.317 ejercicios sin mostrar el catálogo completo.
 - `.catalog-review-pending`: aviso breve `Sin revisión profesional todavía` en
@@ -76,7 +80,7 @@ No se usan imágenes, gradientes decorativos ni una marca difícil de renombrar.
 
 ## Confirmaciones destructivas
 
-Las nueve confirmaciones de la aplicación usan `confirmDialog`, no el diálogo
+Las once confirmaciones destructivas de la aplicación usan `confirmDialog`, no el diálogo
 del navegador: borrar comida, quitar un ejercicio de un día de rutina, eliminar
 una rutina del plan, borrar una serie, descartar la sesión en curso, finalizar
 el entrenamiento, cargar la demo, quitar la demo e importar una copia. El
@@ -180,6 +184,7 @@ Se comprobó en navegador:
 - ausencia de desbordamiento horizontal;
 - alturas visibles de controles entre 44 y 54 px;
 - sesión activa en acordeón, catálogo y formulario accesibles sin ampliar la pantalla;
+- tres filas compactas de 56 px, rueda numérica y descanso flotante sin tapar la navegación;
 - editor de rutina en una sola columna a 390 px, sin scroll horizontal;
 - consola sin errores en la carga inicial.
 

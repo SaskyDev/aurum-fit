@@ -14,11 +14,12 @@ Este corte permite:
 - recuperar la sesión al recargar y finalizarla.
 - asignar cada día de rutina a un día de la semana sin conflictos entre rutinas;
 - registrar RIR opcional de 0 a 5, manteniendo lectura de datos antiguos con RPE;
-- usar un temporizador manual por ejercicio de 30 s, 1, 2 o 3 minutos;
+- usar un descanso flotante tras cada serie con duración habitual configurable;
 - consultar Diario por periodo con actividad, nutrición, sesiones y progreso por
   ejercicio;
 - distinguir series efectivas, de aproximación y de calentamiento;
-- omitir o sustituir un ejercicio previsto, o añadir uno extra solo a la sesión actual;
+- omitir o sustituir un ejercicio previsto, añadir uno extra solo a la sesión
+  actual y guardar una nota propia de esa sesión;
 - impedir cualquier edición después de finalizar la sesión.
 
 Incluye una base local de recetas y etiquetas por marca. Todavía no incluye OCR,
@@ -53,6 +54,7 @@ estado v2
 │   │       └── exercises
 │   ├── sessions
 │   │   └── exercises
+│   │       ├── sessionNote (opcional)
 │   │       └── sets
 │   ├── activeSessionId
 │   └── undo
@@ -200,7 +202,19 @@ rutina es un plan que cambia, la sesión es un hecho que ya ocurrió— aplicada
 un plan que ahora lleva números.
 
 El plan de la rutina solo cambia cuando el usuario confirma que quiere cambiarlo,
-al responder la pregunta de desviación.
+al responder la pregunta de desviación agregada al cerrar o cambiar de ejercicio.
+La propuesta se calcula solo con series efectivas y se muestra prellenada; una
+única serie nunca reescribe automáticamente el plan.
+
+`sessionNote` está separada de `planNote`: la primera describe lo ocurrido hoy y
+la segunda pertenece a la plantilla. Ambas son opcionales y admiten 300
+caracteres, por lo que no se cambia `schemaVersion`.
+
+La eliminación global dentro de una rutina usa un `training.undo` discriminado.
+Guarda cada posición retirada y el cambio de la sesión activa. Si ya había
+trabajo, `pendingPlanRemoved` oculta solo los huecos pendientes; las series
+realizadas siguen en la sesión y acabarán en el Diario. Deshacer restaura el
+plan y la posición sin tocar sesiones históricas.
 
 ## Reglas de seguridad
 
@@ -210,7 +224,7 @@ al responder la pregunta de desviación.
 - Solo las efectivas completan las series previstas y alimentan la gráfica
   principal de peso/repeticiones.
 - Repeticiones: entero entre 1 y 1000.
-- Peso opcional: entre 0 y 2000 kg.
+- Peso opcional: entre 0 y 2000 kg; la rueda de la interfaz encaja cada 0,25 kg.
 - RIR opcional: entero entre 0 y 5. Los datos importados con RPE antiguo se
   conservan para compatibilidad, pero la interfaz nueva usa RIR.
 - Nota opcional: máximo 300 caracteres.
@@ -219,7 +233,10 @@ al responder la pregunta de desviación.
 - Una sesión finalizada no admite corregir, borrar ni añadir series.
 - Un ejercicio con series completadas no puede marcarse después como omitido.
 - Una sustitución conserva el ejercicio original en `substitutedFrom`, afecta solo
-  a la sesión activa y se bloquea en cuanto existe una serie completada.
+  a la sesión activa y se bloquea en cuanto existe una serie completada. Sus
+  resultados quedan en el Diario, pero nunca generan cambios para el plan original;
+  si se elimina la posición de la rutina, se resuelve mediante el identificador
+  original y se conserva cualquier trabajo ya registrado con la alternativa.
 - Un día de rutina vacío no puede iniciarse.
 - No se permiten rutinas, días o ejercicios duplicados dentro del mismo contexto.
 - Dos rutinas activas no pueden compartir el mismo día de la semana.
