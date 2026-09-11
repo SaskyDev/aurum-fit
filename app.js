@@ -1866,7 +1866,11 @@ function renderProgress() {
   const periodSessions = sessionsInDiaryPeriod();
   periodSessions
     .forEach((session) => session.exercises.forEach((exercise) => {
-      if (exercise.sets.some((workoutSet) => (workoutSet.setType ?? (workoutSet.isWarmup ? "warmup" : "effective")) === "effective")) {
+      // status === "completed" no es redundante: una serie anulada no lleva
+      // setType ni isWarmup, así que el ?? la daba por efectiva y el ejercicio
+      // entraba en la lista con la gráfica vacía. Una anulada no es trabajo.
+      if (exercise.sets.some((workoutSet) => workoutSet.status === "completed"
+        && (workoutSet.setType ?? (workoutSet.isWarmup ? "warmup" : "effective")) === "effective")) {
         completedExerciseIds.set(exercise.exerciseId, exercise.exerciseName);
       }
     }));

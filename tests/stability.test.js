@@ -638,6 +638,25 @@ test("Biblioteca permite archivar una rutina con gesto hacia la izquierda", () =
   assert.match(css, /touch-action: pan-y/);
 });
 
+test("una serie anulada no mete el ejercicio en el selector de Progreso", () => {
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+
+  // Una serie anulada no lleva setType ni isWarmup, así que `?? "effective"`
+  // la daba por efectiva: el ejercicio aparecía en el desplegable y la gráfica
+  // salía vacía, porque los puntos sí filtran por completed. El filtro tiene
+  // que estar en los DOS sitios, y este es el que se olvidó.
+  const progreso = app.slice(app.indexOf("function renderProgress()"), app.indexOf("const rows = $(\"exerciseProgressRows\")"));
+  const predicados = progreso.match(/exercise\.sets\.(?:some|filter)\([\s\S]*?\)\)/g) ?? [];
+  assert.equal(predicados.length, 2, "renderProgress recorre las series dos veces: el selector y los puntos");
+  predicados.forEach((predicado, indice) => {
+    assert.match(
+      predicado,
+      /workoutSet\.status === "completed"/,
+      `el recorrido ${indice + 1} de renderProgress no descarta las series anuladas`,
+    );
+  });
+});
+
 test("guardar una serie arranca el descanso, corregirla no", () => {
   const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
 
