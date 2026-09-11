@@ -1716,6 +1716,40 @@ progress::-moz-progress-bar {
    debajo. Reutiliza tal cual el patrón de Fuerza/Cardio. */
 .routine-mode-note { display: block; margin-top: var(--space-2); color: var(--ink-soft); font-size: .74rem; line-height: 1.45; }
 .routine-mode-note strong { color: var(--ink); }
+.routine-mode-picker small b { color: var(--accent-ink); font-weight: 850; }
+.routine-exercises-step { display: grid; gap: var(--space-4); }
+.routine-exercises-step[hidden] { display: none; }
+.routine-step-back.button-quiet {
+  width: auto;
+  justify-self: start;
+  min-height: 44px;
+  border: 0;
+  padding-inline: 4px;
+  color: var(--accent-ink);
+  white-space: nowrap;
+}
+.routine-step-heading { display: grid; gap: 4px; }
+.routine-step-heading h3 { margin: 0; }
+.new-routine-exercise-list { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.new-routine-exercise-list .empty-state { min-height: 104px; }
+.new-routine-exercise-item {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+  padding: var(--space-3);
+}
+.new-routine-exercise-copy { display: grid; min-width: 0; gap: 3px; }
+.new-routine-exercise-copy strong { overflow-wrap: anywhere; }
+.new-routine-exercise-copy small { color: var(--ink-soft); }
+.new-routine-exercise-builder { display: grid; gap: var(--space-3); }
+.new-routine-exercise-builder > label { display: grid; gap: var(--space-2); }
+.new-routine-exercise-builder .guided-plan-fields { margin-block: 0; }
+.new-routine-exercise-builder > .button { justify-self: center; min-width: min(100%, 220px); }
 .guided-plan-fields { grid-column: 1 / -1; margin-block: var(--space-3); }
 .guided-plan-fields label, .guided-plan-fields input { min-width: 0; width: 100%; }
 .guided-plan-editor { margin-block: var(--space-3); }

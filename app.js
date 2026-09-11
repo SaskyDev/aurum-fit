@@ -54,8 +54,8 @@ import {
   skipPlannedSet,
   guidedExerciseDeviation,
   validateLabelPhotoFile,
-} from "./core.js?v=98";
-import { BODY_FIGURES } from "./body-paths.js?v=98";
+} from "./core.js?v=99";
+import { BODY_FIGURES } from "./body-paths.js?v=99";
 
 const defaultTargets = { calories: 2200, protein: 170, steps: 10000 };
 const defaultPreferences = {
@@ -137,6 +137,10 @@ let routinePlannerView = "calendar";
 let plannerMonthDate = new Date(today + "T12:00:00");
 let selectedPlannedWorkout = null;
 let settingsView = "menu";
+let routineCreationStep = "basics";
+let routineCreationMode = "log";
+let newRoutineDraftExercises = [];
+let newRoutinePlanFields = null;
 const pendingSetSubmissions = new Set();
 const restTimerStates = new Map();
 let activeRestExerciseId = null;
@@ -2768,7 +2772,7 @@ function renderRoutineManager() {
       createElement(
         "span",
         `routine-mode-tag routine-mode-${routine.mode ?? "log"}`,
-        routine.mode === "guided" ? "Guiada" : "Solo registro",
+        routine.mode === "guided" ? "Planificada" : "Registro",
       ),
     );
     text.appendChild(tags);
@@ -2933,24 +2937,101 @@ function createGuidedPlanFields(plan = {}) {
   return { element, value: () => ({ ...Object.fromEntries(Object.entries(fields).map(([name, input]) => [name, input.value])), note: plan.note ?? "" }) };
 }
 
+const routineModeCopy = {
+  log: {
+    name: "Registro",
+    help: "Los pones tú: durante el entrenamiento anotarás peso, repeticiones y RIR.",
+  },
+  guided: {
+    name: "Planificada",
+    help: "Los prepara la rutina: define ahora las series, el rango de repeticiones y el peso de referencia.",
+  },
+};
+
+function selectedNewRoutineMode() {
+  return document.querySelector('input[name="routineMode"]:checked')?.value === "guided" ? "guided" : "log";
+}
+
+function renderNewRoutineDraftExercises() {
+  const list = $("newRoutineExerciseList");
+  list.replaceChildren();
+  newRoutineDraftExercises.forEach((draft, index) => {
+    const item = createElement("li", "new-routine-exercise-item");
+    const copy = createElement("span", "new-routine-exercise-copy");
+    const detail = draft.plan
+      ? `${draft.plan.plannedSets} series · ${draft.plan.repMin}–${draft.plan.repMax} reps${draft.plan.targetLoadKg ? ` · ${draft.plan.targetLoadKg} kg` : ""}`
+      : "Valores durante el entrenamiento";
+    copy.append(createElement("strong", "", `${index + 1}. ${draft.exerciseName}`), createElement("small", "", detail));
+    const remove = createButton("Quitar", "button button-quiet", () => {
+      newRoutineDraftExercises.splice(index, 1);
+      renderNewRoutineDraftExercises();
+    });
+    item.append(copy, remove);
+    list.append(item);
+  });
+  if (!newRoutineDraftExercises.length) {
+    renderEmpty(list, "La rutina todavía está vacía", "Añade al menos un ejercicio para poder guardarla.");
+  }
+}
+
+function resetNewRoutinePlanFields() {
+  const container = $("newRoutineExercisePlanFields");
+  container.replaceChildren();
+  newRoutinePlanFields = routineCreationMode === "guided" ? createGuidedPlanFields() : null;
+  if (newRoutinePlanFields) container.append(newRoutinePlanFields.element);
+}
+
+function renderRoutineCreationStep() {
+  const isBasics = routineCreationStep === "basics";
+  document.querySelectorAll(".routine-setup-basics").forEach((element) => {
+    element.hidden = !isBasics;
+    element.querySelectorAll("input, select, textarea").forEach((input) => { input.disabled = !isBasics; });
+  });
+  $("routineExercisesStep").hidden = isBasics;
+  $("routineExercisesStep").querySelectorAll("input, select, textarea, button").forEach((control) => {
+    control.disabled = isBasics;
+  });
+  $("saveNewRoutineBtn").textContent = isBasics ? "Continuar: añadir ejercicios" : "Guardar rutina";
+  $("saveNewRoutineBtn").formNoValidate = !isBasics;
+  if (isBasics) {
+    syncNewRoutineCardioVisibility();
+    return;
+  }
+  const copy = routineModeCopy[routineCreationMode];
+  $("newRoutineModeEyebrow").textContent = `Rutina ${copy.name}`;
+  $("newRoutineExerciseHelp").textContent = copy.help;
+  resetNewRoutinePlanFields();
+  renderNewRoutineDraftExercises();
+  $("newRoutineExerciseName").focus({ preventScroll: true });
+}
+
+function resetRoutineCreationWizard() {
+  routineCreationStep = "basics";
+  routineCreationMode = "log";
+  newRoutineDraftExercises = [];
+  newRoutinePlanFields = null;
+  $("newRoutineExercisePlanFields").replaceChildren();
+  renderRoutineCreationStep();
+}
+
 function renderRoutineModeEditor(routine) {
   const container = $("routineModeEditor");
   container.replaceChildren();
   if (routine.mode === "guided") {
-    container.append(createElement("p", "muted", "Rutina guiada · el plan no cuenta hasta marcar cada serie."));
+    container.append(createElement("p", "muted", "Rutina Planificada · el plan no cuenta hasta marcar cada serie."));
     return;
   }
   if (routine.days.some(day => routineDayType(day) === "cardio")) return;
   const details = createElement("details", "guided-plan-editor");
-  details.append(createElement("summary", "", "Convertir en rutina guiada"));
+  details.append(createElement("summary", "", "Convertir en rutina Planificada"));
   const form = createElement("form");
-  form.append(createElement("p", "muted", "Prepara los números de cada ejercicio. Se conserva el historial y no se podrá volver al modo de solo registro."));
+  form.append(createElement("p", "muted", "Prepara los números de cada ejercicio. Se conserva el historial y no se podrá volver a Registro."));
   const plans = routine.days.flatMap(day => day.exercises.map(exercise => {
     const fields = createGuidedPlanFields(exercise);
     form.append(createElement("strong", "", `${day.name} · ${exercise.exerciseName}`), fields.element);
     return { day, exercise, fields };
   }));
-  const save = createElement("button", "button button-secondary", "Guardar como guiada");
+  const save = createElement("button", "button button-secondary", "Guardar como Planificada");
   save.type = "submit";
   form.append(save);
   form.addEventListener("submit", event => {
@@ -2958,7 +3039,7 @@ function renderRoutineModeEditor(routine) {
     commit(next => {
       plans.forEach(({ day, exercise, fields }) => updateRoutineExercisePlan(next, routine.id, day.id, exercise.id, fields.value()));
       next.training.routines.find(item => item.id === routine.id).mode = "guided";
-    }, "Rutina convertida a guiada. El historial no cambia.");
+    }, "Rutina convertida a Planificada. El historial no cambia.");
   });
   details.append(form);
   container.append(details);
@@ -4273,7 +4354,7 @@ function backfillExerciseMuscles() {
 
 async function loadCatalog() {
   try {
-    const response = await fetch("./data/exercises.es.json?v=98", { cache: "no-cache" });
+    const response = await fetch("./data/exercises.es.json?v=99", { cache: "no-cache" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     if (!Array.isArray(payload.exercises)) throw new Error("Estructura no válida");
@@ -4816,6 +4897,49 @@ document.querySelectorAll("[data-food]").forEach((button) => {
   });
 });
 
+$("addNewRoutineExerciseBtn").addEventListener("click", () => {
+  const input = $("newRoutineExerciseName");
+  if (!input.reportValidity()) return;
+  const rawName = input.value.trim();
+  if (rawName.length < 2) {
+    showNotice("Escribe el nombre del ejercicio.", { error: true });
+    return;
+  }
+  const entry = catalogEntryForName(rawName);
+  const exerciseName = entry ? translatedCatalogName(entry) : rawName;
+  if (newRoutineDraftExercises.some((draft) => (
+    (entry?.id && draft.exerciseId === entry.id)
+    || normalizeExerciseName(draft.exerciseName) === normalizeExerciseName(exerciseName)
+  ))) {
+    showNotice(`${exerciseName} ya está en esta rutina.`, { error: true });
+    return;
+  }
+  let plan = null;
+  if (newRoutinePlanFields) {
+    const inputs = [...newRoutinePlanFields.element.querySelectorAll("input")];
+    const invalid = inputs.find((field) => !field.checkValidity());
+    if (invalid) {
+      invalid.reportValidity();
+      return;
+    }
+    plan = newRoutinePlanFields.value();
+    if (Number(plan.repMin) > Number(plan.repMax)) {
+      showNotice("Las repeticiones máximas no pueden ser menores que las mínimas.", { error: true });
+      return;
+    }
+  }
+  newRoutineDraftExercises.push({ exerciseId: entry?.id, exerciseName, entry, plan });
+  input.value = "";
+  resetNewRoutinePlanFields();
+  renderNewRoutineDraftExercises();
+  input.focus({ preventScroll: true });
+});
+
+$("backRoutineBasicsBtn").addEventListener("click", () => {
+  routineCreationStep = "basics";
+  renderRoutineCreationStep();
+});
+
 $("createRoutineForm").addEventListener("submit", (event) => {
   event.preventDefault();
   const name = $("routineName").value;
@@ -4838,21 +4962,55 @@ $("createRoutineForm").addEventListener("submit", (event) => {
   const selectedColor = document.querySelector('input[name="routineAccentColor"]:checked')?.value ?? "auto";
   const selectedType = document.querySelector('input[name="routineDayType"]:checked')?.value ?? "strength";
   const selectedCardioType = document.querySelector('input[name="cardioActivityType"]:checked')?.value ?? "run";
+  if (selectedType === "strength" && routineCreationStep === "basics") {
+    const nextMode = selectedNewRoutineMode();
+    if (newRoutineDraftExercises.length && nextMode !== routineCreationMode) {
+      newRoutineDraftExercises = [];
+      showNotice("Has cambiado el estilo. Añade de nuevo los ejercicios con la estructura elegida.");
+    }
+    routineCreationMode = nextMode;
+    routineCreationStep = "exercises";
+    renderRoutineCreationStep();
+    $("routineExercisesStep").scrollIntoView({ block: "start", behavior: scrollBehavior() });
+    return;
+  }
+  if (selectedType === "strength" && !newRoutineDraftExercises.length) {
+    showNotice("Añade al menos un ejercicio antes de guardar la rutina.", { error: true });
+    return;
+  }
+  let createdRoutineId = null;
   const saved = commit(
-    (next) => createRoutineWithWeekdays(next, name, weekdays, {
-      accentColor: selectedColor === "auto" ? null : selectedColor,
-      dayType: selectedType,
-      cardioType: selectedType === "cardio" ? selectedCardioType : "run",
-      mode: selectedType === "cardio" ? "log" : document.querySelector('input[name="routineMode"]:checked')?.value ?? "log",
-    }),
+    (next) => {
+      const routine = createRoutineWithWeekdays(next, name, weekdays, {
+        accentColor: selectedColor === "auto" ? null : selectedColor,
+        dayType: selectedType,
+        cardioType: selectedType === "cardio" ? selectedCardioType : "run",
+        mode: selectedType === "cardio" ? "log" : routineCreationMode,
+      });
+      createdRoutineId = routine.id;
+      if (selectedType === "strength") {
+        const day = routine.days[0];
+        newRoutineDraftExercises.forEach((draft) => {
+          const routineExercise = addExerciseToRoutineDay(next, routine.id, day.id, draft.exerciseName, {
+            exerciseId: draft.exerciseId,
+            ...(draft.plan ?? {}),
+          });
+          attachCatalogMetadata(next, routineExercise.exerciseId, draft.entry);
+        });
+      }
+      return routine;
+    },
     `Rutina ${name.trim()} creada con ${countLabel(weekdays.length, "día")}.`,
   );
   if (saved) {
     routinePlannerView = "library";
     event.target.reset();
     delete $("routineName").dataset.cardioSuggestion;
+    resetRoutineCreationWizard();
     syncNewRoutineCardioVisibility();
     $("createRoutineCard").open = false;
+    selectedRoutineId = createdRoutineId;
+    renderRoutineManager();
   }
 });
 
@@ -4901,7 +5059,12 @@ $("addRoutineDayForm").addEventListener("submit", (event) => {
 $("addRoutineDayType").addEventListener("change", syncAddRoutineCardioVisibility);
 
 $("startFreeSessionBtn").addEventListener("click", (event) => {
+  const existing = getFreeSessionDraft(state);
   trainingView = "free-draft";
+  if (existing) {
+    renderTraining();
+    return;
+  }
   const created = runOnce(
     event.currentTarget,
     () => commit((next) => createFreeSessionDraft(next), "Borrador creado. El tiempo empezará cuando tú decidas."),
@@ -5312,6 +5475,7 @@ $("importFile").addEventListener("change", async (event) => {
 
 renderCardioActivityPicker();
 syncNewRoutineCardioVisibility();
+renderRoutineCreationStep();
 syncAddRoutineCardioVisibility();
 setDailyForm(today);
 render();

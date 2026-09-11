@@ -768,7 +768,7 @@ test("elegir el modo de rutina se explica opción por opción", () => {
   // Antes las dos opciones eran dos píldoras con nombre y UNA sola línea de
   // texto debajo con todo junto. Quien empieza tiene que poder comparar: cada
   // opción explica qué pasa al entrenar, en su propia tarjeta.
-  const explicaciones = picker.match(/<small>[^<]+<\/small>/g) ?? [];
+  const explicaciones = picker.match(/<small><b>[^<]+<\/b>[^<]+<\/small>/g) ?? [];
   assert.equal(explicaciones.length, 2, "cada modalidad necesita su propia explicación");
   explicaciones.forEach((texto) => {
     assert.ok(texto.length > 80, `la explicación se quedó en un titular: ${texto}`);
@@ -776,9 +776,26 @@ test("elegir el modo de rutina se explica opción por opción", () => {
 
   // Y el dato que baja el riesgo de equivocarse: la conversión va en un solo
   // sentido, así que empezar por el modo simple no cierra ninguna puerta.
+  assert.match(picker, /Registro/);
+  assert.match(picker, /Planificada/);
+  assert.match(picker, /Los pones tú/);
+  assert.match(picker, /Los prepara la rutina/);
   assert.match(picker, /no al revés/);
   assert.match(picker, /routine-mode-note/);
   assert.doesNotMatch(picker, /weekday-choice/, "el modo no es un día de la semana: reutiliza el patrón de Fuerza/Cardio");
+});
+
+test("una rutina de fuerza no se guarda vacía y pasa antes por sus ejercicios", () => {
+  const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+
+  assert.match(html, /id="routineExercisesStep"[^>]*hidden/);
+  assert.match(html, /id="newRoutineExerciseList"/);
+  assert.match(html, /id="addNewRoutineExerciseBtn"/);
+  assert.match(html, /Continuar: añadir ejercicios/);
+  assert.match(app, /newRoutineDraftExercises\.length/);
+  assert.match(app, /addExerciseToRoutineDay\(/);
+  assert.match(app, /Añade al menos un ejercicio antes de guardar la rutina/);
 });
 
 test("la hoja de desviación dice de qué número a qué número", () => {
@@ -1113,8 +1130,8 @@ test("el entrenamiento compacto concentra serie, referencia, rueda y descanso si
   const css = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
 
   assert.match(app, /routine-mode-tag/);
-  assert.match(app, /Guiada/);
-  assert.match(app, /Solo registro/);
+  assert.match(app, /Planificada/);
+  assert.match(app, /Registro/);
   assert.match(app, /function openNumericWheel/);
   assert.match(app, /step: 0\.25/);
   assert.match(app, /function trapModalFocus/);

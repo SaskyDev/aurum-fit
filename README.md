@@ -31,8 +31,11 @@ Nutrición sobre un modelo local versionado, sin cuentas ni backend.
 - Entrenamiento centrado primero en rutinas; una sesión en curso se puede
   continuar sin ocultar los planes y el entrenamiento libre queda como última opción.
 - Copia histórica del día para que editar la rutina no cambie sesiones pasadas.
-- Rutinas en dos modos: `Solo registro`, que conserva el cuaderno actual, y
-  `Guiada`, que prepara series, rango de repeticiones y peso objetivo opcional.
+- Rutinas en dos estilos: `Registro`, que funciona como un cuaderno durante el
+  entrenamiento, y `Planificada`, que prepara series, rango de repeticiones y
+  peso de referencia opcional.
+- Las rutinas de fuerza se estructuran antes de guardarse: no se persisten
+  vacías y una Planificada exige definir el plan de cada ejercicio.
 - Primera referencia guiada sin peso inventado, anulación neutral de series y
   decisión explícita antes de trasladar una desviación al plan futuro.
 - Series independientes con repeticiones, peso en kg, RIR, nota y tipo: efectiva,
