@@ -44,9 +44,10 @@ import {
   startSessionFromRoutineDay,
   updateSet,
   updateRoutineExercisePlan,
+  pendingPlannedSets,
   validateLabelPhotoFile,
-} from "./core.js?v=78";
-import { BODY_FIGURES } from "./body-paths.js?v=78";
+} from "./core.js?v=79";
+import { BODY_FIGURES } from "./body-paths.js?v=79";
 
 const defaultTargets = { calories: 2200, protein: 170, steps: 10000 };
 const defaultPreferences = {
@@ -807,7 +808,15 @@ function createExerciseRestTimer(exerciseId) {
       setExerciseTimerDuration(exerciseId, seconds);
     });
     button.dataset.restSeconds = String(seconds);
-    controls.appendChild(button);
+  controls.appendChild(button);
+  });
+  const extensions = createElement("div", "timer-controls timer-extensions");
+  [[30, "+30 s"], [60, "+1 min"], [120, "+2 min"]].forEach(([seconds, label]) => {
+    extensions.append(createButton(label, "button-secondary", () => {
+      const timer = timerFor(exerciseId);
+      timer.remaining = Math.min(3599, timer.remaining + seconds);
+      renderExerciseTimer(exerciseId);
+    }));
   });
   const toggle = createButton("Iniciar", "button-accent", () => toggleExerciseTimer(exerciseId));
   toggle.dataset.restToggle = "";
@@ -860,7 +869,7 @@ function createExerciseRestTimer(exerciseId) {
     showNotice(`Descanso personalizado: ${formatTimer(duration)}.`);
   });
   controls.append(custom, toggle, reset);
-  root.append(heading, controls);
+  root.append(heading, controls, extensions);
   root.appendChild(editor);
   window.requestAnimationFrame(() => renderExerciseTimer(exerciseId));
   return root;
@@ -2726,8 +2735,12 @@ function stepLoadValue(input, delta) {
   input.focus();
 }
 
-function renderSetForm(session, sessionExercise, reference) {
+function renderSetForm(session, sessionExercise, reference, planOrder = null) {
   const form = createElement("form", "set-form");
+  if (planOrder !== null) {
+    form.classList.add("planned-set-form");
+    form.dataset.planOrder = String(planOrder);
+  }
   form.setAttribute("aria-label", "Registrar serie. Última referencia usada como guía visual si existe.");
   form.noValidate = true;
   const reps = makeSetField("Repeticiones", "reps", {
@@ -2807,7 +2820,7 @@ function renderSetForm(session, sessionExercise, reference) {
     createElement("span", "", "RIR"),
     createElement("span", "", "Tipo"),
   );
-  const newSetNumber = createElement("span", "set-number set-form-number", String(sessionExercise.sets.length + 1));
+  const newSetNumber = createElement("span", "set-number set-form-number", String(planOrder ?? sessionExercise.sets.length + 1));
   load.label.classList.add("set-field-load");
   reps.label.classList.add("set-field-reps");
   rir.label.classList.add("set-field-rir");
@@ -2819,9 +2832,21 @@ function renderSetForm(session, sessionExercise, reference) {
     reps: reps.input,
     rir: rir.input,
   });
+  if (planOrder !== null) {
+    load.input.value = sessionExercise.targetLoadKg ?? "";
+    load.input.placeholder = "";
+    reps.input.value = sessionExercise.repMin;
+    reps.input.placeholder = "";
+    rir.input.placeholder = "";
+    submit.textContent = `✓ Completar serie ${planOrder}`;
+    submit.setAttribute("aria-label", `Completar serie ${planOrder}`);
+    form.setAttribute("aria-label", `Serie ${planOrder} prevista: ${sessionExercise.repMin}–${sessionExercise.repMax} repeticiones. Revisa lo realizado antes de marcar.`);
+  }
   const error = createElement("p", "set-form-error full");
   error.hidden = true;
-  form.append(columnHeadings, newSetNumber, load.label, reps.label, rir.label, setTypeGroup, note.label, error, actions);
+  const noteControl = planOrder !== null ? createElement("details", "planned-set-note full") : note.label;
+  if (planOrder !== null) noteControl.append(createElement("summary", "", "Nota opcional"), note.label);
+  form.append(columnHeadings, newSetNumber, load.label, reps.label, rir.label, setTypeGroup, noteControl, error, actions);
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -2847,6 +2872,7 @@ function renderSetForm(session, sessionExercise, reference) {
       rir: rir.input.value,
       setType: form.elements.setType.value,
       note: note.input.value,
+      ...(planOrder !== null ? { planOrder } : {}),
     };
     const editingSetId = form.dataset.editingSetId;
     const restSeconds = timerFor(sessionExercise.id).duration;
@@ -3301,6 +3327,14 @@ function renderSessionExercise(session, sessionExercise) {
     list.appendChild(row);
   });
 
+  pendingPlannedSets(sessionExercise).forEach(order => {
+    const row = createElement("li", "set-row planned-set-row");
+    const foreground = createElement("div", "set-row-content");
+    foreground.append(renderSetForm(session, sessionExercise, reference, order));
+    row.append(foreground);
+    list.append(row);
+  });
+
   if (!list.children.length) {
     const empty = createElement("li", "empty-state");
     empty.textContent = "Aún no hay series. Registra la primera en el formulario inferior.";
@@ -3324,7 +3358,11 @@ function renderSessionExercise(session, sessionExercise) {
   if (sessionExercise.status === "skipped") {
     content.append(header, createElement("p", "empty-state", "Este ejercicio se ha marcado como no realizado hoy."));
   } else {
-    content.append(header, list, form, createExerciseRestTimer(sessionExercise.id));
+    const extraForm = sessionExercise.routineExerciseId ? createElement("details", "guided-extra-set") : null;
+    if (extraForm) {
+      extraForm.append(createElement("summary", "", "+ Registrar serie extra"), form);
+    }
+    content.append(header, list, extraForm ?? form, createExerciseRestTimer(sessionExercise.id));
   }
   currentPanel.appendChild(content);
   article.append(summary, viewTabs, historyPanel, currentPanel, progressPanel);
@@ -3710,7 +3748,7 @@ function backfillExerciseMuscles() {
 
 async function loadCatalog() {
   try {
-    const response = await fetch("./data/exercises.es.json?v=78", { cache: "no-cache" });
+    const response = await fetch("./data/exercises.es.json?v=79", { cache: "no-cache" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     if (!Array.isArray(payload.exercises)) throw new Error("Estructura no válida");

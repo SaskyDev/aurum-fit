@@ -9,10 +9,14 @@ fs.mkdirSync(output, { recursive: true });
 try {
   for (const theme of ["dark", "light"]) {
     const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, reducedMotion: "reduce", serviceWorkers: "block" });
-    if (process.env.QA_MUTATE === "creation") {
+    if (["creation", "check"].includes(process.env.QA_MUTATE)) {
       await context.route("**/app.js*", async route => {
         const response = await route.fetch();
-        const source = (await response.text()).replace('mode: selectedType === "cardio" ? "log" : document.querySelector(\'input[name="routineMode"]:checked\')?.value ?? "log",', 'mode: "log",');
+        const mutations = {
+          creation: ['mode: selectedType === "cardio" ? "log" : document.querySelector(\'input[name="routineMode"]:checked\')?.value ?? "log",', 'mode: "log",'],
+          check: ['const workoutSet = addSetToExercise(next, session.id, sessionExercise.id, input);', 'return;'],
+        };
+        const source = (await response.text()).replace(...mutations[process.env.QA_MUTATE]);
         await route.fulfill({ response, body: source });
       });
     }
@@ -22,6 +26,7 @@ try {
     await page.goto("http://localhost:8000");
     const initial = createEmptyState();
     initial.owner.preferences.appearanceMode = theme;
+    initial.owner.preferences.autoRestTimer = theme === "dark";
     initial.meta.publicCleanupVersion = PUBLIC_CLEANUP_VERSION;
     await page.evaluate(({ key, state }) => localStorage.setItem(key, JSON.stringify(state)), { key: STORE_KEY, state: initial });
     await page.goto("http://localhost:8000/#entreno");
@@ -48,6 +53,46 @@ try {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     await page.locator("#trainingNotice").waitFor({ state: "hidden" });
     await page.screenshot({ path: `${output}/creation-${theme}.png`, fullPage: true });
+    await page.locator('.routine-day').first().getByRole('button', { name: 'Empezar', exact: true }).click();
+    assert.equal(await page.locator('.planned-set-form').count(), 3);
+    saved = await read();
+    assert.equal(saved.training.sessions[0].exercises[0].sets.length, 0);
+    const planned = page.locator('.planned-set-form').first();
+    assert.equal(await planned.locator('[name="loadKg"]').inputValue(), "50");
+    await planned.getByRole('button', { name: 'Completar serie 1', exact: true }).tap();
+    saved = await read();
+    assert.equal(saved.training.sessions[0].exercises[0].sets.length, 1);
+    assert.equal(saved.training.sessions[0].exercises[0].sets[0].planOrder, 1);
+    assert.equal(await page.locator('.planned-set-form').count(), 2);
+    assert.equal(await page.locator('[data-rest-toggle]').textContent(), theme === "dark" ? "Pausar" : "Iniciar");
+    await page.getByRole('button', { name: '+30 s', exact: true }).tap();
+    const time = await page.locator('[data-rest-display]').textContent();
+    assert.ok(time.startsWith("01:"), time);
+    // CDP envía contactos táctiles reales al motor, no eventos de ratón.
+    const cdp = await context.newCDPSession(page);
+    const foreground = page.locator('.swipe-set-row .set-row-content').first();
+    await foreground.scrollIntoViewIfNeeded();
+    const box = await foreground.boundingBox();
+    const x = box.x + 110, y = box.y + 24;
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+    for (const delta of [25, 55, 95]) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x + delta, y }] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.waitForFunction(key => JSON.parse(localStorage.getItem(key)).training.sessions[0].exercises[0].sets.length === 2, STORE_KEY);
+    assert.equal(await page.locator('.planned-set-form').count(), 2);
+    // El sentido contrario pide confirmación y borra solo esa serie.
+    const duplicate = page.locator('.swipe-set-row .set-row-content').last();
+    await duplicate.scrollIntoViewIfNeeded();
+    const duplicateBox = await duplicate.boundingBox();
+    const dx = duplicateBox.x + 180, dy = duplicateBox.y + 24;
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: dx, y: dy }] });
+    for (const delta of [25, 55, 95]) await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: dx - delta, y: dy }] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Borrar', exact: true }).tap();
+    saved = await read();
+    assert.equal(saved.training.sessions[0].exercises[0].sets.length, 1);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.locator('#trainingNotice').waitFor({ state: 'hidden' });
+    await page.screenshot({ path: `${output}/training-${theme}.png`, fullPage: true });
     assert.deepEqual(errors, []);
     console.log(`Creación guiada: ${theme}, 390px, táctil, movimiento reducido OK`);
     await context.close();

@@ -1710,6 +1710,24 @@ progress::-moz-progress-bar {
 .guided-plan-editor { margin-block: var(--space-3); }
 .guided-plan-editor summary { cursor: pointer; padding-block: var(--space-2); }
 .guided-plan-editor form { padding-block: var(--space-2); }
+.planned-set-row > .set-row-content { display: block; padding: var(--space-2); }
+.planned-set-form { margin: 0; border: 0; padding: 0; }
+.guided-extra-set > summary { cursor: pointer; padding: var(--space-3); }
+.timer-extensions { display: flex; gap: var(--space-2); margin-top: var(--space-2); }
+.timer-extensions .button { flex: 1; min-height: 44px; }
+.set-form.planned-set-form { grid-template-columns: 30px minmax(110px, 1.5fr) repeat(2, minmax(45px, .7fr)); gap: 8px; }
+.set-form.planned-set-form .set-form-headings { display: none; }
+.set-form.planned-set-form .set-form-number { grid-column: 1; grid-row: 1; align-self: end; width: 30px; min-width: 0; padding: 0; }
+.set-form.planned-set-form .set-form-number::before { display: none; }
+.set-form.planned-set-form .set-field-load { grid-column: 2; grid-row: 1; }
+.set-form.planned-set-form .set-field-reps { grid-column: 3; grid-row: 1; }
+.set-form.planned-set-form .set-field-rir { grid-column: 4; grid-row: 1; }
+.set-form.planned-set-form .load-stepper { grid-template-columns: 28px minmax(0, 1fr) 28px; }
+.set-form.planned-set-form .load-stepper-button { width: 28px; min-width: 0; min-height: 44px; }
+.set-form.planned-set-form input { min-height: 44px; }
+.set-form.planned-set-form .set-type-options { grid-column: 1 / -1; }
+.planned-set-note { grid-column: 1 / -1; }
+.planned-set-note summary { cursor: pointer; padding: 8px 0; color: var(--ink-soft); }
 .routine-exercise-form:has(.guided-plan-fields) { grid-template-columns: minmax(0, 1fr); }
 .weekday-choice input:disabled + span {
   cursor: not-allowed;

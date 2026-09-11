@@ -51,3 +51,15 @@ Alex confirmó usar la suite canónica `node --test tests/*.test.js`:
   respuesta HTTP de app.js: el recorrido falla, sin tocar archivos.
 - Detectado visualmente y corregido fondo oscuro con tinta oscura en tarjetas
   de rutina bajo tema claro. No se cambia la paleta general.
+
+## Paso 6 — marcar series y descansar
+
+- Pendientes con datos previstos, check explícito, RIR vacío y nota desplegable.
+  Los extras permanecen aparte. Se reutilizan formulario, filas y destello.
+- Descanso conserva Ajustes; +30 s / +1 min / +2 min amplían el restante solo
+  para ese descanso, con tope 59:59, sin reescribir el valor habitual.
+- E2E rojo/verde y mutación `QA_MUTATE=check` detectada. A 390 px claro/oscuro:
+  tap registra una sola serie, arranque automático activado/desactivado,
+  swipe táctil derecha duplica e izquierda pide confirmar borrado.
+- Contactos táctiles emulados mediante CDP, no ratón; pendiente de validación
+  física en el iPhone de Alex. Capturas en `/tmp/aurum-guided-qa/`.
