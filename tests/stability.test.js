@@ -204,6 +204,19 @@ test("el catálogo avisa de los ejercicios sin revisión profesional", () => {
   assert.match(app, /entry\.reviewStatus === "pending_professional_review"/);
   assert.match(app, /"catalog-review-pending", "Sin revisión profesional todavía"/);
   assert.match(styles, /\.catalog-card \.catalog-review-pending \{/);
+
+  // El matiz del origen se perdió una vez al rehacer la cabecera del ejercicio:
+  // quedó "Catálogo auditado" a secas, y encima pintado en mayúsculas y color
+  // de acento, o sea afirmando más justo después de perder la reserva.
+  assert.match(app, /"Catálogo auditado · revisión pendiente"/);
+  assert.doesNotMatch(app, /"Catálogo auditado"/);
+
+  // El botón Guía enseña las instrucciones del dataset. Bajo ese nombre ganan
+  // autoridad, así que llevan el mismo descargo que en el catálogo, y no se
+  // llaman "verificadas" cuando nadie las ha verificado.
+  const guia = app.slice(app.indexOf("function openExerciseGuide"), app.indexOf("function openSessionNoteSheet"));
+  assert.match(guia, /Texto del dataset pendiente de revisión profesional\. No es consejo médico\./);
+  assert.doesNotMatch(app, /guía verificada/);
 });
 
 test("el mapa muscular vive en el Diario con periodo propio y alternativa en texto", () => {

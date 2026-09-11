@@ -3366,7 +3366,10 @@ function createExerciseHistoryPanel(sessionExercise) {
     const card = createElement("article", "exercise-history-session");
     card.append(
       createElement("strong", "", formatDateTime(session.endedAt)),
-      createElement("small", "muted", `${session.source.label} · ${countLabel(exercise.sets.length, "serie")}`),
+      // Solo las realizadas: con 3 hechas y 1 anulada decía "4 series", y la
+      // anulada aparece tachada justo debajo. Contar lo que no se hizo como
+      // hecho es la misma regla que en volumen y récords, aquí en pequeño.
+      createElement("small", "muted", `${session.source.label} · ${countLabel(exercise.sets.filter((item) => item.status === "completed").length, "serie")}`),
     );
     const sets = createElement("ol", "exercise-history-sets");
     exercise.sets.slice().sort((a, b) => a.order - b.order).forEach((workoutSet) => {
@@ -3424,7 +3427,7 @@ function openExerciseGuide(sessionExercise) {
   const entry = catalog.find((item) => item.id === sessionExercise.exerciseId)
     ?? catalogEntryForName(sessionExercise.exerciseName);
   if (!entry?.instructionsEs) {
-    showNotice("Este ejercicio todavía no tiene una guía verificada en el catálogo.", { error: true });
+    showNotice("Este ejercicio no tiene instrucciones en el catálogo.", { error: true });
     return;
   }
   const overlay = createElement("div", "workout-sheet-overlay");
@@ -3445,7 +3448,10 @@ function openExerciseGuide(sessionExercise) {
     createElement("p", "eyebrow", "Guía del catálogo"),
     title,
     createElement("p", "exercise-guide-copy", entry.instructionsEs),
-    createElement("small", "muted", "Contenido del catálogo; no sustituye una valoración profesional."),
+    // El mismo descargo que acompaña a este texto en el catálogo (más abajo,
+    // en renderCatalogResults). Bajo un botón llamado "Guía" el texto gana una
+    // autoridad que no tiene, así que el matiz no puede ser más flojo aquí.
+    createElement("small", "muted", "Texto del dataset pendiente de revisión profesional. No es consejo médico."),
     close,
   );
   overlay.appendChild(sheet);
@@ -3568,7 +3574,7 @@ function renderSessionExercise(session, sessionExercise) {
   heading.append(
     createElement("span", "exercise-source", sessionExercise.isSubstitution
       ? `Alternativa solo hoy · antes: ${sessionExercise.substitutedFrom?.exerciseName ?? "otro ejercicio"}`
-      : source?.type === "dataset" ? "Catálogo auditado" : "Ejercicio personal"),
+      : source?.type === "dataset" ? "Catálogo auditado · revisión pendiente" : "Ejercicio personal"),
     createElement("h3", "", sessionExercise.exerciseName),
   );
   if (sessionExercise.planNote) heading.appendChild(createElement("p", "muted compact-plan-note", sessionExercise.planNote));
