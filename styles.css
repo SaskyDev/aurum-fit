@@ -25,6 +25,11 @@
   --danger: #ff8c7a;
   --danger-soft: #3a201c;
   --success: #b7ef57;
+  /* Tinta que va ENCIMA de un relleno de color (--success, --orange). En
+     oscuro esos tonos son neones claros y piden tinta casi negra; en claro son
+     tonos oscuros y piden blanco. Estaba escrita a mano como #071009 en el
+     check de serie, elegida para el neón, y en claro caía a 2,78:1. */
+  --ink-on-fill: #071009;
   --focus: #ff9f1c;
   --radius-sm: 10px;
   --radius-md: 16px;
@@ -69,6 +74,7 @@
   --orange: #b45309;
   --steps-ink: #0369a1;
   --macro-fat-ink: #6d28d9;
+  --ink-on-fill: #ffffff;
 }
 
 * {
@@ -1619,6 +1625,11 @@ progress::-moz-progress-bar {
   background: rgba(var(--routine-accent-rgb), .12);
   color: var(--routine-accent);
 }
+/* En claro el texto usa tinta oscura: la base de la tarjeta también debe cambiar. */
+:root[data-theme="light"] .routine-overview-card[class*="routine-theme-"],
+:root[data-theme="light"] .routine-spotlight[class*="routine-theme-"] {
+  background: radial-gradient(circle at 88% 17%, rgba(var(--routine-accent-rgb), .12), transparent 48%), var(--surface);
+}
 .routine-overview-card[class*="routine-theme-"] .routine-card-chevron,
 .routine-overview-card[class*="routine-theme-"] .routine-weekday-pills span {
   border-color: rgba(var(--routine-accent-rgb), .42);
@@ -1697,6 +1708,44 @@ progress::-moz-progress-bar {
 .weekday-choice input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .weekday-choice span { display: grid; min-height: 46px; place-items: center; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink-soft); cursor: pointer; font-size: .72rem; font-weight: 850; }
 .weekday-choice input:checked + span { border-color: var(--accent-ink); background: var(--accent); color: var(--on-accent); }
+.weekday-choice input:focus-visible + span { outline: 2px solid var(--accent-ink); outline-offset: 3px; }
+/* Plan guiado: controles existentes, dos columnas legibles incluso en móvil. */
+.guided-plan-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+/* Las dos modalidades son la decisión que más cuesta a quien empieza, así que
+   cada una explica qué pasa al entrenar en vez de compartir una línea de texto
+   debajo. Reutiliza tal cual el patrón de Fuerza/Cardio. */
+.routine-mode-note { display: block; margin-top: var(--space-2); color: var(--ink-soft); font-size: .74rem; line-height: 1.45; }
+.routine-mode-note strong { color: var(--ink); }
+.guided-plan-fields { grid-column: 1 / -1; margin-block: var(--space-3); }
+.guided-plan-fields label, .guided-plan-fields input { min-width: 0; width: 100%; }
+.guided-plan-editor { margin-block: var(--space-3); }
+.guided-plan-editor summary { cursor: pointer; padding-block: var(--space-2); }
+.guided-plan-editor form { padding-block: var(--space-2); }
+.planned-set-row > .set-row-content { display: block; padding: var(--space-2); }
+.planned-set-form { margin: 0; border: 0; padding: 0; }
+.guided-extra-set > summary { cursor: pointer; padding: var(--space-3); }
+.timer-extensions { display: flex; gap: var(--space-2); margin-top: var(--space-2); }
+.timer-extensions .button { flex: 1; min-height: 44px; }
+.set-form.planned-set-form { grid-template-columns: 30px minmax(110px, 1.5fr) repeat(2, minmax(45px, .7fr)); gap: 8px; }
+.set-form.planned-set-form .set-form-headings { display: none; }
+.set-form.planned-set-form .set-form-number { grid-column: 1; grid-row: 1; align-self: end; width: 30px; min-width: 0; padding: 0; }
+.set-form.planned-set-form .set-form-number::before { display: none; }
+.set-form.planned-set-form .set-field-load { grid-column: 2; grid-row: 1; }
+.set-form.planned-set-form .set-field-reps { grid-column: 3; grid-row: 1; }
+.set-form.planned-set-form .set-field-rir { grid-column: 4; grid-row: 1; }
+.set-form.planned-set-form .load-stepper { grid-template-columns: 28px minmax(0, 1fr) 28px; }
+.set-form.planned-set-form .load-stepper-button { width: 28px; min-width: 0; min-height: 44px; }
+.set-form.planned-set-form input { min-height: 44px; }
+.set-form.planned-set-form .set-type-options { grid-column: 1 / -1; }
+.planned-set-note { grid-column: 1 / -1; }
+.planned-set-note summary { cursor: pointer; padding: 8px 0; color: var(--ink-soft); }
+/* Anulada = constancia neutral, nunca error ni trabajo realizado. */
+.set-skipped { color: #9ca3af; border-color: var(--line); background: var(--surface); }
+:root[data-theme="light"] .set-skipped { color: #616975; }
+.set-skipped > span { text-decoration: line-through; }
+.set-skipped .set-number { color: inherit; border-color: var(--line); background: transparent; }
+.set-row.set-skipped { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 12px; }
+.routine-exercise-form:has(.guided-plan-fields) { grid-template-columns: minmax(0, 1fr); }
 .weekday-choice input:disabled + span {
   cursor: not-allowed;
   /* .32 de opacidad hacía que un día ocupado pareciera un fallo de pintado.
@@ -1852,7 +1901,21 @@ progress::-moz-progress-bar {
 .back-button { margin-bottom: var(--space-3); width: auto; }
 .routine-detail-header { display: flex; align-items: center; gap: var(--space-4); margin-bottom: var(--space-4); padding: var(--space-5); }
 .routine-detail-header h2 { margin: 4px 0; }
-.add-routine-day { display: grid; grid-template-columns: minmax(200px, .8fr) minmax(320px, 1.4fr) auto; gap: var(--space-4); align-items: center; margin-top: var(--space-4); padding: var(--space-4) var(--space-5); }
+.add-routine-day {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-3);
+  align-items: end;
+  margin-top: var(--space-5);
+  padding: var(--space-4) var(--space-5);
+}
+.add-routine-day > div:first-child { grid-column: 1 / -1; }
+.add-routine-day > small { grid-column: 1 / -1; margin-top: calc(var(--space-2) * -1); }
+.add-routine-day > .weekday-selector { grid-column: 1 / -1; }
+.routine-variant-controls { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: end; }
+.routine-variant-controls .routine-day-type-select { width: min(100%, 190px); min-width: 130px; }
+.routine-variant-controls select { min-height: 42px; padding-block: 8px; }
+.add-routine-day .routine-variant-submit { justify-self: center; width: min(100%, 230px); min-height: 44px; white-space: nowrap; }
 .routine-day-icon { display: inline-grid; color: var(--accent-ink); place-items: center; }
 .routine-day-icon .ui-icon { width: 20px; height: 20px; }
 
@@ -2125,8 +2188,34 @@ summary.routine-header::-webkit-details-marker { display: none; }
 .exercise-picker-summary strong,
 .exercise-picker-summary small { display: block; }
 .exercise-picker-summary small { margin-top: 2px; color: var(--ink-soft); font-size: .75rem; }
-.exercise-picker-content { padding: 0 var(--space-5) var(--space-5); border-top: 1px solid var(--line); }
+.exercise-picker { margin-top: var(--space-4); }
+.exercise-picker-content { padding: var(--space-4) var(--space-5) var(--space-5); border-top: 1px solid var(--line); }
 .session-exercises + .exercise-picker { margin-top: var(--space-3); }
+.free-workout-draft-panel,
+.free-workout-draft-panel + .exercise-picker { margin-top: var(--space-4); }
+.free-draft-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-4);
+  align-items: center;
+  margin-bottom: var(--space-3);
+  padding: var(--space-4);
+}
+.free-draft-summary h3 { margin: 3px 0 5px; }
+.free-draft-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.free-draft-actions .button { min-height: 44px; }
+.free-draft-exercise-list { display: grid; gap: 8px; margin: 0 0 var(--space-4); padding: 0; list-style: none; }
+.free-draft-exercise {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+}
+.free-draft-exercise-order { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 10px; background: var(--surface-inset); color: var(--accent-ink); font-size: .78rem; font-weight: 850; }
+.free-draft-exercise-copy { display: grid; min-width: 0; gap: 2px; }
+.free-draft-exercise-copy small { color: var(--ink-soft); font-size: .75rem; }
+.free-draft-remove.button { min-height: 38px; padding-inline: 10px; color: var(--ink-soft); }
 
 .cardio-session-card {
   display: grid;
@@ -4011,6 +4100,9 @@ th {
   .weekday-choice span { min-height: 42px; border-radius: 9px; font-size: .62rem; }
   .routine-detail-header { padding: var(--space-4); }
   .add-routine-day { grid-template-columns: 1fr; padding: var(--space-4); }
+  .free-draft-summary { grid-template-columns: 1fr; align-items: stretch; }
+  .free-draft-actions { justify-content: stretch; }
+  .free-draft-actions .button { flex: 1 1 150px; }
 
   .routine-header,
   .routine-day-header {
@@ -4356,9 +4448,9 @@ th {
 :root {
   --muscle-body: #232c25;
   --muscle-none: #232c25;
-  --muscle-low: #3d5a2a;
-  --muscle-medium: #79ab3f;
-  --muscle-high: #c7f464;
+  --muscle-low: #8a5220;
+  --muscle-medium: #d98324;
+  --muscle-high: #e8e84a;
   --muscle-secondary-ink: #8aa39a;
   --muscle-edge: #55685b;
 }
@@ -4366,9 +4458,9 @@ th {
 :root[data-theme="light"] {
   --muscle-body: #e2e7dd;
   --muscle-none: #e2e7dd;
-  --muscle-low: #9cc93f;
-  --muscle-medium: #5f8a1a;
-  --muscle-high: #365008;
+  --muscle-low: #c9a227;
+  --muscle-medium: #b05c17;
+  --muscle-high: #4f2d0d;
   --muscle-secondary-ink: #5d7266;
   --muscle-edge: #a3b39d;
 }
@@ -4382,18 +4474,6 @@ th {
 
 /* El grupo de periodos del Diario tiene cuatro opciones; el del mapa, tres. */
 .muscle-map .period-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-
-.muscle-map-detail > summary {
-  cursor: pointer;
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-  gap: .5rem;
-  color: var(--ink-soft);
-  font-weight: 600;
-}
-
-.muscle-map-detail[open] > summary { margin-bottom: var(--space-2); }
 
 .muscle-map-figures {
   display: flex;
@@ -4428,6 +4508,94 @@ th {
 .muscle-region.intensity-medium > :not(title) { fill: var(--muscle-medium); }
 .muscle-region.intensity-high > :not(title) { fill: var(--muscle-high); }
 
+/* "Ver detalle por zona" ya tenía sus 44 px de alto, pero se pintaba en gris
+   apagado y sin borde: parecía un pie de tabla, no algo que se pueda tocar, y
+   por eso nadie lo abría. Lo que le faltaba era peso visual, no tamaño. */
+.muscle-map-detail > summary {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 var(--space-3);
+  border: 1px solid rgba(var(--accent-rgb), .45);
+  border-radius: var(--radius-sm);
+  background: rgba(var(--accent-rgb), .12);
+  color: var(--accent-ink);
+  cursor: pointer;
+  font-size: .84rem;
+  font-weight: 850;
+  list-style: none;
+}
+.muscle-map-detail > summary::-webkit-details-marker { display: none; }
+.muscle-map-detail > summary::after { content: "▾"; font-size: .72rem; }
+.muscle-map-detail[open] > summary { margin-bottom: var(--space-2); }
+.muscle-map-detail[open] > summary::after { content: "▴"; }
+
+/* Los ejercicios que trabajaron cada zona, a un toque. El número dice cuánto;
+   esto dice de dónde viene. Van plegados porque abiertos de golpe eran cuarenta
+   líneas seguidas y la tabla dejaba de poderse recorrer de un vistazo. */
+.muscle-zone-toggle {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  width: 100%;
+  min-height: 40px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.muscle-zone-toggle::after {
+  content: "▾";
+  color: var(--accent-ink);
+  font-size: .62rem;
+  transition: transform .15s ease;
+}
+.muscle-zone-toggle[aria-expanded="true"]::after { transform: rotate(180deg); }
+.muscle-row:has(.muscle-zone-toggle[aria-expanded="true"]) > * { border-bottom: 0; }
+
+.muscle-row-exercises > td { padding-top: 0; border-top: 0; }
+.muscle-exercise-kind {
+  margin: var(--space-2) 0 4px;
+  color: var(--ink-soft);
+  font-size: .68rem;
+  font-weight: 850;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.muscle-exercise-list { display: grid; gap: 3px; margin: 0; padding: 0 0 var(--space-2); list-style: none; }
+.muscle-exercise {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: .78rem;
+}
+.muscle-exercise-sets { flex: none; color: var(--ink-soft); font-size: .72rem; font-variant-numeric: tabular-nums; }
+
+/* Qué figura se dibuja. Estaba solo en Ajustes, a cuatro toques del mapa. */
+.muscle-figure-switch { display: flex; gap: 6px; justify-content: flex-end; }
+.muscle-figure-switch button {
+  min-height: 32px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+  font-size: .74rem;
+  font-weight: 800;
+}
+.muscle-figure-switch button[aria-pressed="true"] {
+  border-color: rgba(var(--accent-rgb), .65);
+  background: rgba(var(--accent-rgb), .14);
+  color: var(--accent-ink);
+}
+
 .muscle-hatch-bg { fill: var(--muscle-none); }
 .muscle-hatch-line { stroke: var(--muscle-secondary-ink); stroke-width: 3; stroke-opacity: .55; }
 
@@ -4445,6 +4613,42 @@ th {
 }
 
 .muscle-legend-title small { color: var(--ink-soft); font-weight: 600; }
+
+/* Una barra continua en vez de cuatro muestras sueltas: así la dirección de la
+   escala se ve, no se deduce. Importa porque la intuición de "más oscuro = más
+   trabajo" solo vale en tema claro; en oscuro se invierte por fuerza, ya que el
+   "sin trabajo" está pegado al suelo de luminosidad y solo queda subir. */
+.muscle-legend-scale { display: flex; gap: 6px; align-items: center; }
+.muscle-legend-end { color: var(--ink-soft); font-size: .68rem; }
+.muscle-legend-bar {
+  display: flex;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+.muscle-legend-step {
+  min-width: 38px;
+  padding: 3px 8px;
+  color: var(--ink);
+  font-size: .68rem;
+  font-weight: 850;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.muscle-legend-step.intensity-none { background: var(--muscle-none); color: var(--ink-soft); }
+.muscle-legend-step.intensity-low { background: var(--muscle-low); }
+.muscle-legend-step.intensity-medium { background: var(--muscle-medium); }
+.muscle-legend-step.intensity-high { background: var(--muscle-high); }
+/* Cada tramo lleva la tinta que se lee sobre SU color, no la del tema: el cobre
+   y el ámbar son de luminosidad media y piden lados distintos. Medido en el
+   navegador; con una sola tinta por tema, el cobre se quedaba en 3,04:1. */
+.muscle-legend-step.intensity-low,
+.muscle-legend-step.intensity-medium,
+.muscle-legend-step.intensity-high { color: #071009; }
+:root:not([data-theme="light"]) .muscle-legend-step.intensity-low { color: #ffffff; }
+:root[data-theme="light"] .muscle-legend-step.intensity-medium,
+:root[data-theme="light"] .muscle-legend-step.intensity-high { color: #ffffff; }
+
 
 .muscle-legend-item {
   display: inline-flex;
@@ -4602,3 +4806,549 @@ th {
   }
 }
 .swipe-set-row.is-record .set-row-content { animation: set-record 900ms ease-out; }
+
+/* Entrenamiento compacto v84: una sola fila es la unidad de trabajo. */
+.routine-tag-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.routine-mode-tag {
+  display: inline-flex;
+  min-height: 22px;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-inset);
+  color: var(--ink-soft);
+  font-size: .62rem;
+  font-weight: 850;
+  letter-spacing: .045em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.routine-mode-guided {
+  border-color: rgba(var(--routine-accent-rgb, var(--accent-rgb)), .38);
+  color: var(--routine-accent, var(--accent-ink));
+}
+
+/* Modalidad de rutina: ambas etiquetas describen opciones válidas; la libre no
+   se desatura como si fuera una alerta o una función pendiente. */
+.routine-mode-log {
+  border-color: rgba(56, 189, 248, .38);
+  background: rgba(56, 189, 248, .1);
+  color: var(--steps-ink);
+}
+.routine-mode-tag::before {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 14%, transparent);
+  content: "";
+}
+
+.session-exercise-compact .session-exercise-summary {
+  min-height: 64px;
+  padding: 11px 14px;
+}
+
+.compact-set-area {
+  gap: 10px;
+  padding: 12px;
+}
+
+.compact-exercise-header {
+  display: grid;
+  width: 100%;
+  justify-self: stretch;
+  /* Neutraliza el `space-between` del encabezado clásico: con grid haría que
+     la única columna se ajustase al contenido y encogería las acciones. */
+  justify-content: stretch;
+  justify-items: stretch;
+  gap: 10px;
+  padding: 0;
+  border-bottom: 0;
+}
+
+.compact-exercise-heading {
+  display: grid;
+  gap: 3px;
+}
+
+.compact-exercise-heading h3 { margin: 0; font-size: 1.15rem; }
+.compact-plan-note { font-size: .78rem; }
+.session-note-preview {
+  margin-top: 3px;
+  padding-left: 8px;
+  border-left: 2px solid var(--accent);
+  color: var(--ink-soft);
+  font-size: .78rem;
+}
+
+.exercise-quick-actions {
+  display: grid;
+  width: 100%;
+  justify-self: stretch;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 6px;
+  padding-bottom: 2px;
+}
+.exercise-quick-action.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 7px 5px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-inset);
+  color: var(--ink);
+  font-size: .66rem;
+  font-weight: 800;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+}
+.exercise-quick-action.button:disabled { opacity: .38; }
+.quick-action-icon { width: 16px; height: 16px; flex: 0 0 auto; color: var(--accent-ink); stroke-width: 2.25; }
+.quick-action-label { overflow: hidden; text-overflow: ellipsis; }
+.exercise-quick-action[data-quick-action="change"] .quick-action-icon { color: var(--orange); }
+.exercise-quick-action[data-quick-action="skip"] .quick-action-icon { color: var(--ink-soft); }
+.exercise-delete-action.button { color: var(--danger); }
+.exercise-delete-action .quick-action-icon { color: currentColor; }
+
+.exercise-reference-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.exercise-reference-pair .reference-card {
+  min-height: 104px;
+  max-height: 128px;
+  margin: 0;
+  padding: 10px;
+  overflow: auto;
+  border-radius: 14px;
+}
+
+.exercise-reference-pair .record-card {
+  border-color: rgba(255, 159, 28, .35);
+  background: linear-gradient(145deg, rgba(255, 159, 28, .11), var(--surface-raised));
+}
+.exercise-reference-pair .record-card .reference-card-label { color: var(--orange); }
+.exercise-reference-pair .reference-card:not(.record-card) {
+  border-color: rgba(62, 184, 255, .3);
+  background: linear-gradient(145deg, rgba(62, 184, 255, .09), var(--surface-raised));
+}
+.exercise-reference-pair .reference-card:not(.record-card) .reference-card-label { color: #5bc0ff; }
+.exercise-reference-pair .reference-list { gap: 3px; }
+.exercise-reference-pair .reference-list-item { padding: 3px 5px; background: transparent; }
+.exercise-reference-pair .reference-list-item .set-number { width: 22px; height: 22px; }
+.exercise-reference-pair .record-value { font-size: .78rem; }
+.exercise-reference-pair .record-when { display: none; }
+
+.set-list-headings,
+.compact-set-form,
+.compact-set-row-content {
+  display: grid;
+  grid-template-columns: 34px minmax(72px, 1.15fr) minmax(50px, .7fr) minmax(44px, .62fr) 48px;
+  gap: 5px;
+  align-items: center;
+}
+
+.set-list-headings {
+  padding: 0 7px;
+  color: var(--ink-soft);
+  font-size: .58rem;
+  font-weight: 850;
+  letter-spacing: .05em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.compact-set-list { gap: 6px; }
+.compact-registration { display: grid; gap: 6px; }
+.compact-set-row { border-radius: 13px; }
+.compact-set-row-content {
+  min-height: 54px;
+  padding: 5px;
+  border-radius: 13px;
+}
+
+.compact-set-form,
+.set-form.compact-set-form,
+.set-form.planned-set-form.compact-set-form {
+  grid-template-columns: 34px minmax(72px, 1.15fr) minmax(50px, .7fr) minmax(44px, .62fr) 48px;
+  gap: 5px;
+  width: 100%;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.compact-set-form:has(.set-form-error:not([hidden])) { height: auto; }
+
+.planned-set-row .compact-set-row-content {
+  display: block;
+  min-height: 54px;
+  padding: 5px;
+}
+
+.compact-set-form .set-form-number,
+.compact-set-row-content .set-number {
+  grid-column: 1;
+  grid-row: 1;
+  width: 34px;
+  height: 44px;
+  aspect-ratio: auto;
+  padding: 0;
+  border-radius: 10px;
+  font-size: .8rem;
+}
+.compact-set-form .set-form-number::before { content: none; }
+
+.compact-set-cell,
+.compact-set-cell.button,
+.compact-set-value.button,
+.set-restore-button.button {
+  min-width: 0;
+  min-height: 44px;
+  padding: 5px 3px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-inset);
+  color: var(--ink);
+  font-size: .88rem;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.compact-set-row-content > .set-cell {
+  display: grid;
+  min-height: 44px;
+  align-content: center;
+  padding: 4px 3px;
+}
+.compact-set-cell.is-hint { color: var(--ink-soft); opacity: .6; }
+.compact-set-cell:focus-visible,
+.compact-set-value:focus-visible { border-color: rgba(var(--accent-rgb), .9); }
+
+.compact-set-form .compact-set-loadKg,
+.compact-set-row-content > :nth-child(2) { grid-column: 2; grid-row: 1; }
+.compact-set-form .compact-set-reps,
+.compact-set-row-content > :nth-child(3) { grid-column: 3; grid-row: 1; }
+.compact-set-form .compact-set-rir,
+.compact-set-row-content > :nth-child(4) { grid-column: 4; grid-row: 1; }
+
+.set-check-button,
+.set-check-button.button,
+.set-restore-button.button {
+  grid-column: 5;
+  grid-row: 1;
+  min-width: 44px;
+  width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 1px solid rgba(var(--accent-rgb), .32);
+  border-radius: 12px;
+  background: rgba(var(--accent-rgb), .1);
+  color: var(--accent-ink);
+  font-size: 1rem;
+}
+/* El relleno se queda en --success a propósito: es el acento de la app, no el
+   de la rutina, así que el ✓ de una serie hecha significa lo mismo en todas.
+   Rellenar con --accent lo ataba al color del plan y una rutina roja pintaba
+   de rojo cada serie completada.
+   Lo que sí cambia es la tinta: era #071009 fija, elegida para el neón del
+   tema oscuro. En claro --success es un verde oscuro (#3d6408) y esa tinta
+   daba 2,78:1. --ink-on-fill la resuelve por tema.
+   El naranja de aproximación llevaba el rgba del tema oscuro escrito a mano,
+   así que no cambiaba en claro. */
+.set-check-button.is-complete { border-color: var(--success); background: var(--success); color: var(--ink-on-fill); }
+.set-check-button.is-complete.set-type-approach { border-color: var(--orange); background: var(--orange); color: var(--ink-on-fill); }
+.set-check-button.is-complete.set-type-warmup { border-color: var(--ink-soft); background: var(--surface-muted); color: var(--ink); }
+
+.compact-set-form .set-form-error {
+  grid-column: 1 / -1;
+  margin: 2px 4px 0;
+}
+
+.compact-set-row.set-skipped .compact-set-row-content {
+  opacity: .62;
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+.compact-set-row.set-skipped .set-restore-button { text-decoration: none; }
+.compact-empty-set { padding: 12px; color: var(--ink-soft); text-align: center; font-size: .8rem; }
+.set-row-keyboard-action.button {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+}
+.set-row-keyboard-action.button:focus-visible {
+  z-index: 4;
+  right: 6px;
+  bottom: 5px;
+  width: auto;
+  height: 44px;
+  padding: 8px 12px;
+  opacity: 1;
+}
+
+.compact-extra-set { margin-top: 8px; }
+.compact-extra-set > summary {
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 13px;
+  color: var(--ink-soft);
+  font-size: .8rem;
+  text-align: center;
+}
+.compact-extra-set[open] > summary { margin-bottom: 7px; }
+#activeSessionPanel > .exercise-picker { margin-top: 18px; }
+
+/* Sustitución: el modo se explica junto a la búsqueda, no como un botón aislado
+   que compite visualmente con el contador del catálogo. */
+.catalog-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: 44px;
+  margin: var(--space-3) 0;
+}
+.catalog-status-row .field-help { margin: 0; }
+.replacement-cancel.button {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 6px 10px;
+  border-color: rgba(var(--accent-rgb), .34);
+  background: rgba(var(--accent-rgb), .08);
+  color: var(--accent-ink);
+  font-size: .7rem;
+  font-weight: 850;
+}
+
+.set-type-picker-layer,
+.numeric-wheel-overlay,
+.workout-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  align-items: end;
+  padding: 16px max(14px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+  background: rgba(0, 0, 0, .58);
+  backdrop-filter: blur(10px);
+}
+
+.set-type-popover,
+.numeric-wheel-sheet,
+.workout-sheet {
+  width: min(100%, 520px);
+  margin: 0 auto;
+  border: 1px solid var(--line-strong);
+  border-radius: 24px;
+  background: var(--surface);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .38);
+}
+.set-type-popover { display: grid; gap: 7px; padding: 10px; }
+.set-type-choice.button {
+  min-height: 50px;
+  justify-content: flex-start;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: var(--surface-raised);
+  color: var(--ink);
+}
+.set-type-choice[aria-pressed="true"] { border-color: rgba(var(--accent-rgb), .9); color: var(--accent-ink); }
+.set-type-choice.set-type-approach { color: var(--orange); }
+.set-type-choice.set-type-warmup { color: var(--ink-soft); }
+
+.numeric-wheel-sheet { padding: 10px 14px 16px; }
+.numeric-wheel-header {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  min-height: 48px;
+}
+.numeric-wheel-header .button:first-child { justify-self: start; }
+.numeric-wheel-header .button:last-child { justify-self: end; }
+.numeric-wheel-viewport { position: relative; height: 220px; overflow: hidden; }
+.numeric-wheel-viewport::before {
+  position: absolute;
+  top: 88px;
+  right: 8px;
+  left: 8px;
+  z-index: 2;
+  height: 44px;
+  border-top: 1px solid var(--accent);
+  border-bottom: 1px solid var(--accent);
+  border-radius: 10px;
+  background: rgba(var(--accent-rgb), .08);
+  content: "";
+  pointer-events: none;
+}
+.numeric-wheel-list {
+  height: 220px;
+  padding-block: 88px;
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
+  overscroll-behavior-y: contain;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.numeric-wheel-list::-webkit-scrollbar { display: none; }
+.numeric-wheel-option {
+  display: block;
+  width: 100%;
+  height: 44px;
+  border: 0;
+  scroll-snap-align: center;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+  font: inherit;
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+}
+.numeric-wheel-option[aria-selected="true"] { color: var(--ink); font-size: 1.32rem; font-weight: 900; }
+.numeric-wheel-hint { margin-top: 6px; color: var(--ink-soft); font-size: .72rem; text-align: center; }
+.numeric-wheel-direct-input {
+  position: absolute;
+  top: 88px;
+  right: 8px;
+  z-index: 5;
+  width: calc(100% - 16px);
+  height: 44px;
+  border-color: rgba(var(--accent-rgb), .9);
+  text-align: center;
+  font-size: 1.15rem;
+  font-weight: 900;
+}
+
+.workout-sheet { display: grid; gap: 12px; max-height: min(78vh, 650px); padding: 20px; overflow-y: auto; }
+.workout-sheet h3 { margin: 0; }
+.workout-sheet-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
+.exercise-guide-copy { line-height: 1.55; }
+.exercise-note-form,
+.plan-update-form { display: grid; gap: 10px; }
+.exercise-note-form textarea { min-height: 112px; resize: vertical; }
+.plan-update-form { gap: 12px; }
+
+/* La comparación plan → hoy es el mensaje de la hoja, así que se lee antes que
+   cualquier campo. Antes solo había un formulario relleno y no se sabía de qué
+   número venías. */
+.plan-update-diff { display: grid; gap: 8px; margin: 0; }
+.plan-update-diff-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 2px 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-inset);
+}
+.plan-update-diff dt {
+  grid-column: 1 / -1;
+  color: var(--ink-soft);
+  font-size: .72rem;
+  font-weight: 850;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.plan-update-diff dd { margin: 0; font-size: .92rem; font-weight: 700; }
+.plan-update-before { color: var(--ink-soft); }
+.plan-update-after { color: var(--accent-ink); }
+
+.plan-update-adjust > summary { cursor: pointer; color: var(--ink-soft); font-size: .82rem; }
+.plan-update-adjust[open] {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 4px;
+}
+.plan-update-adjust[open] > summary { grid-column: 1 / -1; margin-bottom: 2px; }
+.plan-update-adjust label:only-of-type { grid-column: 1 / -1; }
+
+/* Los botones dicen en qué número se queda el plan, así que llevan texto
+   largo: en 390 px no caben dos en una fila sin partirse mal. */
+.plan-update-form .workout-sheet-actions { grid-template-columns: minmax(0, 1fr); }
+
+.compact-rest-bar {
+  position: fixed;
+  z-index: 105;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: calc(96px + env(safe-area-inset-bottom));
+  left: max(16px, env(safe-area-inset-left));
+  display: grid;
+  grid-template-columns: minmax(84px, 1fr) auto auto auto;
+  gap: 6px;
+  align-items: center;
+  width: min(calc(100% - 32px), 560px);
+  min-height: 62px;
+  margin-inline: auto;
+  padding: 8px;
+  border: 1px solid rgba(var(--accent-rgb), .58);
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--surface) 88%, var(--accent) 12%);
+  box-shadow: 0 14px 38px rgba(0, 0, 0, .28);
+  backdrop-filter: blur(18px);
+}
+.compact-rest-copy { display: grid; min-width: 0; padding-left: 6px; }
+.compact-rest-copy small { overflow: hidden; color: var(--ink-soft); font-size: .62rem; text-overflow: ellipsis; white-space: nowrap; }
+.compact-rest-time { color: var(--accent-ink); font-size: 1.08rem; font-variant-numeric: tabular-nums; }
+.compact-rest-action.button,
+.compact-rest-skip.button { min-width: 44px; min-height: 44px; padding: 6px 9px; border-radius: 13px; font-size: .7rem; }
+.compact-rest-action.button { background: var(--surface-inset); color: var(--ink); }
+.compact-rest-skip.button { background: var(--accent); color: var(--on-accent); }
+
+@media (max-width: 430px) {
+  .exercise-quick-actions {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .exercise-quick-action.button { grid-column: span 2; min-height: 42px; font-size: .72rem; }
+  .exercise-quick-action.button:nth-child(4) { grid-column: 2 / span 2; }
+  .exercise-quick-action.button:nth-child(5) { grid-column: 4 / span 2; }
+  .exercise-reference-pair .reference-card { min-height: 96px; max-height: 116px; }
+  .compact-set-area { padding: 10px 8px 12px; }
+  .set-list-headings,
+  .compact-set-form,
+  .set-form.compact-set-form,
+  .set-form.planned-set-form.compact-set-form,
+  .compact-set-row-content {
+    grid-template-columns: 32px minmax(68px, 1.1fr) minmax(48px, .7fr) 42px 44px;
+    gap: 4px;
+  }
+  .compact-set-form .set-form-number,
+  .compact-set-row-content .set-number { width: 32px; }
+  .compact-rest-bar { grid-template-columns: minmax(72px, 1fr) 48px 48px 52px; }
+  .compact-rest-action.button,
+  .compact-rest-skip.button { padding-inline: 4px; }
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  .set-type-picker-layer,
+  .numeric-wheel-overlay,
+  .workout-sheet-overlay { background: rgba(0, 0, 0, .78); }
+  .compact-rest-bar { background: var(--surface); }
+}

@@ -284,6 +284,7 @@ export function validateState(state) {
       || typeof routine.id !== "string"
       || typeof routine.userId !== "string"
       || typeof routine.name !== "string"
+      || (routine.mode !== undefined && !["log", "guided"].includes(routine.mode))
       || (
         routine.accentColor !== undefined
         && routine.accentColor !== null
@@ -300,6 +301,8 @@ export function validateState(state) {
     ) {
       return "Hay una rutina no válida.";
     }
+    // Los datos anteriores no cambian de comportamiento al actualizar la app.
+    routine.mode ??= "log";
     for (const routineDay of routine.days) {
       if (
         !isObject(routineDay)
@@ -339,6 +342,9 @@ export function validateState(state) {
           || typeof routineExercise.exerciseId !== "string"
           || typeof routineExercise.exerciseName !== "string"
           || !Number.isInteger(routineExercise.order)
+          || (routineExercise.targetLoadKg !== undefined && routineExercise.targetLoadKg !== null
+            && (!Number.isFinite(routineExercise.targetLoadKg)
+              || routineExercise.targetLoadKg < 0 || routineExercise.targetLoadKg > 2000))
           || (
             routineExercise.plannedSets !== undefined
             && (!Number.isInteger(routineExercise.plannedSets)
@@ -361,6 +367,11 @@ export function validateState(state) {
         ) {
           return "Hay un ejercicio de rutina no válido.";
         }
+        if (routine.mode === "guided") {
+          try { Object.assign(routineExercise, validateRoutineExercisePlan(routineExercise)); }
+          catch { return "Hay un plan de rutina no válido."; }
+        }
+        routineExercise.targetLoadKg ??= null;
       }
     }
     if (
@@ -389,8 +400,9 @@ export function validateState(state) {
       !isObject(session)
       || typeof session.id !== "string"
       || typeof session.userId !== "string"
-      || !["in_progress", "completed"].includes(session.status)
-      || typeof session.startedAt !== "string"
+      || !["draft", "in_progress", "completed"].includes(session.status)
+      || (session.status !== "draft" && typeof session.startedAt !== "string")
+      || (session.status === "draft" && session.startedAt !== null)
       || !isObject(session.source)
       || typeof session.source.type !== "string"
       || typeof session.source.label !== "string"
@@ -425,10 +437,34 @@ export function validateState(state) {
         || !Number.isInteger(sessionExercise.order)
         || !["active", "skipped"].includes(sessionExercise.status ?? "active")
         || !Array.isArray(sessionExercise.sets)
+        || (sessionExercise.sessionNote !== undefined
+          && (typeof sessionExercise.sessionNote !== "string" || sessionExercise.sessionNote.length > MAX_NOTE_LENGTH))
+        || (sessionExercise.pendingPlanRemoved !== undefined
+          && typeof sessionExercise.pendingPlanRemoved !== "boolean")
       ) {
         return "Hay un ejercicio de sesión no válido.";
       }
+      sessionExercise.sessionNote ??= "";
+      if (sessionExercise.routineExerciseId !== undefined) {
+        try {
+          if (typeof sessionExercise.routineExerciseId !== "string") throw new Error();
+          validateRoutineExercisePlan({ ...sessionExercise, note: sessionExercise.planNote });
+        } catch { return "Hay un plan de sesión no válido."; }
+      }
       for (const workoutSet of sessionExercise.sets) {
+        if (!isObject(workoutSet)) return "Hay una serie no válida.";
+        if (workoutSet.planOrder !== undefined && (
+          !Number.isInteger(workoutSet.planOrder) || workoutSet.planOrder < 1
+          || workoutSet.planOrder > sessionExercise.plannedSets
+          || sessionExercise.sets.filter((item) => item.planOrder === workoutSet.planOrder).length !== 1
+        )) return "Hay una serie planificada no válida.";
+        if (workoutSet.status === "skipped") {
+          if (typeof workoutSet.id !== "string" || !Number.isInteger(workoutSet.order)
+            || !Number.isInteger(workoutSet.planOrder) || workoutSet.completedAt !== null) {
+            return "Hay una serie anulada no válida.";
+          }
+          continue;
+        }
         const checkedSet = validateSetInput(workoutSet);
         if (
           !isObject(workoutSet)
@@ -639,6 +675,7 @@ export function createRoutine(
     now = new Date().toISOString(),
     id = createId("routine"),
     accentColor = null,
+    mode = "log",
     dayType = "strength",
     cardioType = "run",
   } = {},
@@ -647,6 +684,7 @@ export function createRoutine(
     max: MAX_ROUTINE_NAME_LENGTH,
   });
   if (result.error) throw new Error(result.error);
+  if (!["log", "guided"].includes(mode)) throw new Error("El modo de rutina no es válido.");
   if (accentColor !== null && !ACCENT_COLORS.has(accentColor)) {
     throw new Error("El color de la rutina no es válido.");
   }
@@ -666,6 +704,7 @@ export function createRoutine(
     userId: state.owner.id,
     name: result.value,
     accentColor,
+    mode,
     status: "active",
     suggestedDayId: null,
     days: [],
@@ -684,6 +723,7 @@ export function createRoutineWithWeekdays(
     now = new Date().toISOString(),
     id = createId("routine"),
     accentColor = null,
+    mode = "log",
     dayType = "strength",
     cardioType = "run",
   } = {},
@@ -717,7 +757,7 @@ export function createRoutineWithWeekdays(
         day.weekday = remaining[0] ?? null;
       }
     }));
-  const routine = createRoutine(state, name, { now, id, accentColor });
+  const routine = createRoutine(state, name, { now, id, accentColor, mode });
   const sortedWeekdays = normalizedWeekdays
     .sort((left, right) => ((left + 6) % 7) - ((right + 6) % 7));
   const day = addRoutineDay(state, routine.id, sortedWeekdays.length === 1 ? weekdayLabel(sortedWeekdays[0]) : "Entrenamiento", {
@@ -912,12 +952,18 @@ export function addExerciseToRoutineDay(
     repMin,
     repMax,
     note,
+    targetLoadKg,
   } = {},
 ) {
   const { routine, routineDay } = findRoutineDay(state, routineId, routineDayId);
   if (routineDayType(routineDay) === "cardio") {
     throw new Error("Un día de cardio no usa ejercicios con series.");
   }
+  const hasLegacyPlan = [plannedSets, repMin, repMax].some((value) => value !== undefined);
+  const plan = routine.mode === "guided" || hasLegacyPlan
+    ? validateRoutineExercisePlan({ plannedSets, repMin, repMax, note, targetLoadKg }) : null;
+  const target = optionalNumber(targetLoadKg, "El peso previsto", { min: 0, max: 2000 });
+  if (target.error) throw new Error(target.error);
   const exercise = findOrCreateExercise(state, name, { now, exerciseId });
   if (routineDay.exercises.some((item) => item.exerciseId === exercise.id)) {
     throw new Error("Ese ejercicio ya está incluido en el día.");
@@ -927,11 +973,9 @@ export function addExerciseToRoutineDay(
     exerciseId: exercise.id,
     exerciseName: exercise.name,
     order: routineDay.exercises.length + 1,
+    targetLoadKg: target.value,
   };
-  const hasLegacyPlan = [plannedSets, repMin, repMax].some((value) => value !== undefined);
-  if (hasLegacyPlan) {
-    Object.assign(routineExercise, validateRoutineExercisePlan({ plannedSets, repMin, repMax, note }));
-  }
+  if (plan) Object.assign(routineExercise, plan);
   routineDay.exercises.push(routineExercise);
   routine.updatedAt = now;
   return routineExercise;
@@ -942,6 +986,8 @@ function validateRoutineExercisePlan(input) {
   const repMin = Number(input.repMin);
   const repMax = Number(input.repMax);
   const note = String(input.note ?? "").trim();
+  const target = optionalNumber(input.targetLoadKg, "El peso previsto", { min: 0, max: 2000 });
+  if (target.error) throw new Error(target.error);
   if (!Number.isInteger(plannedSets) || plannedSets < MIN_PLANNED_SETS || plannedSets > MAX_PLANNED_SETS) {
     throw new Error(`Las series previstas deben estar entre ${MIN_PLANNED_SETS} y ${MAX_PLANNED_SETS}.`);
   }
@@ -952,7 +998,7 @@ function validateRoutineExercisePlan(input) {
   if (note.length > MAX_NOTE_LENGTH) {
     throw new Error(`La nota no puede superar ${MAX_NOTE_LENGTH} caracteres.`);
   }
-  return { plannedSets, repMin, repMax, note };
+  return { plannedSets, repMin, repMax, note, targetLoadKg: target.value };
 }
 
 export function updateRoutineExercisePlan(
@@ -1011,11 +1057,152 @@ export function removeExerciseFromRoutineDay(
   return removed;
 }
 
+export function removeExerciseFromRoutine(
+  state,
+  routineId,
+  exerciseId,
+  { sessionId = state.training.activeSessionId, now = new Date().toISOString() } = {},
+) {
+  const routine = findRoutine(state, routineId);
+  const placements = [];
+  routine.days.forEach((routineDay) => {
+    routineDay.exercises.forEach((exercise, index) => {
+      if (exercise.exerciseId === exerciseId) {
+        placements.push({ routineDayId: routineDay.id, index, exercise: copy(exercise) });
+      }
+    });
+    routineDay.exercises = routineDay.exercises.filter((exercise) => exercise.exerciseId !== exerciseId);
+    recalculateOrder(routineDay.exercises);
+  });
+  if (!placements.length) throw new Error("El ejercicio ya no pertenece a esta rutina.");
+
+  let sessionChange = null;
+  const session = state.training.sessions.find((item) => (
+    item.id === sessionId
+    && item.status === "in_progress"
+    && item.source?.routineId === routineId
+  ));
+  if (session) {
+    const removedPlanIds = new Set(placements.map((placement) => placement.exercise.id));
+    const index = session.exercises.findIndex((exercise) => (
+      exercise.exerciseId === exerciseId
+      || exercise.substitutedFrom?.exerciseId === exerciseId
+      || removedPlanIds.has(exercise.routineExerciseId)
+    ));
+    if (index !== -1) {
+      const sessionExercise = session.exercises[index];
+      const hasCompletedWork = sessionExercise.sets.some((set) => set.status === "completed");
+      if (hasCompletedWork) {
+        sessionChange = {
+          kind: "kept_work",
+          sessionId: session.id,
+          sessionExerciseId: sessionExercise.id,
+          previousPendingPlanRemoved: sessionExercise.pendingPlanRemoved,
+        };
+        // El trabajo realizado permanece intacto, pero ya no quedan huecos del
+        // plan por resolver después de retirar el ejercicio de la rutina.
+        sessionExercise.pendingPlanRemoved = true;
+      } else {
+        sessionChange = {
+          kind: "removed",
+          sessionId: session.id,
+          index,
+          exercise: copy(sessionExercise),
+        };
+        session.exercises.splice(index, 1);
+        recalculateOrder(session.exercises);
+      }
+    }
+  }
+
+  routine.updatedAt = now;
+  state.training.undo = {
+    type: "remove_routine_exercise",
+    routineId,
+    exerciseId,
+    placements,
+    sessionChange,
+    removedAt: now,
+  };
+  return state.training.undo;
+}
+
 export function getActiveSession(state) {
   if (!state.training.activeSessionId) return null;
   return state.training.sessions.find(
     (session) => session.id === state.training.activeSessionId && session.status === "in_progress",
   ) ?? null;
+}
+
+// Un entrenamiento libre puede montarse antes de salir de casa. El borrador no
+// es una sesión activa: no tiene hora de inicio, no aparece en el Diario y sus
+// ejercicios no influyen en récords, volumen ni mapa muscular hasta empezar.
+export function getFreeSessionDraft(state) {
+  return state.training.sessions.find((session) => (
+    session.status === "draft" && session.source?.type === "free"
+  )) ?? null;
+}
+
+export function createFreeSessionDraft(
+  state,
+  { now = new Date().toISOString(), id = createId("free-draft") } = {},
+) {
+  if (getActiveSession(state)) throw new Error("Ya hay un entrenamiento en curso.");
+  const existing = getFreeSessionDraft(state);
+  if (existing) return existing;
+  const draft = {
+    id,
+    userId: state.owner.id,
+    source: {
+      type: "free",
+      routineDayId: null,
+      label: "Entrenamiento libre",
+    },
+    sessionType: "strength",
+    status: "draft",
+    createdAt: now,
+    startedAt: null,
+    endedAt: null,
+    cardio: null,
+    exercises: [],
+  };
+  state.training.sessions.push(draft);
+  return draft;
+}
+
+export function startFreeSessionDraft(state, sessionId, now = new Date().toISOString()) {
+  const active = getActiveSession(state);
+  if (active) throw new Error("Ya hay un entrenamiento en curso.");
+  const draft = state.training.sessions.find((session) => session.id === sessionId);
+  if (!draft || draft.status !== "draft" || draft.source?.type !== "free") {
+    throw new Error("No se encontró el borrador de entrenamiento libre.");
+  }
+  if (!draft.exercises.length) throw new Error("Añade al menos un ejercicio antes de empezar.");
+  draft.status = "in_progress";
+  draft.startedAt = now;
+  state.training.activeSessionId = draft.id;
+  return draft;
+}
+
+export function discardFreeSessionDraft(state, sessionId) {
+  const index = state.training.sessions.findIndex((session) => (
+    session.id === sessionId && session.status === "draft" && session.source?.type === "free"
+  ));
+  if (index === -1) throw new Error("No se encontró el borrador de entrenamiento libre.");
+  const [draft] = state.training.sessions.splice(index, 1);
+  return draft;
+}
+
+export function removeExerciseFromFreeSessionDraft(state, sessionId, sessionExerciseId) {
+  const draft = state.training.sessions.find((session) => (
+    session.id === sessionId && session.status === "draft" && session.source?.type === "free"
+  ));
+  if (!draft) throw new Error("No se encontró el borrador de entrenamiento libre.");
+  const index = draft.exercises.findIndex((exercise) => exercise.id === sessionExerciseId);
+  if (index === -1) throw new Error("No se encontró el ejercicio del borrador.");
+  const [exercise] = draft.exercises.splice(index, 1);
+  recalculateOrder(draft.exercises);
+  return exercise;
 }
 
 export function startFreeSession(
@@ -1059,6 +1246,9 @@ export function startSessionFromRoutineDay(
   if (active) throw new Error("Ya hay un entrenamiento en curso.");
   const { routine, routineDay } = findRoutineDay(state, routineId, routineDayId);
   const sessionType = routineDayType(routineDay);
+  const guided = routine.mode === "guided";
+  // Validar la foto completa antes de crear la sesión evita planes parciales.
+  if (guided) routineDay.exercises.forEach(validateRoutineExercisePlan);
   if (sessionType === "strength" && !routineDay.exercises.length) {
     throw new Error("Añade al menos un ejercicio al día antes de entrenar.");
   }
@@ -1076,6 +1266,7 @@ export function startSessionFromRoutineDay(
         routineDayName: routineDay.name,
         routineAccentColor: routine.accentColor ?? null,
         routineDayType: sessionType,
+        ...(guided ? { routineMode: "guided" } : {}),
         cardioType: routineDay.cardioType ?? null,
       },
     },
@@ -1123,10 +1314,15 @@ export function startSessionFromRoutineDay(
         order: index + 1,
         status: "active",
         isExtra: false,
-        plannedSets: 0,
-        repMin: null,
-        repMax: null,
-        planNote: "",
+        plannedSets: guided ? routineExercise.plannedSets : 0,
+        repMin: guided ? routineExercise.repMin : null,
+        repMax: guided ? routineExercise.repMax : null,
+        planNote: guided ? routineExercise.note ?? "" : "",
+        sessionNote: "",
+        ...(guided ? {
+          targetLoadKg: routineExercise.targetLoadKg ?? null,
+          routineExerciseId: routineExercise.id,
+        } : {}),
         sets: [],
       })),
   };
@@ -1142,7 +1338,7 @@ export function addExerciseToSession(
   { now = new Date().toISOString(), exerciseId, sessionExerciseId } = {},
 ) {
   const session = state.training.sessions.find((item) => item.id === sessionId);
-  if (!session || session.status !== "in_progress") {
+  if (!session || !["draft", "in_progress"].includes(session.status)) {
     throw new Error("No hay una sesión editable con ese identificador.");
   }
 
@@ -1172,6 +1368,7 @@ export function addExerciseToSession(
     repMin: null,
     repMax: null,
     planNote: "",
+    sessionNote: "",
     sets: [],
   };
   session.exercises.push(sessionExercise);
@@ -1369,6 +1566,16 @@ function findEditableSessionExercise(state, sessionId, sessionExerciseId) {
   return sessionExercise;
 }
 
+export function setSessionExerciseNote(state, sessionId, sessionExerciseId, note) {
+  const sessionExercise = findEditableSessionExercise(state, sessionId, sessionExerciseId);
+  const value = String(note ?? "").trim();
+  if (value.length > MAX_NOTE_LENGTH) {
+    throw new Error(`La nota no puede superar ${MAX_NOTE_LENGTH} caracteres.`);
+  }
+  sessionExercise.sessionNote = value;
+  return sessionExercise;
+}
+
 export function addSetToExercise(
   state,
   sessionId,
@@ -1379,17 +1586,78 @@ export function addSetToExercise(
   const sessionExercise = findEditableSessionExercise(state, sessionId, sessionExerciseId);
   const result = validateSetInput(input);
   if (result.error) throw new Error(result.error);
+  if (input.planOrder !== undefined) assertPendingPlanSlot(sessionExercise, input.planOrder);
 
   const workoutSet = {
     id,
     order: sessionExercise.sets.length + 1,
     status: "completed",
+    ...(input.planOrder !== undefined ? { planOrder: input.planOrder } : {}),
     ...result.value,
     completedAt: now,
     updatedAt: now,
   };
   sessionExercise.sets.push(workoutSet);
   return workoutSet;
+}
+
+export function pendingPlannedSets(exercise) {
+  if (exercise.pendingPlanRemoved) return [];
+  return Array.from({ length: exercise.plannedSets ?? 0 }, (_, index) => index + 1)
+    .filter((order) => !exercise.sets.some((item) => item.planOrder === order));
+}
+
+export function guidedPlanDeviation(plan, actual) {
+  if (!plan.routineExerciseId || actual.planOrder === undefined || actual.status !== "completed"
+    || (actual.setType ?? "effective") !== "effective") return null;
+  const changes = {};
+  if (actual.loadKg !== plan.targetLoadKg) changes.targetLoadKg = actual.loadKg;
+  if (actual.reps < plan.repMin || actual.reps > plan.repMax) {
+    changes.repMin = actual.reps;
+    changes.repMax = actual.reps;
+  }
+  return Object.keys(changes).length ? changes : null;
+}
+
+export function guidedExerciseDeviation(exercise) {
+  // Una alternativa pertenece solo a esta sesión. Sus datos se conservan en
+  // el Diario, pero nunca deben convertirse en objetivos del ejercicio que
+  // ocupaba originalmente este hueco de la rutina.
+  if (!exercise?.routineExerciseId || exercise.isSubstitution || exercise.substitutedFrom) return null;
+  const effectiveSets = (exercise.sets ?? []).filter((set) => (
+    set.status === "completed"
+    && set.planOrder !== undefined
+    && (set.setType ?? "effective") === "effective"
+  ));
+  if (!effectiveSets.length) return null;
+
+  const changes = { observedSetCount: effectiveSets.length };
+  const lastSet = effectiveSets[effectiveSets.length - 1];
+  if (lastSet.loadKg !== exercise.targetLoadKg) changes.targetLoadKg = lastSet.loadKg;
+  const reps = effectiveSets.map((set) => set.reps);
+  const observedMin = Math.min(...reps);
+  const observedMax = Math.max(...reps);
+  if (observedMin < exercise.repMin || observedMax > exercise.repMax) {
+    changes.repMin = observedMin;
+    changes.repMax = observedMax;
+  }
+  return Object.keys(changes).length > 1 ? changes : null;
+}
+
+function assertPendingPlanSlot(exercise, order) {
+  if (!exercise.routineExerciseId || !Number.isInteger(order) || order < 1 || order > exercise.plannedSets) {
+    throw new Error("La serie no pertenece al plan de este ejercicio.");
+  }
+  if (!pendingPlannedSets(exercise).includes(order)) throw new Error("Esta serie ya está resuelta.");
+}
+
+export function skipPlannedSet(state, sessionId, exerciseId, planOrder, { now = new Date().toISOString(), id = createId("set") } = {}) {
+  const exercise = findEditableSessionExercise(state, sessionId, exerciseId);
+  assertPendingPlanSlot(exercise, planOrder);
+  // Anular deja constancia sin fabricar repeticiones, carga ni fecha de realización.
+  const skipped = { id, order: exercise.sets.length + 1, planOrder, status: "skipped", completedAt: null, updatedAt: now };
+  exercise.sets.push(skipped);
+  return skipped;
 }
 
 export function addCardioToSession(
@@ -1429,6 +1697,7 @@ export function duplicateSet(
   const sessionExercise = findEditableSessionExercise(state, sessionId, sessionExerciseId);
   const source = sessionExercise.sets.find((item) => item.id === setId);
   if (!source) throw new Error("No se encontró la serie que quieres duplicar.");
+  if (source.status === "skipped") throw new Error("Una serie anulada no se puede duplicar como realizada.");
   return addSetToExercise(state, sessionId, sessionExerciseId, {
     reps: source.reps,
     loadKg: source.loadKg,
@@ -1449,6 +1718,7 @@ export function updateSet(
   const sessionExercise = findEditableSessionExercise(state, sessionId, sessionExerciseId);
   const workoutSet = sessionExercise.sets.find((item) => item.id === setId);
   if (!workoutSet) throw new Error("No se encontró la serie.");
+  if (workoutSet.status === "skipped") throw new Error("Una serie anulada no se puede editar como realizada.");
   const result = validateSetInput(input);
   if (result.error) throw new Error(result.error);
 
@@ -1490,6 +1760,47 @@ export function restoreLastDeletedSet(state) {
   });
   state.training.undo = null;
   return undo.set;
+}
+
+export function restoreLastTrainingUndo(state) {
+  const undo = state.training.undo;
+  if (!undo) throw new Error("No hay nada que deshacer.");
+  if (undo.type === "delete_set") return restoreLastDeletedSet(state);
+  if (undo.type !== "remove_routine_exercise") throw new Error("La acción ya no se puede deshacer.");
+
+  const routine = findRoutine(state, undo.routineId);
+  undo.placements.forEach((placement) => {
+    const day = routine.days.find((item) => item.id === placement.routineDayId);
+    if (!day) return;
+    const index = Math.min(placement.index, day.exercises.length);
+    day.exercises.splice(index, 0, copy(placement.exercise));
+    recalculateOrder(day.exercises);
+  });
+
+  if (undo.sessionChange?.kind === "removed") {
+    const session = state.training.sessions.find((item) => (
+      item.id === undo.sessionChange.sessionId && item.status === "in_progress"
+    ));
+    if (session) {
+      const index = Math.min(undo.sessionChange.index, session.exercises.length);
+      session.exercises.splice(index, 0, copy(undo.sessionChange.exercise));
+      recalculateOrder(session.exercises);
+    }
+  } else if (undo.sessionChange?.kind === "kept_work") {
+    const exercise = findEditableSessionExercise(
+      state,
+      undo.sessionChange.sessionId,
+      undo.sessionChange.sessionExerciseId,
+    );
+    if (undo.sessionChange.previousPendingPlanRemoved === undefined) {
+      delete exercise.pendingPlanRemoved;
+    } else {
+      exercise.pendingPlanRemoved = undo.sessionChange.previousPendingPlanRemoved;
+    }
+  }
+
+  state.training.undo = null;
+  return undo;
 }
 
 export function completeSession(state, sessionId, now = new Date().toISOString()) {
@@ -1567,7 +1878,8 @@ export function findLastComparableExercise(state, exerciseId, excludedSessionId 
     .filter((session) => (
       session.id !== excludedSessionId
       && session.status === "completed"
-      && session.exercises.some((exercise) => exercise.exerciseId === exerciseId)
+      && session.exercises.some((exercise) => exercise.exerciseId === exerciseId
+        && exercise.sets.some((item) => item.status === "completed"))
     ))
     .sort((a, b) => (b.endedAt ?? b.startedAt).localeCompare(a.endedAt ?? a.startedAt));
 
@@ -1623,7 +1935,14 @@ export function removeDemoData(state) {
   state.training.exercises = state.training.exercises.filter(
     (exercise) => !exercise.isDemo || referencedExerciseIds.has(exercise.id),
   );
-  state.meta.demoSeedVersion = null;
+  const restore = state.meta.demoRestoreMeta;
+  if (restore) {
+    for (const key of ["demoSeedVersion", "publicCleanupVersion", "updatedAt"]) {
+      if (restore[key]?.present) state.meta[key] = restore[key].value;
+      else delete state.meta[key];
+    }
+    delete state.meta.demoRestoreMeta;
+  } else if ("demoSeedVersion" in state.meta) state.meta.demoSeedVersion = null;
   return state;
 }
 
@@ -1668,6 +1987,13 @@ export function cleanupPublishedData(state) {
 export function seedDemoData(state, { now = new Date().toISOString() } = {}) {
   ensureExtendedState(state);
   removeDemoData(state);
+  state.meta.demoRestoreMeta = Object.fromEntries(
+    ["demoSeedVersion", "publicCleanupVersion", "updatedAt"].map((key) => [
+      key,
+      { present: Object.hasOwn(state.meta, key), value: state.meta[key] },
+    ]),
+  );
+  const existingExerciseIds = new Set(state.training.exercises.map(exercise => exercise.id));
   const preservedActiveSessionId = state.training.activeSessionId;
   state.training.activeSessionId = null;
   try {
@@ -1682,6 +2008,7 @@ export function seedDemoData(state, { now = new Date().toISOString() } = {}) {
     {
       id: "demo-routine-push",
       name: "Demo · Empuje",
+      mode: "guided",
       days: [
         {
           id: "demo-day-push", name: "Entrenamiento", weekdays: [1, 4],
@@ -1697,6 +2024,7 @@ export function seedDemoData(state, { now = new Date().toISOString() } = {}) {
     {
       id: "demo-routine-pull",
       name: "Demo · Tirón",
+      mode: "log",
       days: [
         {
           id: "demo-day-pull", name: "Entrenamiento", weekdays: [2, 5],
@@ -1712,6 +2040,7 @@ export function seedDemoData(state, { now = new Date().toISOString() } = {}) {
     {
       id: "demo-routine-legs",
       name: "Demo · Pierna",
+      mode: "guided",
       days: [
         {
           id: "demo-day-legs", name: "Entrenamiento", weekdays: [3, 6],
@@ -1719,7 +2048,7 @@ export function seedDemoData(state, { now = new Date().toISOString() } = {}) {
             ["dataset-0043", "Sentadilla con barra", 4, 6, 8, 80],
             ["dataset-0085", "Peso muerto rumano con barra", 3, 8, 10, 75],
             ["dataset-0585", "Extensión de piernas en máquina", 3, 10, 12, 45],
-            ["dataset-1373", "Elevación de gemelos de pie", 4, 12, 15, 50],
+            ["dataset-1373", "Elevación de gemelos de pie", 4, 12, 15, null],
           ],
         },
       ],
@@ -1727,7 +2056,7 @@ export function seedDemoData(state, { now = new Date().toISOString() } = {}) {
   ];
   const demoDaysByWeekday = new Map();
   routineSpecs.forEach((routineSpec) => {
-    const routine = createRoutine(state, routineSpec.name, { id: routineSpec.id, now });
+    const routine = createRoutine(state, routineSpec.name, { id: routineSpec.id, now, mode: routineSpec.mode });
     routine.isDemo = true;
     routineSpec.days.forEach((daySpec) => {
       const day = addRoutineDay(state, routine.id, daySpec.name, { id: daySpec.id, now });
@@ -1739,7 +2068,7 @@ export function seedDemoData(state, { now = new Date().toISOString() } = {}) {
         setRoutineDayWeekdays(state, routine.id, day.id, availableWeekdays, now);
         availableWeekdays.forEach((weekday) => assignedWeekdays.add(weekday));
       }
-      daySpec.exercises.forEach(([exerciseId, name, plannedSets, repMin, repMax, demoLoad]) => {
+      daySpec.exercises.forEach(([exerciseId, name, plannedSets, repMin, repMax, targetLoadKg]) => {
         const routineExercise = addExerciseToRoutineDay(state, routine.id, day.id, name, {
           exerciseId,
           routineExerciseId: `demo-routine-exercise-${day.id}-${exerciseId}`,
@@ -1747,18 +2076,19 @@ export function seedDemoData(state, { now = new Date().toISOString() } = {}) {
           repMin,
           repMax,
           note: "Datos de ejemplo",
+          targetLoadKg,
           now,
         });
-        routineExercise.demoLoad = demoLoad;
         const localExercise = state.training.exercises.find((exercise) => exercise.id === exerciseId);
-        if (localExercise) localExercise.isDemo = true;
+        if (localExercise && !existingExerciseIds.has(localExercise.id)) localExercise.isDemo = true;
       });
-      routineDayWeekdays(day).forEach((weekday) => {
+      daySpec.weekdays.forEach((weekday) => {
         demoDaysByWeekday.set(weekday, { routine, day });
       });
     });
   });
 
+  let recentSkippedSetAdded = false;
   for (let offset = 60; offset >= 1; offset -= 1) {
     const date = new Date(createdAt);
     date.setHours(18, 0, 0, 0);
@@ -1799,7 +2129,9 @@ export function seedDemoData(state, { now = new Date().toISOString() } = {}) {
       const planned = scheduled.day.exercises.find(
         (exercise) => exercise.exerciseId === sessionExercise.exerciseId,
       );
-      const load = Number(planned?.demoLoad ?? 20) + Math.floor((60 - offset) / 7) * 2.5;
+      const load = planned.targetLoadKg === null
+        ? null
+        : planned.targetLoadKg + Math.floor((60 - offset) / 7) * 2.5;
       if (exerciseIndex === 0 && load > 0) {
         addSetToExercise(state, session.id, sessionExercise.id, {
           reps: 5,
@@ -1811,7 +2143,23 @@ export function seedDemoData(state, { now = new Date().toISOString() } = {}) {
       }
       const setCount = Math.min(planned?.plannedSets ?? 3, 4);
       for (let setIndex = 0; setIndex < setCount; setIndex += 1) {
+        const shouldAddRecentSkip = sessionExercise.routineExerciseId
+          && !recentSkippedSetAdded
+          && offset <= 7
+          && exerciseIndex === 0
+          && setIndex === setCount - 1;
+        const shouldAddOlderSkip = sessionExercise.routineExerciseId
+          && offset % 10 === 0
+          && exerciseIndex === 0
+          && setIndex === setCount - 1;
+        if (shouldAddRecentSkip || shouldAddOlderSkip) {
+          skipPlannedSet(state, session.id, sessionExercise.id, setIndex + 1,
+            { id: `demo-set-${dateKey}-${exerciseIndex}-${setIndex}`, now: date.toISOString() });
+          if (shouldAddRecentSkip) recentSkippedSetAdded = true;
+          continue;
+        }
         addSetToExercise(state, session.id, sessionExercise.id, {
+          ...(sessionExercise.routineExerciseId ? { planOrder: setIndex + 1 } : {}),
           reps: Math.max(planned?.repMin ?? 8, (planned?.repMax ?? 10) - (setIndex % 2)),
           loadKg: load,
           rir: Math.min(3, 1 + setIndex),
@@ -1867,7 +2215,7 @@ export function seedDemoData(state, { now = new Date().toISOString() } = {}) {
     { id: "demo-label-yogurt", isDemo: true, name: "Yogur alto en proteína", brand: "Marca de ejemplo", calories100: 59, protein100: 10, carbs100: 4, fat100: 0.5, photoName: "etiqueta-ejemplo.jpg" },
     { id: "demo-label-pasta", isDemo: true, name: "Pasta seca", brand: "Marca de ejemplo", calories100: 350, protein100: 12, carbs100: 70, fat100: 1.5, photoName: "paquete-ejemplo.jpg" },
   );
-  state.meta.demoSeedVersion = 1;
+  state.meta.demoSeedVersion = 3;
   state.meta.publicCleanupVersion = PUBLIC_CLEANUP_VERSION;
   return state;
   } finally {
@@ -2046,12 +2394,19 @@ export function computeMuscleVolume(state, { fromIso = null, toIso = null, sessi
   );
 
   (state?.training?.sessions ?? []).forEach((session) => {
+    // La sesión en curso cuenta: lo que ya has hecho hoy es trabajo hecho, y el
+    // mapa semanal del Diario se mueve mientras entrenas. El borrador de
+    // entrenamiento libre no: todavía no has empezado.
+    //
+    // El filtro va ANTES de mirar el sessionId a propósito. Estaba solo en la
+    // rama del periodo, así que preguntar por el id de un borrador colaba sus
+    // series en el mapa. Hoy ningún sitio de la app lo pide —el periodo
+    // "sesión" usa la activa o la última cerrada— pero la garantía no puede
+    // depender de que todos los que llamen se acuerden.
+    if (session.status !== "completed" && session.status !== "in_progress") return;
     if (sessionId) {
       if (session.id !== sessionId) return;
     } else {
-      // La sesión en curso también cuenta: lo que ya has hecho hoy es trabajo
-      // hecho, y el mapa semanal del Diario se mueve mientras entrenas.
-      if (session.status !== "completed" && session.status !== "in_progress") return;
       const stamp = session.status === "completed"
         ? (session.endedAt ?? session.startedAt)
         : session.startedAt;

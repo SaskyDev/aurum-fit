@@ -21,11 +21,13 @@ import {
   computeMuscleVolume,
   exercisePersonalRecords,
   createEmptyState,
+  createFreeSessionDraft,
   createRoutine,
   createRoutineWithWeekdays,
   deleteSet,
   duplicateSet,
   discardSession,
+  discardFreeSessionDraft,
   findLastComparableExercise,
   loadAppState,
   moveRoutineDay,
@@ -50,6 +52,7 @@ import {
   setRoutineAccentColor,
   setSuggestedRoutineDay,
   startFreeSession,
+  startFreeSessionDraft,
   startSessionFromRoutineDay,
   updateSet,
   validateLabelPhotoFile,
@@ -316,6 +319,39 @@ test("no permite finalizar una sesión vacía", () => {
   assert.throws(() => completeSession(state, session.id), /al menos una serie/i);
 });
 
+test("un entrenamiento libre puede prepararse sin iniciar el cronómetro ni contaminar el Diario", () => {
+  const state = createEmptyState({ now: "2026-09-11T08:00:00.000Z" });
+  const draft = createFreeSessionDraft(state, {
+    id: "free-draft-1",
+    now: "2026-09-11T08:00:00.000Z",
+  });
+
+  assert.equal(draft.status, "draft");
+  assert.equal(draft.startedAt, null);
+  assert.equal(state.training.activeSessionId, null);
+  assert.equal(validateState(state), null);
+  const exercise = addExerciseToSession(state, draft.id, "Remo unilateral", {
+    exerciseId: "exercise-row",
+    sessionExerciseId: "draft-row",
+  });
+  assert.equal(exercise.exerciseName, "Remo unilateral");
+  assert.equal(exercise.sets.length, 0);
+  assert.equal(exercisePersonalRecords(state, "exercise-row").heaviestSet, null);
+
+  const started = startFreeSessionDraft(state, draft.id, "2026-09-11T18:15:00.000Z");
+  assert.equal(started.status, "in_progress");
+  assert.equal(started.startedAt, "2026-09-11T18:15:00.000Z");
+  assert.equal(state.training.activeSessionId, draft.id);
+  assert.equal(validateState(state), null);
+
+  state.training.activeSessionId = null;
+  started.status = "draft";
+  started.startedAt = null;
+  discardFreeSessionDraft(state, started.id);
+  assert.equal(state.training.sessions.some((session) => session.id === started.id), false);
+  assert.equal(validateState(state), null);
+});
+
 test("la importación acepta v2 y legado, y rechaza estructuras ajenas", () => {
   const state = createEmptyState();
   assert.equal(parseImportPayload(JSON.stringify(state)).schemaVersion, 2);
@@ -464,9 +500,9 @@ test("inicia desde un día y conserva una copia histórica al editar la rutina",
   assert.deepEqual(torso.exercises.map((exercise) => exercise.exerciseName), ["Press banca"]);
 });
 
-test("la rutina solo copia ejercicios y la sesión empieza sin objetivos ficticios", () => {
+test("en modo log, la rutina solo copia ejercicios y la sesión empieza sin objetivos ficticios", () => {
   const state = createEmptyState({ now: "2026-07-24T08:00:00.000Z" });
-  const routine = createRoutine(state, "Empuje", { id: "routine-1" });
+  const routine = createRoutine(state, "Empuje", { id: "routine-1", mode: "log" });
   const day = addRoutineDay(state, routine.id, "Push", { id: "day-push" });
   const exercise = addExerciseToRoutineDay(state, routine.id, day.id, "Press banca", {
     exerciseId: "exercise-press",

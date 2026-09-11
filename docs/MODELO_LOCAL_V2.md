@@ -1,24 +1,25 @@
 # Modelo local v2
 
 Fecha: 24 de julio de 2026.
-Última revisión: 7 de septiembre de 2026.
+Última revisión: 11 de septiembre de 2026.
 
 ## Objetivo del incremento
 
 Este corte permite:
 
-- iniciar un entrenamiento libre;
+- preparar un entrenamiento libre como borrador e iniciarlo cuando corresponda;
 - crear rutinas con días y ejercicios ordenados;
 - revisar una rutina y empezar uno de sus días;
 - registrar series independientes;
 - recuperar la sesión al recargar y finalizarla.
 - asignar cada día de rutina a un día de la semana sin conflictos entre rutinas;
 - registrar RIR opcional de 0 a 5, manteniendo lectura de datos antiguos con RPE;
-- usar un temporizador manual por ejercicio de 30 s, 1, 2 o 3 minutos;
+- usar un descanso flotante tras cada serie con duración habitual configurable;
 - consultar Diario por periodo con actividad, nutrición, sesiones y progreso por
   ejercicio;
 - distinguir series efectivas, de aproximación y de calentamiento;
-- omitir o sustituir un ejercicio previsto, o añadir uno extra solo a la sesión actual;
+- omitir o sustituir un ejercicio previsto, añadir uno extra solo a la sesión
+  actual y guardar una nota propia de esa sesión;
 - impedir cualquier edición después de finalizar la sesión.
 
 Incluye una base local de recetas y etiquetas por marca. Todavía no incluye OCR,
@@ -52,7 +53,9 @@ estado v2
 │   │   └── days
 │   │       └── exercises
 │   ├── sessions
+│   │   ├── draft (solo libre; no cuenta tiempo, Diario ni métricas)
 │   │   └── exercises
+│   │       ├── sessionNote (opcional)
 │   │       └── sets
 │   ├── activeSessionId
 │   └── undo
@@ -65,21 +68,31 @@ estado v2
 Cada entidad histórica lleva `userId` aunque solo exista el usuario local. Esto
 prepara la propiedad futura sin introducir cuentas, autenticación o backend.
 
+Un entrenamiento libre puede existir como `draft`: conserva la lista puntual de
+ejercicios para prepararla antes de ir al gimnasio, pero no tiene `startedAt`, no
+activa el cronómetro y no participa en récords, volumen, mapa muscular ni Diario.
+Al pulsar **Empezar entrenamiento**, el mismo borrador pasa a `in_progress`; al
+finalizar queda registrado como cualquier otra sesión. No crea ni modifica una
+rutina reutilizable.
+
 Una rutina es un plan mutable. Cada rutina contiene bloques/días con ejercicios
 ordenados. Un mismo bloque puede repetirse varios días de la semana mediante
 `weekdays` para evitar tres copias idénticas de una rutina full body. El campo
 antiguo `weekday` se conserva como compatibilidad y representa el primer día
 asignado cuando existe.
 
-El plan decide qué ejercicios corresponden al día, pero no prescribe series,
-repeticiones, peso ni RIR.
+En modo `log`, el plan solo decide qué ejercicios corresponden al día. En modo
+`guided`, también prescribe series, rango de repeticiones y una carga opcional.
+El RIR, tipo de serie y nota de lo realizado se deciden durante la sesión.
 
 Al iniciar desde un día, la sesión copia:
 
 - nombre de la rutina;
 - nombre del día;
 - identidad, nombre y orden de cada ejercicio.
-- una sesión vacía para registrar únicamente lo que se haga ese día.
+- en `log`, una sesión vacía para registrar únicamente lo realizado;
+- en `guided`, una foto independiente del plan. Sus huecos pendientes se
+  derivan de esa foto y no son series realizadas.
 
 Por eso añadir o reordenar ejercicios posteriormente en la rutina no puede
 reescribir el pasado.
@@ -139,14 +152,87 @@ concreta**, comparándola con el historial sin ella. Exige superar, no igualar:
 si igualar contase, cinco series al mismo peso máximo cantarían récord cinco
 veces y la palabra dejaría de significar algo.
 
+## Rutinas guiadas · implementadas
+
+Construidas y verificadas el 11 de septiembre de 2026. El porqué de producto
+está en `DECISIONES_UX.md`; aquí queda la forma vigente de los datos.
+
+### Base completada
+
+El ejercicio de rutina reutiliza el plan que ya existía a medias:
+`plannedSets`, `repMin`, `repMax` y `note`, con validación
+(`validateRoutineExercisePlan`), actualizador (`updateRoutineExercisePlan`) y
+normalización en `validateState`. La interfaz guiada ya permite configurarlo y
+añade `targetLoadKg`; las rutinas de registro no heredan esos objetivos.
+
+### Campos añadidos
+
+- **`mode` en la rutina — implementado (paso 1)**: `"log"` (por defecto) o
+  `"guided"`. Ausente se normaliza a `"log"` en `validateState`, para que las
+  rutinas ya guardadas sigan siendo válidas.
+- **`targetLoadKg` en el ejercicio de rutina — implementado (paso 2)**.
+  **Admite nulo a propósito** — es el caso de "primera vez, aún sin referencia".
+  Distinto de `0`, igual que en el récord personal: `Number(null)` es `0` y
+  confundirlos haría que un ejercicio sin peso anotado pareciera de 0 kg.
+- **Estado `"skipped"` en la serie — implementado (paso 4)**, para la planificada
+  que no se llegó a hacer. Conserva `planOrder` y `completedAt: null`, sin carga
+  ni repeticiones reales. `planOrder` enlaza una serie realizada o anulada con un
+  único hueco de la foto; borrar esa serie vuelve a dejar el hueco pendiente.
+
+### La invariante que no se puede romper
+
+> **Una serie planificada no cuenta como realizada hasta que se marca.**
+
+En la práctica: nada que no tenga `status === "completed"` puede aparecer en
+`computeMuscleVolume`, en `personalRecordCandidates` ni en el progreso. Esos
+filtros ya existen y ya lo hacen; lo que hay que garantizar es que lo planificado
+y lo anulado **nunca** lleguen a ese estado.
+
+Es el punto donde este cambio puede corromper datos que hoy son correctos: si una
+serie planificada se cuela como hecha, el mapa muscular y los récords empiezan a
+mentir sin que salte ningún error.
+
+### El plan y el hecho son cosas distintas
+
+`startSessionFromRoutineDay` copia el plan a la sesión **solo si la rutina es
+`guided`**. En modo registro sigue arrancando en blanco, que es la decisión
+original y sigue siendo la correcta ahí.
+
+Implementado en el paso 3: la foto incluye `routineExerciseId`, `plannedSets`,
+`repMin`, `repMax`, `targetLoadKg` y `planNote`. Las pendientes no son registros:
+se derivan de esa foto, mientras `sets` empieza vacío. La fuente conserva
+`snapshot.routineMode: "guided"` solo para sesiones guiadas.
+
+Una vez copiado, **el plan de la sesión es una foto**: editarlo durante el
+entrenamiento afecta a ese día y no toca la rutina. Y al revés, editar la rutina
+después no altera ninguna sesión ya registrada. Es la misma regla de siempre —la
+rutina es un plan que cambia, la sesión es un hecho que ya ocurrió— aplicada a
+un plan que ahora lleva números.
+
+El plan de la rutina solo cambia cuando el usuario confirma que quiere cambiarlo,
+al responder la pregunta de desviación agregada al cerrar o cambiar de ejercicio.
+La propuesta se calcula solo con series efectivas y se muestra prellenada; una
+única serie nunca reescribe automáticamente el plan.
+
+`sessionNote` está separada de `planNote`: la primera describe lo ocurrido hoy y
+la segunda pertenece a la plantilla. Ambas son opcionales y admiten 300
+caracteres, por lo que no se cambia `schemaVersion`.
+
+La eliminación global dentro de una rutina usa un `training.undo` discriminado.
+Guarda cada posición retirada y el cambio de la sesión activa. Si ya había
+trabajo, `pendingPlanRemoved` oculta solo los huecos pendientes; las series
+realizadas siguen en la sesión y acabarán en el Diario. Deshacer restaura el
+plan y la posición sin tocar sesiones históricas.
+
 ## Reglas de seguridad
 
-- La serie es la unidad guardada y tiene estado `completed`.
+- La serie es la unidad guardada y tiene estado `completed` cuando ocurrió o
+  `skipped` cuando una prevista se anuló; ningún otro estado cuenta como hecho.
 - Cada serie tiene un único tipo: `effective`, `approach` o `warmup`.
 - Solo las efectivas completan las series previstas y alimentan la gráfica
   principal de peso/repeticiones.
 - Repeticiones: entero entre 1 y 1000.
-- Peso opcional: entre 0 y 2000 kg.
+- Peso opcional: entre 0 y 2000 kg; la rueda de la interfaz encaja cada 0,25 kg.
 - RIR opcional: entero entre 0 y 5. Los datos importados con RPE antiguo se
   conservan para compatibilidad, pero la interfaz nueva usa RIR.
 - Nota opcional: máximo 300 caracteres.
@@ -155,7 +241,10 @@ veces y la palabra dejaría de significar algo.
 - Una sesión finalizada no admite corregir, borrar ni añadir series.
 - Un ejercicio con series completadas no puede marcarse después como omitido.
 - Una sustitución conserva el ejercicio original en `substitutedFrom`, afecta solo
-  a la sesión activa y se bloquea en cuanto existe una serie completada.
+  a la sesión activa y se bloquea en cuanto existe una serie completada. Sus
+  resultados quedan en el Diario, pero nunca generan cambios para el plan original;
+  si se elimina la posición de la rutina, se resuelve mediante el identificador
+  original y se conserva cualquier trabajo ya registrado con la alternativa.
 - Un día de rutina vacío no puede iniciarse.
 - No se permiten rutinas, días o ejercicios duplicados dentro del mismo contexto.
 - Dos rutinas activas no pueden compartir el mismo día de la semana.

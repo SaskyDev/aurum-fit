@@ -15,11 +15,14 @@ import {
   exercisePersonalRecords,
   recordsSetBy,
   createRoutineWithWeekdays,
+  createFreeSessionDraft,
   deleteSet,
   duplicateSet,
   discardSession,
+  discardFreeSessionDraft,
   findLastComparableExercise,
   getActiveSession,
+  getFreeSessionDraft,
   loadAppState,
   PUBLIC_CLEANUP_VERSION,
   moveRoutineExercise,
@@ -31,21 +34,28 @@ import {
   persistState,
   removeDemoData,
   removeExerciseFromRoutineDay,
+  removeExerciseFromRoutine,
+  removeExerciseFromFreeSessionDraft,
   replaceSessionExerciseForToday,
-  restoreLastDeletedSet,
+  restoreLastTrainingUndo,
   routineDayType,
   routineDayWeekdays,
   seedDemoData,
   setSessionExerciseSkipped,
+  setSessionExerciseNote,
   setRoutineDayWeekday,
   setRoutineDayWeekdays,
   setRoutineAccentColor,
-  startFreeSession,
+  startFreeSessionDraft,
   startSessionFromRoutineDay,
   updateSet,
+  updateRoutineExercisePlan,
+  pendingPlannedSets,
+  skipPlannedSet,
+  guidedExerciseDeviation,
   validateLabelPhotoFile,
-} from "./core.js?v=73";
-import { BODY_FIGURES } from "./body-paths.js?v=73";
+} from "./core.js?v=98";
+import { BODY_FIGURES } from "./body-paths.js?v=98";
 
 const defaultTargets = { calories: 2200, protein: 170, steps: 10000 };
 const defaultPreferences = {
@@ -129,6 +139,8 @@ let selectedPlannedWorkout = null;
 let settingsView = "menu";
 const pendingSetSubmissions = new Set();
 const restTimerStates = new Map();
+let activeRestExerciseId = null;
+const promptedDeviationSignatures = new Map();
 // Qué años y meses del diario están desplegados, para que renderizar de nuevo
 // no cierre lo que la persona acaba de abrir.
 const diaryOpenGroups = new Set();
@@ -295,11 +307,11 @@ function showNotice(message, { error = false, area = "trainingNotice" } = {}) {
   noticeTimers.set(area, timerId);
 }
 
-function commit(change, successMessage = "Guardado automáticamente.") {
+function commit(change, successMessage = "Guardado automáticamente.", { preserveUpdatedAt = false } = {}) {
   try {
     const next = structuredClone(state);
     change(next);
-    state = persistState(localStorage, next);
+    state = persistState(localStorage, next, preserveUpdatedAt ? next.meta.updatedAt : new Date().toISOString());
     render();
     if (successMessage) showNotice(successMessage);
     return true;
@@ -718,7 +730,8 @@ function timerFor(exerciseId) {
 }
 
 function stopExerciseTimer(exerciseId) {
-  const timer = timerFor(exerciseId);
+  const timer = restTimerStates.get(exerciseId);
+  if (!timer) return;
   if (timer.intervalId !== null) window.clearInterval(timer.intervalId);
   timer.intervalId = null;
   timer.running = false;
@@ -726,23 +739,53 @@ function stopExerciseTimer(exerciseId) {
 
 function stopAllRestTimers({ clear = false } = {}) {
   [...restTimerStates.keys()].forEach(stopExerciseTimer);
-  if (clear) restTimerStates.clear();
+  if (clear) {
+    restTimerStates.clear();
+    activeRestExerciseId = null;
+  }
+  renderCompactRestBar();
 }
 
 function renderExerciseTimer(exerciseId) {
-  const timer = timerFor(exerciseId);
-  const root = document.querySelector(`[data-rest-timer="${exerciseId}"]`);
-  if (!root) return;
-  const display = root.querySelector("[data-rest-display]");
-  const toggle = root.querySelector("[data-rest-toggle]");
-  const reset = root.querySelector("[data-rest-reset]");
-  display.textContent = formatTimer(timer.remaining);
-  display.classList.toggle("timer-running", timer.running);
-  toggle.textContent = timer.running ? "Pausar" : "Iniciar";
-  reset.disabled = timer.remaining === timer.duration && !timer.running;
-  root.querySelectorAll("[data-rest-seconds]").forEach((button) => {
-    button.classList.toggle("selected", Number(button.dataset.restSeconds) === timer.duration);
+  if (activeRestExerciseId === exerciseId) renderCompactRestBar();
+}
+
+function renderCompactRestBar() {
+  let root = document.getElementById("compactRestBar");
+  const activeSession = getActiveSession(state);
+  const timer = activeRestExerciseId ? restTimerStates.get(activeRestExerciseId) : null;
+  if (!activeSession || !timer || (timer.remaining <= 0 && !timer.running)) {
+    root?.remove();
+    return;
+  }
+  if (!root) {
+    root = createElement("aside", "compact-rest-bar");
+    root.id = "compactRestBar";
+    root.setAttribute("aria-label", "Temporizador de descanso");
+    document.body.appendChild(root);
+  }
+  const exercise = activeSession.exercises.find((item) => item.id === activeRestExerciseId);
+  const copyBlock = createElement("div", "compact-rest-copy");
+  copyBlock.append(
+    createElement("small", "", exercise ? `Descanso · ${exercise.exerciseName}` : "Descanso"),
+    createElement("strong", "compact-rest-time", formatTimer(timer.remaining)),
+  );
+  copyBlock.querySelector("strong").setAttribute("aria-live", "off");
+  const add = createButton("+30 s", "compact-rest-action", () => {
+    timer.remaining = Math.min(3599, timer.remaining + 30);
+    renderCompactRestBar();
   });
+  const toggle = createButton(timer.running ? "Pausa" : "Seguir", "compact-rest-action", () => {
+    toggleExerciseTimer(activeRestExerciseId);
+  });
+  toggle.setAttribute("aria-label", timer.running ? "Pausar descanso" : "Reanudar descanso");
+  const skip = createButton("Saltar", "compact-rest-skip", () => {
+    stopExerciseTimer(activeRestExerciseId);
+    timer.remaining = 0;
+    activeRestExerciseId = null;
+    renderCompactRestBar();
+  });
+  root.replaceChildren(copyBlock, add, toggle, skip);
 }
 
 function toggleExerciseTimer(exerciseId) {
@@ -781,88 +824,8 @@ function startRestAfterSet(exerciseId) {
   stopExerciseTimer(exerciseId);
   const timer = timerFor(exerciseId);
   timer.remaining = timer.duration;
+  activeRestExerciseId = exerciseId;
   toggleExerciseTimer(exerciseId);
-}
-
-function setExerciseTimerDuration(exerciseId, seconds) {
-  stopExerciseTimer(exerciseId);
-  const timer = timerFor(exerciseId);
-  timer.duration = seconds;
-  timer.remaining = seconds;
-  renderExerciseTimer(exerciseId);
-}
-
-function createExerciseRestTimer(exerciseId) {
-  const root = createElement("section", "exercise-rest-timer");
-  root.dataset.restTimer = exerciseId;
-  const heading = createElement("div", "exercise-timer-heading");
-  const label = createElement("span", "eyebrow", "Descanso de este ejercicio");
-  const display = createElement("strong", "timer-display", formatTimer(timerFor(exerciseId).duration));
-  display.dataset.restDisplay = "";
-  heading.append(label, display);
-  const controls = createElement("div", "timer-controls compact-timer-controls");
-  [[30, "30 s"], [60, "1 min"], [120, "2 min"], [180, "3 min"]].forEach(([seconds, text]) => {
-    const button = createButton(text, "button-secondary timer-preset", () => {
-      setExerciseTimerDuration(exerciseId, seconds);
-    });
-    button.dataset.restSeconds = String(seconds);
-    controls.appendChild(button);
-  });
-  const toggle = createButton("Iniciar", "button-accent", () => toggleExerciseTimer(exerciseId));
-  toggle.dataset.restToggle = "";
-  const reset = createButton("Reiniciar", "button-quiet timer-reset-button", () => {
-    stopExerciseTimer(exerciseId);
-    const timer = timerFor(exerciseId);
-    timer.remaining = timer.duration;
-    renderExerciseTimer(exerciseId);
-  });
-  reset.dataset.restReset = "";
-  const custom = createButton("+ Personalizar", "button-secondary timer-custom-button", () => {
-    editor.hidden = !editor.hidden;
-    if (!editor.hidden) minutes.focus();
-  });
-  const editor = createElement("form", "custom-timer-form");
-  editor.hidden = true;
-  const minutes = document.createElement("input");
-  minutes.type = "number";
-  minutes.min = "0";
-  minutes.max = "59";
-  minutes.step = "1";
-  minutes.value = "1";
-  minutes.inputMode = "numeric";
-  minutes.setAttribute("aria-label", "Minutos de descanso personalizados");
-  const separator = createElement("span", "", ":");
-  const seconds = document.createElement("input");
-  seconds.type = "number";
-  seconds.min = "0";
-  seconds.max = "59";
-  seconds.step = "1";
-  seconds.value = "0";
-  seconds.inputMode = "numeric";
-  seconds.setAttribute("aria-label", "Segundos de descanso personalizados");
-  const apply = createElement("button", "button button-accent", "Aplicar");
-  apply.type = "submit";
-  editor.append(minutes, separator, seconds, apply);
-  editor.addEventListener("submit", (event) => {
-    event.preventDefault();
-    const minuteValue = Number(minutes.value);
-    const secondValue = Number(seconds.value);
-    const duration = minuteValue * 60 + secondValue;
-    if (!Number.isInteger(minuteValue) || !Number.isInteger(secondValue)
-      || minuteValue < 0 || minuteValue > 59 || secondValue < 0 || secondValue > 59
-      || duration < 1 || duration > 3599) {
-      showNotice("El descanso personalizado debe estar entre 00:01 y 59:59.", { error: true });
-      return;
-    }
-    setExerciseTimerDuration(exerciseId, duration);
-    editor.hidden = true;
-    showNotice(`Descanso personalizado: ${formatTimer(duration)}.`);
-  });
-  controls.append(custom, toggle, reset);
-  root.append(heading, controls);
-  root.appendChild(editor);
-  window.requestAnimationFrame(() => renderExerciseTimer(exerciseId));
-  return root;
 }
 
 function dayTotals(day) {
@@ -941,6 +904,83 @@ function createButton(text, className, onClick) {
   return button;
 }
 
+function createExerciseQuickAction(label, iconName, action, onClick) {
+  const button = createButton("", "exercise-quick-action", onClick);
+  button.dataset.quickAction = action;
+  button.setAttribute("aria-label", label);
+  // Inline paths avoid the file:// SVG <use> limitation on the mobile preview.
+  button.append(createQuickActionIcon(iconName), createElement("span", "quick-action-label", label));
+  return button;
+}
+
+function createQuickActionIcon(name) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("class", "quick-action-icon");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "2");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+  svg.setAttribute("aria-hidden", "true");
+  const add = (tag, attrs) => {
+    const node = document.createElementNS("http://www.w3.org/2000/svg", tag);
+    Object.entries(attrs).forEach(([key, value]) => node.setAttribute(key, value));
+    svg.appendChild(node);
+  };
+  const icons = {
+    guide: () => { add("circle", { cx: "12", cy: "12", r: "9" }); add("path", { d: "M9.7 9a2.5 2.5 0 1 1 4.3 1.7c-.9.9-2 1.4-2 3" }); add("path", { d: "M12 17h.01" }); },
+    note: () => { add("path", { d: "M5 4h14v16H5z" }); add("path", { d: "M8 9h8M8 13h5" }); },
+    swap: () => { add("path", { d: "M7 7h11l-3-3M17 17H6l3 3" }); add("path", { d: "M18 7l-3 3M6 17l3-3" }); },
+    skip: () => { add("path", { d: "M6 6l12 12M18 6L6 18" }); },
+    trash: () => { add("path", { d: "M4 7h16M10 11v6M14 11v6M9 7l1-2h4l1 2M6 7l1 13h10l1-13" }); },
+    check: () => add("path", { d: "m6 12 4 4 8-8" }),
+  };
+  (icons[name] ?? icons.guide)();
+  return svg;
+}
+
+function trapModalFocus(overlay, { initialFocus, onEscape }) {
+  const previouslyFocused = document.activeElement;
+  const focusableSelector = [
+    "button:not([disabled])",
+    "input:not([disabled])",
+    "textarea:not([disabled])",
+    "select:not([disabled])",
+    '[href]',
+    '[tabindex]:not([tabindex="-1"])',
+  ].join(",");
+  const focusables = () => [...overlay.querySelectorAll(focusableSelector)]
+    .filter((element) => (
+      !element.hidden
+      && element.tabIndex >= 0
+      && element.getAttribute("aria-hidden") !== "true"
+    ));
+  const handleKeydown = (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onEscape();
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const items = focusables();
+    if (!items.length) return;
+    const currentIndex = items.indexOf(document.activeElement);
+    event.preventDefault();
+    const step = event.shiftKey ? -1 : 1;
+    const nextIndex = currentIndex === -1
+      ? (event.shiftKey ? items.length - 1 : 0)
+      : (currentIndex + step + items.length) % items.length;
+    items[nextIndex].focus();
+  };
+  document.addEventListener("keydown", handleKeydown);
+  window.requestAnimationFrame(() => initialFocus?.focus());
+  return () => {
+    document.removeEventListener("keydown", handleKeydown);
+    if (previouslyFocused instanceof HTMLElement && previouslyFocused.isConnected) previouslyFocused.focus();
+  };
+}
+
 function confirmDialog(message, {
   title = "Confirmar acción",
   confirmLabel = "Confirmar",
@@ -1006,6 +1046,220 @@ function confirmDialog(message, {
     document.body.appendChild(overlay);
     document.body.classList.add("overlay-open");
     confirmBtn.focus();
+  });
+}
+
+function openSetTypePicker(trigger, current = "effective") {
+  return new Promise((resolve) => {
+    const layer = createElement("div", "set-type-picker-layer");
+    const popover = createElement("div", "set-type-popover");
+    popover.setAttribute("role", "dialog");
+    popover.setAttribute("aria-label", "Tipo de serie");
+    const choices = [
+      ["warmup", "Calentamiento"],
+      ["approach", "Aproximación"],
+      ["effective", "Efectiva"],
+    ];
+    let settled = false;
+    const close = (value = null) => {
+      if (settled) return;
+      settled = true;
+      document.removeEventListener("keydown", onKeydown, true);
+      layer.remove();
+      trigger?.focus();
+      resolve(value);
+    };
+    const buttons = choices.map(([value, label]) => {
+      const button = createButton(label, `set-type-choice ${setTypeClass(value)}`, () => close(value));
+      button.setAttribute("aria-pressed", String(value === current));
+      popover.appendChild(button);
+      return button;
+    });
+    function onKeydown(event) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        close();
+      }
+      if (event.key === "Tab") {
+        const index = buttons.indexOf(document.activeElement);
+        if (index === -1) return;
+        event.preventDefault();
+        buttons[(index + (event.shiftKey ? -1 : 1) + buttons.length) % buttons.length].focus();
+      }
+    }
+    layer.addEventListener("pointerdown", (event) => {
+      if (event.target === layer) close();
+    });
+    layer.appendChild(popover);
+    document.body.appendChild(layer);
+    document.addEventListener("keydown", onKeydown, true);
+    (buttons.find((button) => button.getAttribute("aria-pressed") === "true") ?? buttons.at(-1)).focus();
+  });
+}
+
+function openNumericWheel({ label, value, min, max, step, nullable = false }) {
+  return new Promise((resolve) => {
+    const itemHeight = 44;
+    const numericCount = Math.round((max - min) / step) + 1;
+    const totalCount = numericCount + (nullable ? 1 : 0);
+    const valueAt = (index) => {
+      if (nullable && index === 0) return null;
+      const numericIndex = index - (nullable ? 1 : 0);
+      return Number((min + numericIndex * step).toFixed(2));
+    };
+    const indexFor = (raw) => {
+      if (nullable && (raw === null || raw === "" || raw === undefined)) return 0;
+      const numeric = Math.min(max, Math.max(min, Number(raw)));
+      return Math.min(totalCount - 1, Math.max(nullable ? 1 : 0,
+        Math.round((numeric - min) / step) + (nullable ? 1 : 0)));
+    };
+    let selectedIndex = indexFor(value);
+    let windowStart = 0;
+    let scrollTimer = null;
+    let settling = false;
+    let releaseFocus = () => {};
+    const overlay = createElement("div", "numeric-wheel-overlay");
+    const sheet = createElement("section", "numeric-wheel-sheet");
+    sheet.setAttribute("role", "dialog");
+    sheet.setAttribute("aria-modal", "true");
+    sheet.setAttribute("aria-label", `Editar ${label}`);
+    const header = createElement("header", "numeric-wheel-header");
+    const cancel = createButton("Cancelar", "button-link", () => close(undefined));
+    const title = createElement("strong", "", label);
+    const done = createButton("Listo", "button-link numeric-wheel-done", () => close(valueAt(selectedIndex)));
+    header.append(cancel, title, done);
+    const wheel = createElement("div", "numeric-wheel-viewport");
+    const list = createElement("div", "numeric-wheel-list");
+    list.setAttribute("role", "listbox");
+    list.setAttribute("aria-label", label);
+    wheel.appendChild(list);
+    const hint = createElement("p", "numeric-wheel-hint", "Desliza para ajustar · toca el valor central para escribir");
+
+    const displayValue = (itemValue) => itemValue === null
+      ? "—"
+      : Number.isInteger(itemValue) ? String(itemValue) : itemValue.toLocaleString("es-ES", { maximumFractionDigits: 2 });
+
+    const openDirectInput = () => {
+      const direct = document.createElement("input");
+      direct.className = "numeric-wheel-direct-input";
+      direct.type = "number";
+      direct.inputMode = step < 1 ? "decimal" : "numeric";
+      direct.min = String(min);
+      direct.max = String(max);
+      direct.step = String(step);
+      direct.value = valueAt(selectedIndex) ?? "";
+      direct.placeholder = nullable ? "Vacío" : String(min);
+      direct.setAttribute("aria-label", `Escribir ${label}`);
+      let inputClosed = false;
+      const finish = (commitValue = true) => {
+        if (inputClosed) return;
+        inputClosed = true;
+        if (commitValue) {
+          const raw = direct.value;
+          if (nullable && raw === "") selectedIndex = 0;
+          else if (raw !== "" && Number.isFinite(Number(raw))) selectedIndex = indexFor(raw);
+        }
+        renderWindow(selectedIndex);
+        direct.remove();
+        if (overlay.isConnected) done.focus();
+      };
+      direct.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          finish();
+        }
+        if (event.key === "Escape") {
+          event.preventDefault();
+          event.stopPropagation();
+          finish(false);
+        }
+      });
+      direct.addEventListener("blur", finish, { once: true });
+      wheel.appendChild(direct);
+      direct.focus();
+      direct.select();
+    };
+
+    const renderWindow = (centerIndex) => {
+      const radius = 55;
+      windowStart = Math.max(0, Math.min(totalCount - 1, centerIndex) - radius);
+      const end = Math.min(totalCount, windowStart + radius * 2 + 1);
+      if (end - windowStart < radius * 2 + 1) windowStart = Math.max(0, end - radius * 2 - 1);
+      const fragment = document.createDocumentFragment();
+      for (let index = windowStart; index < end; index += 1) {
+        const option = createElement("button", "numeric-wheel-option", displayValue(valueAt(index)));
+        option.type = "button";
+        option.dataset.wheelIndex = String(index);
+        option.setAttribute("role", "option");
+        option.setAttribute("aria-selected", String(index === selectedIndex));
+        option.tabIndex = index === selectedIndex ? 0 : -1;
+        option.addEventListener("click", () => {
+          if (index === selectedIndex) {
+            openDirectInput();
+            return;
+          }
+          selectedIndex = index;
+          list.scrollTo({ top: (index - windowStart) * itemHeight, behavior: scrollBehavior() });
+        });
+        fragment.appendChild(option);
+      }
+      settling = true;
+      list.replaceChildren(fragment);
+      list.scrollTop = (selectedIndex - windowStart) * itemHeight;
+      window.requestAnimationFrame(() => { settling = false; });
+    };
+
+    const updateSelection = () => {
+      if (settling) return;
+      const next = Math.min(totalCount - 1, Math.max(0,
+        windowStart + Math.round(list.scrollTop / itemHeight)));
+      if (next === selectedIndex) return;
+      selectedIndex = next;
+      list.querySelectorAll("[data-wheel-index]").forEach((option) => {
+        const selected = Number(option.dataset.wheelIndex) === selectedIndex;
+        option.setAttribute("aria-selected", String(selected));
+        option.tabIndex = selected ? 0 : -1;
+      });
+      const localIndex = selectedIndex - windowStart;
+      if (localIndex < 8 || localIndex > list.children.length - 9) renderWindow(selectedIndex);
+    };
+    list.addEventListener("scroll", () => {
+      window.clearTimeout(scrollTimer);
+      scrollTimer = window.setTimeout(updateSelection, 70);
+    }, { passive: true });
+    list.addEventListener("scrollend", updateSelection);
+    list.addEventListener("keydown", (event) => {
+      const movement = {
+        ArrowUp: -1,
+        ArrowDown: 1,
+        PageUp: -5,
+        PageDown: 5,
+        Home: -totalCount,
+        End: totalCount,
+      }[event.key];
+      if (movement === undefined) return;
+      event.preventDefault();
+      selectedIndex = Math.min(totalCount - 1, Math.max(0, selectedIndex + movement));
+      renderWindow(selectedIndex);
+      window.requestAnimationFrame(() => list.querySelector('[aria-selected="true"]')?.focus());
+    });
+
+    function close(result) {
+      window.clearTimeout(scrollTimer);
+      overlay.remove();
+      document.body.classList.remove("overlay-open");
+      releaseFocus();
+      resolve(result);
+    }
+    overlay.addEventListener("pointerdown", (event) => {
+      if (event.target === overlay) close(undefined);
+    });
+    sheet.append(header, wheel, hint);
+    overlay.appendChild(sheet);
+    document.body.appendChild(overlay);
+    document.body.classList.add("overlay-open");
+    renderWindow(selectedIndex);
+    releaseFocus = trapModalFocus(overlay, { initialFocus: done, onEscape: () => close(undefined) });
   });
 }
 
@@ -1439,6 +1693,7 @@ function openDailyDetail(date) {
       const sets = createElement("ol", "day-set-list");
       exercise.sets.slice().sort((a, b) => a.order - b.order).forEach((workoutSet) => {
         const set = createElement("li", "day-set-row");
+        set.classList.toggle("set-skipped", workoutSet.status === "skipped");
         set.append(
           createElement("span", "set-number", String(workoutSet.order)),
           createElement("span", "", formatSet(workoutSet)),
@@ -1611,7 +1866,11 @@ function renderProgress() {
   const periodSessions = sessionsInDiaryPeriod();
   periodSessions
     .forEach((session) => session.exercises.forEach((exercise) => {
-      if (exercise.sets.some((workoutSet) => (workoutSet.setType ?? (workoutSet.isWarmup ? "warmup" : "effective")) === "effective")) {
+      // status === "completed" no es redundante: una serie anulada no lleva
+      // setType ni isWarmup, así que el ?? la daba por efectiva y el ejercicio
+      // entraba en la lista con la gráfica vacía. Una anulada no es trabajo.
+      if (exercise.sets.some((workoutSet) => workoutSet.status === "completed"
+        && (workoutSet.setType ?? (workoutSet.isWarmup ? "warmup" : "effective")) === "effective")) {
         completedExerciseIds.set(exercise.exerciseId, exercise.exerciseName);
       }
     }));
@@ -1629,7 +1888,7 @@ function renderProgress() {
       const exercise = session.exercises.find((item) => item.exerciseId === select.value);
       if (!exercise) return;
       const effectiveSets = exercise.sets.filter(
-        (workoutSet) => (workoutSet.setType ?? (workoutSet.isWarmup ? "warmup" : "effective")) === "effective",
+        (workoutSet) => workoutSet.status === "completed" && (workoutSet.setType ?? (workoutSet.isWarmup ? "warmup" : "effective")) === "effective",
       );
       if (!effectiveSets.length) return;
       const best = effectiveSets.slice().sort((a, b) => (
@@ -1895,6 +2154,7 @@ function renderCardioActivityPicker() {
 function syncNewRoutineCardioVisibility() {
   const isCardio = document.querySelector('input[name="routineDayType"]:checked')?.value === "cardio";
   $("cardioActivityPicker").hidden = !isCardio;
+  $("routineModePicker").hidden = isCardio;
   if (isCardio) {
     const selected = document.querySelector('input[name="cardioActivityType"]:checked');
     selected?.dispatchEvent(new Event("change"));
@@ -2193,6 +2453,22 @@ function createRoutineExerciseRow(routine, routineDay, routineExercise, index) {
   row.appendChild(createElement("span", "routine-order", String(routineExercise.order)));
   const summary = createElement("div", "routine-exercise-summary");
   summary.appendChild(createElement("strong", "", routineExercise.exerciseName));
+  if (routine.mode === "guided") {
+    summary.appendChild(createElement("small", "muted", `${routineExercise.plannedSets} series · ${routineExercise.repMin}–${routineExercise.repMax} reps · ${routineExercise.targetLoadKg === null ? "Peso por definir" : `${routineExercise.targetLoadKg} kg`}`));
+    const editor = createElement("details", "guided-plan-editor");
+    editor.appendChild(createElement("summary", "", "Editar plan"));
+    const editForm = createElement("form");
+    const planFields = createGuidedPlanFields(routineExercise);
+    const save = createElement("button", "button button-secondary", "Guardar plan");
+    save.type = "submit";
+    editForm.append(planFields.element, save);
+    editForm.addEventListener("submit", event => {
+      event.preventDefault();
+      commit(next => updateRoutineExercisePlan(next, routine.id, routineDay.id, routineExercise.id, planFields.value()), "Plan actualizado. Tu historial no cambia.");
+    });
+    editor.append(editForm);
+    summary.append(editor);
+  }
   row.appendChild(summary);
   const actions = createElement("div", "order-actions");
   const moveUp = createButton("↑", "button-secondary", () => {
@@ -2362,6 +2638,8 @@ function createRoutineDayCard(routine, routineDay, index) {
   );
   addExerciseButton.type = "submit";
   exerciseForm.append(exerciseInput, addExerciseButton);
+  const planFields = routine.mode === "guided" ? createGuidedPlanFields() : null;
+  if (planFields) exerciseForm.insertBefore(planFields.element, addExerciseButton);
   exerciseForm.addEventListener("submit", (event) => {
     event.preventDefault();
     const entry = catalogEntryForName(exerciseInput.value);
@@ -2373,6 +2651,7 @@ function createRoutineDayCard(routine, routineDay, index) {
         entry ? translatedCatalogName(entry) : exerciseInput.value,
         {
           exerciseId: entry?.id,
+          ...(planFields ? planFields.value() : {}),
         },
       );
       attachCatalogMetadata(next, routineExercise.exerciseId, entry);
@@ -2483,7 +2762,16 @@ function renderRoutineManager() {
     const icon = createElement("span", `routine-icon routine-icon-tone-${(routineIndex % 3) + 1}`);
     icon.appendChild(createMuscleIcon(theme.group));
     const text = createElement("span", "routine-overview-copy");
-    text.appendChild(createElement("span", "routine-focus-tag", theme.label));
+    const tags = createElement("span", "routine-tag-row");
+    tags.append(
+      createElement("span", "routine-focus-tag", theme.label),
+      createElement(
+        "span",
+        `routine-mode-tag routine-mode-${routine.mode ?? "log"}`,
+        routine.mode === "guided" ? "Guiada" : "Solo registro",
+      ),
+    );
+    text.appendChild(tags);
     text.append(
       createElement("strong", "", routine.name),
       createElement(
@@ -2526,6 +2814,7 @@ function renderRoutineManager() {
   $("routineDetailTitle").textContent = selectedRoutine.name;
   $("routineDetailMeta").textContent = `${countLabel(routineScheduledWeekdayCount(selectedRoutine), "día")} · ${countLabel(routineActivityCount(selectedRoutine), "actividad", "actividades")}`;
   $("routineSpotlight").replaceChildren(createRoutineSpotlight(selectedRoutine));
+  renderRoutineModeEditor(selectedRoutine);
   document.querySelectorAll('input[name="selectedRoutineAccentColor"]').forEach((input) => {
     input.checked = input.value === (selectedRoutine.accentColor ?? "auto");
   });
@@ -2574,10 +2863,11 @@ function renderRoutineExerciseOptions(query = "") {
 
 function sessionSetCount(session) {
   if ((session?.sessionType ?? "strength") === "cardio") return session.cardio?.completedAt ? 1 : 0;
-  return session.exercises.reduce((total, exercise) => total + exercise.sets.length, 0);
+  return session.exercises.reduce((total, exercise) => total + exercise.sets.filter((item) => item.status === "completed").length, 0);
 }
 
 function formatSet(workoutSet) {
+  if (workoutSet.status === "skipped") return "Serie anulada · no realizada";
   const parts = [`${workoutSet.reps} rep${workoutSet.reps === 1 ? "" : "s"}`];
   if (workoutSet.loadKg !== null) parts.push(`${workoutSet.loadKg} kg`);
   if (workoutSet.rir !== null && workoutSet.rir !== undefined) {
@@ -2628,6 +2918,52 @@ function makeSetField(labelText, name, options = {}) {
   return { label, input };
 }
 
+function createGuidedPlanFields(plan = {}) {
+  const element = createElement("div", "guided-plan-fields");
+  const fields = {};
+  [["plannedSets", "Series", 1, 20, 1], ["repMin", "Reps mínimas", 1, 1000, 1],
+    ["repMax", "Reps máximas", 1, 1000, 1], ["targetLoadKg", "Peso previsto · kg (opcional)", 0, 2000, 0.5]]
+    .forEach(([name, label, min, max, step]) => {
+      const field = makeSetField(label, name, { min, max, step, inputMode: step === 1 ? "numeric" : "decimal" });
+      field.input.required = name !== "targetLoadKg";
+      field.input.value = plan[name] ?? "";
+      fields[name] = field.input;
+      element.append(field.label);
+    });
+  return { element, value: () => ({ ...Object.fromEntries(Object.entries(fields).map(([name, input]) => [name, input.value])), note: plan.note ?? "" }) };
+}
+
+function renderRoutineModeEditor(routine) {
+  const container = $("routineModeEditor");
+  container.replaceChildren();
+  if (routine.mode === "guided") {
+    container.append(createElement("p", "muted", "Rutina guiada · el plan no cuenta hasta marcar cada serie."));
+    return;
+  }
+  if (routine.days.some(day => routineDayType(day) === "cardio")) return;
+  const details = createElement("details", "guided-plan-editor");
+  details.append(createElement("summary", "", "Convertir en rutina guiada"));
+  const form = createElement("form");
+  form.append(createElement("p", "muted", "Prepara los números de cada ejercicio. Se conserva el historial y no se podrá volver al modo de solo registro."));
+  const plans = routine.days.flatMap(day => day.exercises.map(exercise => {
+    const fields = createGuidedPlanFields(exercise);
+    form.append(createElement("strong", "", `${day.name} · ${exercise.exerciseName}`), fields.element);
+    return { day, exercise, fields };
+  }));
+  const save = createElement("button", "button button-secondary", "Guardar como guiada");
+  save.type = "submit";
+  form.append(save);
+  form.addEventListener("submit", event => {
+    event.preventDefault();
+    commit(next => {
+      plans.forEach(({ day, exercise, fields }) => updateRoutineExercisePlan(next, routine.id, day.id, exercise.id, fields.value()));
+      next.training.routines.find(item => item.id === routine.id).mode = "guided";
+    }, "Rutina convertida a guiada. El historial no cambia.");
+  });
+  details.append(form);
+  container.append(details);
+}
+
 function formatHintValue(value) {
   return value === null || value === undefined || value === "" ? "" : String(value);
 }
@@ -2643,192 +2979,267 @@ function setInputHints(reference, order) {
   };
 }
 
-function applySetInputHints(reference, order, { load, reps, rir }) {
-  const hints = setInputHints(reference, order);
-  load.placeholder = hints.load;
-  reps.placeholder = hints.reps;
-  rir.placeholder = hints.rir;
-}
-
-function stepLoadValue(input, delta) {
-  const rawBase = input.value === "" ? input.placeholder : input.value;
-  const base = Number(rawBase);
-  const next = Math.max(0, (Number.isFinite(base) ? base : 0) + delta);
-  input.value = String(Math.round(next * 2) / 2);
-  input.focus();
-}
-
-function renderSetForm(session, sessionExercise, reference) {
-  const form = createElement("form", "set-form");
-  form.setAttribute("aria-label", "Registrar serie. Última referencia usada como guía visual si existe.");
+function renderSetForm(session, sessionExercise, reference, planOrder = null) {
+  const form = createElement("form", "set-form compact-set-form");
+  if (planOrder !== null) {
+    form.classList.add("planned-set-form");
+    form.dataset.planOrder = String(planOrder);
+  }
+  const order = planOrder ?? sessionExercise.sets.length + 1;
+  form.setAttribute("aria-label", `Registrar serie ${order}`);
   form.noValidate = true;
-  const reps = makeSetField("Repeticiones", "reps", {
-    min: 1,
-    max: 1000,
-    step: 1,
-    inputMode: "numeric",
-  });
-  reps.input.required = true;
-  const load = makeSetField("Peso (kg)", "loadKg", {
-    min: 0,
-    max: 2000,
-    step: 0.5,
-    inputMode: "decimal",
-  });
-  const rir = makeSetField("RIR opcional", "rir", {
-    min: 0,
-    max: 5,
-    step: 1,
-    inputMode: "numeric",
-  });
-  const note = makeSetField("Nota opcional", "note", {
-    type: "text",
-    maxLength: 300,
-    full: true,
-    placeholder: "Técnica, agarre o contexto",
-  });
-
-  const setTypeGroup = createElement("fieldset", "set-type-field set-type-options");
-  const setTypeLegend = createElement("legend", "", "Tipo");
-  setTypeGroup.appendChild(setTypeLegend);
-  const setTypeInputs = new Map();
-  [
-    ["effective", "Efectiva", "Efectiva"],
-    ["approach", "Aprox.", "Aproximación"],
-    ["warmup", "Calent.", "Calentamiento"],
-  ].forEach(([value, label, fullLabel], index) => {
-    const option = createElement("label", `set-type-option ${setTypeClass(value)}`);
+  const hints = setInputHints(reference, order);
+  const values = {
+    loadKg: planOrder !== null ? sessionExercise.targetLoadKg ?? "" : "",
+    reps: planOrder !== null ? sessionExercise.repMin : "",
+    rir: "",
+  };
+  const hidden = Object.fromEntries(["loadKg", "reps", "rir"].map((name) => {
     const input = document.createElement("input");
-    input.type = "radio";
-    input.name = "setType";
-    input.value = value;
-    input.checked = index === 0;
-    const labelSpan = createElement("span", "", label);
-    labelSpan.dataset.fullLabel = fullLabel;
-    option.append(input, labelSpan);
-    setTypeInputs.set(value, input);
-    setTypeGroup.appendChild(option);
-  });
-
-  const actions = createElement("div", "form-actions full");
-  const submit = createElement("button", "button button-accent set-check-button", "✓ Completar serie");
-  submit.type = "submit";
-  const cancel = createButton("Cancelar edición", "button-link", () => {
-    form.reset();
-    form.dataset.editingSetId = "";
-    submit.textContent = "✓ Completar serie";
-    cancel.hidden = true;
-  });
-  cancel.hidden = true;
-  actions.append(submit, cancel);
-  const loadStepper = createElement("div", "load-stepper");
-  const loadDown = createElement("button", "load-stepper-button", "−");
-  loadDown.type = "button";
-  loadDown.setAttribute("aria-label", "Bajar peso 0,5 kg");
-  loadDown.addEventListener("click", () => stepLoadValue(load.input, -0.5));
-  const loadUp = createElement("button", "load-stepper-button", "+");
-  loadUp.type = "button";
-  loadUp.setAttribute("aria-label", "Subir peso 0,5 kg");
-  loadUp.addEventListener("click", () => stepLoadValue(load.input, 0.5));
-  loadStepper.append(loadDown, load.input, loadUp);
-  const columnHeadings = createElement("div", "set-form-headings");
-  columnHeadings.append(
-    createElement("span", "", "Set"),
-    createElement("span", "", "Peso (kg)"),
-    createElement("span", "", "Reps"),
-    createElement("span", "", "RIR"),
-    createElement("span", "", "Tipo"),
-  );
-  const newSetNumber = createElement("span", "set-number set-form-number", String(sessionExercise.sets.length + 1));
-  load.label.classList.add("set-field-load");
-  reps.label.classList.add("set-field-reps");
-  rir.label.classList.add("set-field-rir");
-  load.label.replaceChildren(createElement("span", "set-field-label", "Peso · kg"), loadStepper);
-  reps.label.replaceChildren(createElement("span", "set-field-label", "Reps"), reps.input);
-  rir.label.replaceChildren(createElement("span", "set-field-label", "RIR"), rir.input);
-  applySetInputHints(reference, sessionExercise.sets.length + 1, {
-    load: load.input,
-    reps: reps.input,
-    rir: rir.input,
-  });
-  const error = createElement("p", "set-form-error full");
+    input.type = "hidden";
+    input.name = name;
+    input.value = values[name];
+    return [name, input];
+  }));
+  const setNumber = createElement("span", "set-number set-form-number", String(order));
+  const error = createElement("p", "set-form-error");
   error.hidden = true;
-  form.append(columnHeadings, newSetNumber, load.label, reps.label, rir.label, setTypeGroup, note.label, error, actions);
+
+  const createNumericCell = (name, label, options) => {
+    const button = createElement("button", `compact-set-cell compact-set-${name}`);
+    button.type = "button";
+    const paint = () => {
+      const current = hidden[name].value;
+      const fallback = planOrder === null ? hints[options.hintKey] : "";
+      button.textContent = current === "" ? (fallback || "—") : current;
+      button.classList.toggle("is-hint", current === "" && Boolean(fallback));
+      button.setAttribute("aria-label", `${label}: ${current || fallback || "sin valor"}. Toca para editar.`);
+    };
+    button.addEventListener("click", async () => {
+      const result = await openNumericWheel({
+        label,
+        value: hidden[name].value === "" ? (hints[options.hintKey] || null) : hidden[name].value,
+        min: options.min,
+        max: options.max,
+        step: options.step,
+        nullable: options.nullable,
+      });
+      if (result === undefined) return;
+      hidden[name].value = result ?? "";
+      paint();
+    });
+    paint();
+    return button;
+  };
+  const load = createNumericCell("loadKg", "Peso en kilos", {
+    min: 0, max: 2000, step: 0.25, nullable: true, hintKey: "load",
+  });
+  const reps = createNumericCell("reps", "Repeticiones", {
+    min: 1, max: 1000, step: 1, nullable: false, hintKey: "reps",
+  });
+  const rir = createNumericCell("rir", "RIR", {
+    min: 0, max: 5, step: 1, nullable: true, hintKey: "rir",
+  });
+  const submit = createElement("button", "set-check-button", "✓");
+  submit.type = "button";
+  submit.setAttribute("aria-label", `Completar serie ${order}`);
+  submit.addEventListener("click", async () => {
+    if (!hidden.reps.value) {
+      error.textContent = "Indica las repeticiones antes de completar la serie.";
+      error.hidden = false;
+      showNotice(error.textContent, { error: true });
+      return;
+    }
+    const type = await openSetTypePicker(submit, form.dataset.setType ?? "effective");
+    if (!type) return;
+    form.dataset.setType = type;
+    form.requestSubmit();
+  });
+  form.append(setNumber, load, reps, rir, submit, hidden.loadKg, hidden.reps, hidden.rir, error);
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     error.hidden = true;
-    error.textContent = "";
-    rir.input.classList.remove("field-error");
-    if (rir.input.value !== "" && Number(rir.input.value) > 5) {
-      if (Number(rir.input.value) <= 10) {
-        rir.input.value = "5";
-        showNotice("RIR máximo permitido: 5. Lo he ajustado a 5.", { error: true });
-      } else {
-        rir.input.classList.add("field-error");
-        error.textContent = "El RIR debe estar entre 0 y 5. Si no lo sabes, déjalo vacío.";
-        error.hidden = false;
-        showNotice(error.textContent, { error: true });
-        return;
-      }
-    }
-    const submissionKey = `${session.id}:${sessionExercise.id}`;
+    const submissionKey = `${session.id}:${sessionExercise.id}:${order}`;
     const input = {
-      reps: reps.input.value,
-      loadKg: load.input.value,
-      rir: rir.input.value,
-      setType: form.elements.setType.value,
-      note: note.input.value,
+      reps: hidden.reps.value,
+      loadKg: hidden.loadKg.value,
+      rir: hidden.rir.value,
+      setType: form.dataset.setType ?? "effective",
+      note: "",
+      ...(planOrder !== null ? { planOrder } : {}),
     };
-    const editingSetId = form.dataset.editingSetId;
     const restSeconds = timerFor(sessionExercise.id).duration;
     let logro = null;
-    // El aviso se da después del commit, no antes, porque hasta que la serie no
-    // está guardada no se puede saber si superó un récord.
     const saved = runOnce(submit, () => commit((next) => {
-      if (editingSetId) {
-        updateSet(next, session.id, sessionExercise.id, editingSetId, input);
-        return;
-      }
       const workoutSet = addSetToExercise(next, session.id, sessionExercise.id, input);
       logro = recordSummary(next, sessionExercise.exerciseId, workoutSet.id);
-      // Lo lee el render() que commit() lanza justo después.
       freshSet = { id: workoutSet.id, record: Boolean(logro) };
     }, null), submissionKey);
-    if (saved) {
-      showNotice(editingSetId
-        ? "Serie corregida y guardada."
-        : [
-          "Serie guardada.",
-          logro,
-          autoRestTimerEnabled() ? `Descanso de ${formatTimer(restSeconds)} en marcha.` : null,
-        ].filter(Boolean).join(" "));
-      form.reset();
-      if (!editingSetId && autoRestTimerEnabled()) startRestAfterSet(sessionExercise.id);
-    }
+    if (!saved) return;
+    showNotice([
+      "Serie guardada.",
+      logro,
+      autoRestTimerEnabled() ? `Descanso de ${formatTimer(restSeconds)} en marcha.` : null,
+    ].filter(Boolean).join(" "));
+    if (autoRestTimerEnabled()) startRestAfterSet(sessionExercise.id);
   });
-
-  form.startEditing = (workoutSet) => {
-    applySetInputHints(reference, workoutSet.order, {
-      load: load.input,
-      reps: reps.input,
-      rir: rir.input,
-    });
-    reps.input.value = workoutSet.reps;
-    load.input.value = workoutSet.loadKg ?? "";
-    rir.input.value = workoutSet.rir ?? "";
-    const selectedType = workoutSet.setType ?? (workoutSet.isWarmup ? "warmup" : "effective");
-    (setTypeInputs.get(selectedType) ?? setTypeInputs.get("effective")).checked = true;
-    note.input.value = workoutSet.note ?? "";
-    form.dataset.editingSetId = workoutSet.id;
-    submit.textContent = "Guardar corrección";
-    cancel.hidden = false;
-    reps.input.focus();
-  };
   return form;
 }
 
-function attachSetSwipe(row, foreground, { onDuplicate, onDelete }) {
+// El plan de hoy frente a lo que de verdad ha pasado, campo a campo. Solo
+// entra lo que se ha movido: preguntar por las repeticiones cuando solo cambió
+// el peso convierte una decisión en un formulario.
+function planUpdateRows(plan, proposal) {
+  const kg = (valor) => (valor === null || valor === undefined
+    ? "sin peso de referencia"
+    : `${Number(valor).toLocaleString("es-ES", { maximumFractionDigits: 2 })} kg`);
+  const rango = (min, max) => (min === max ? `${min} reps` : `${min}-${max} reps`);
+  const filas = [];
+  if ("targetLoadKg" in proposal) {
+    filas.push({ etiqueta: "Peso", antes: kg(plan.targetLoadKg), hoy: kg(proposal.targetLoadKg) });
+  }
+  if ("repMin" in proposal || "repMax" in proposal) {
+    filas.push({
+      etiqueta: "Repeticiones",
+      antes: rango(plan.repMin, plan.repMax),
+      hoy: rango(proposal.repMin ?? plan.repMin, proposal.repMax ?? plan.repMax),
+    });
+  }
+  return filas;
+}
+
+function openPlanUpdateSheet(exercise, plan, proposal) {
+  return new Promise((resolve) => {
+    const overlay = createElement("div", "workout-sheet-overlay");
+    const sheet = createElement("section", "workout-sheet plan-update-sheet");
+    sheet.setAttribute("role", "dialog");
+    sheet.setAttribute("aria-modal", "true");
+    sheet.setAttribute("aria-labelledby", `planUpdateTitle-${exercise.id}`);
+
+    const title = createElement("h3", "", `${exercise.exerciseName}: hoy no ha salido como el plan`);
+    title.id = `planUpdateTitle-${exercise.id}`;
+
+    // La comparación concreta es el mensaje. Sin ella la hoja solo decía que
+    // algo "se aleja del plan", sin decir de qué a qué, y no se entendía para
+    // qué aparecía.
+    const filas = planUpdateRows(plan, proposal);
+    const tabla = createElement("dl", "plan-update-diff");
+    filas.forEach(({ etiqueta, antes, hoy }) => {
+      const fila = createElement("div", "plan-update-diff-row");
+      fila.append(
+        createElement("dt", "", etiqueta),
+        createElement("dd", "plan-update-before", `Plan: ${antes}`),
+        createElement("dd", "plan-update-after", `Hoy: ${hoy}`),
+      );
+      tabla.appendChild(fila);
+    });
+
+    const explanation = createElement("p", "muted", [
+      `Lo de hoy ya está guardado: ${countLabel(proposal.observedSetCount, "serie efectiva")}.`,
+      "Esto solo decide con qué números empezarás la próxima vez. Decides tú;",
+      "la app no cambia el plan sola.",
+    ].join(" "));
+
+    const form = createElement("form", "plan-update-form");
+    const campos = [];
+    if ("targetLoadKg" in proposal) {
+      const load = makeSetField("Peso del plan · kg", "targetLoadKg", {
+        min: 0, max: 2000, step: 0.25, inputMode: "decimal",
+      });
+      load.input.value = proposal.targetLoadKg ?? "";
+      campos.push(["targetLoadKg", load]);
+    }
+    if ("repMin" in proposal || "repMax" in proposal) {
+      const repMin = makeSetField("Reps mínimas del plan", "repMin", { min: 1, max: 1000, step: 1, inputMode: "numeric" });
+      const repMax = makeSetField("Reps máximas del plan", "repMax", { min: 1, max: 1000, step: 1, inputMode: "numeric" });
+      repMin.input.value = proposal.repMin ?? plan.repMin;
+      repMax.input.value = proposal.repMax ?? plan.repMax;
+      campos.push(["repMin", repMin], ["repMax", repMax]);
+    }
+    const campo = Object.fromEntries(campos);
+
+    // Los campos van plegados: el camino normal son dos botones que dicen en
+    // qué número se queda el plan. Ajustar a mano es para el caso raro.
+    const ajuste = createElement("details", "plan-update-adjust");
+    ajuste.append(createElement("summary", "", "Prefiero otro número"));
+    campos.forEach(([, field]) => ajuste.append(field.label));
+
+    const actions = createElement("div", "workout-sheet-actions");
+    const resumenPlan = filas.map((fila) => fila.antes).join(" · ");
+    const resumenHoy = filas.map((fila) => fila.hoy).join(" · ");
+    const today = createButton(`Dejar el plan en ${resumenPlan}`, "button-secondary", () => close(null));
+    const save = createElement("button", "button button-primary", `Cambiar el plan a ${resumenHoy}`);
+    save.type = "submit";
+    actions.append(today, save);
+    form.append(ajuste, actions);
+    sheet.append(title, tabla, explanation, form);
+    overlay.appendChild(sheet);
+
+    let settled = false;
+    let releaseFocus = () => {};
+    const close = (result) => {
+      if (settled) return;
+      settled = true;
+      overlay.remove();
+      document.body.classList.remove("overlay-open");
+      releaseFocus();
+      resolve(result);
+    };
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const resultado = {};
+      if (campo.targetLoadKg) {
+        resultado.targetLoadKg = campo.targetLoadKg.input.value === "" ? null : Number(campo.targetLoadKg.input.value);
+      }
+      if (campo.repMin) {
+        const min = Number(campo.repMin.input.value);
+        const max = Number(campo.repMax.input.value);
+        if (!Number.isInteger(min) || !Number.isInteger(max) || min < 1 || max > 1000 || min > max) {
+          showNotice("Revisa el rango: el mínimo no puede superar al máximo.", { error: true });
+          return;
+        }
+        Object.assign(resultado, { repMin: min, repMax: max });
+      }
+      close(resultado);
+    });
+    // A propósito no se cierra tocando fuera. Antes sí, y valía como "no":
+    // un toque despistado contestaba por ti y la pregunta no volvía a salir
+    // para esa misma desviación. Es una decisión, no un desplegable.
+    document.body.appendChild(overlay);
+    document.body.classList.add("overlay-open");
+    // El foco va al botón, no a un campo: enfocar un número abre el teclado del
+    // móvil encima de la propia pregunta.
+    releaseFocus = trapModalFocus(overlay, { initialFocus: today, onEscape: () => close(null) });
+  });
+}
+
+async function offerGuidedPlanUpdate(session, exercise) {
+  if (exercise.isSubstitution || exercise.substitutedFrom) return;
+  const deviation = guidedExerciseDeviation(exercise);
+  if (!deviation) return;
+  const { observedSetCount, ...changes } = deviation;
+  const current = state.training.routines.find(item => item.id === session.source.routineId);
+  const day = current?.days.find(item => item.id === session.source.routineDayId);
+  const plan = day?.exercises.find(item => item.id === exercise.routineExerciseId);
+  if (!plan) return; // Una rutina eliminada no impide guardar lo realizado.
+  // Tras aceptar una referencia no volver a preguntar por el mismo valor.
+  Object.keys(changes).forEach(key => { if (plan[key] === changes[key]) delete changes[key]; });
+  if (!Object.keys(changes).length) return;
+  const signature = JSON.stringify(changes);
+  if (promptedDeviationSignatures.get(exercise.id) === signature) return;
+  promptedDeviationSignatures.set(exercise.id, signature);
+  const accepted = await openPlanUpdateSheet(exercise, plan, { ...changes, observedSetCount });
+  if (!accepted) return;
+  commit(next => {
+    const livePlan = next.training.routines.find(item => item.id === current.id)?.days
+      .find(item => item.id === day.id)?.exercises.find(item => item.id === plan.id);
+    if (!livePlan) throw new Error("El plan ya no existe. La serie realizada sigue guardada.");
+    updateRoutineExercisePlan(next, current.id, day.id, plan.id, { ...livePlan, ...accepted });
+  }, "Plan actualizado para próximas sesiones. La sesión actual conserva su plan original.");
+}
+
+function attachSetSwipe(row, foreground, { onRight = null, onLeft = null }) {
   let startX = 0;
   let startY = 0;
   let currentX = 0;
@@ -2846,8 +3257,8 @@ function attachSetSwipe(row, foreground, { onDuplicate, onDelete }) {
     dragging = false;
     if (pointerId !== null) foreground.releasePointerCapture?.(pointerId);
     pointerId = null;
-    if (currentX > 86) onDuplicate();
-    if (currentX < -86) onDelete();
+    if (currentX > 86 && onRight) onRight();
+    if (currentX < -86 && onLeft) onLeft();
     reset();
   };
   foreground.addEventListener("pointerdown", (event) => {
@@ -2872,9 +3283,9 @@ function attachSetSwipe(row, foreground, { onDuplicate, onDelete }) {
       pointerId = null;
       return;
     }
-    currentX = Math.max(-112, Math.min(112, deltaX));
-    row.classList.toggle("swiping-right", currentX > 12);
-    row.classList.toggle("swiping-left", currentX < -12);
+    currentX = Math.max(onLeft ? -112 : 0, Math.min(onRight ? 112 : 0, deltaX));
+    row.classList.toggle("swiping-right", Boolean(onRight) && currentX > 12);
+    row.classList.toggle("swiping-left", Boolean(onLeft) && currentX < -12);
     foreground.style.transform = `translateX(${currentX}px)`;
   });
   foreground.addEventListener("pointerup", finish);
@@ -2989,7 +3400,7 @@ function exerciseProgressPoints(exerciseId) {
     .reverse()
     .flatMap(({ session, exercise }) => {
       const effectiveSets = exercise.sets.filter(
-        (workoutSet) => (workoutSet.setType ?? (workoutSet.isWarmup ? "warmup" : "effective")) === "effective",
+        (workoutSet) => workoutSet.status === "completed" && (workoutSet.setType ?? (workoutSet.isWarmup ? "warmup" : "effective")) === "effective",
       );
       if (!effectiveSets.length) return [];
       const best = effectiveSets.slice().sort((left, right) => (
@@ -3014,11 +3425,15 @@ function createExerciseHistoryPanel(sessionExercise) {
     const card = createElement("article", "exercise-history-session");
     card.append(
       createElement("strong", "", formatDateTime(session.endedAt)),
-      createElement("small", "muted", `${session.source.label} · ${countLabel(exercise.sets.length, "serie")}`),
+      // Solo las realizadas: con 3 hechas y 1 anulada decía "4 series", y la
+      // anulada aparece tachada justo debajo. Contar lo que no se hizo como
+      // hecho es la misma regla que en volumen y récords, aquí en pequeño.
+      createElement("small", "muted", `${session.source.label} · ${countLabel(exercise.sets.filter((item) => item.status === "completed").length, "serie")}`),
     );
     const sets = createElement("ol", "exercise-history-sets");
     exercise.sets.slice().sort((a, b) => a.order - b.order).forEach((workoutSet) => {
       const row = createElement("li", "exercise-history-set");
+      row.classList.toggle("set-skipped", workoutSet.status === "skipped");
       row.append(
         createElement("span", "set-number", String(workoutSet.order)),
         createElement("span", "", formatSet(workoutSet)),
@@ -3067,8 +3482,112 @@ function activateExerciseView(article, sessionExerciseId, view) {
   });
 }
 
+function openExerciseGuide(sessionExercise) {
+  const entry = catalog.find((item) => item.id === sessionExercise.exerciseId)
+    ?? catalogEntryForName(sessionExercise.exerciseName);
+  if (!entry?.instructionsEs) {
+    showNotice("Este ejercicio no tiene instrucciones en el catálogo.", { error: true });
+    return;
+  }
+  const overlay = createElement("div", "workout-sheet-overlay");
+  const sheet = createElement("section", "workout-sheet exercise-guide-sheet");
+  sheet.setAttribute("role", "dialog");
+  sheet.setAttribute("aria-modal", "true");
+  const title = createElement("h3", "", sessionExercise.exerciseName);
+  title.id = `exerciseGuideTitle-${sessionExercise.id}`;
+  sheet.setAttribute("aria-labelledby", title.id);
+  let releaseFocus = () => {};
+  const dismiss = () => {
+    overlay.remove();
+    document.body.classList.remove("overlay-open");
+    releaseFocus();
+  };
+  const close = createButton("Cerrar", "button-link", dismiss);
+  sheet.append(
+    createElement("p", "eyebrow", "Guía del catálogo"),
+    title,
+    createElement("p", "exercise-guide-copy", entry.instructionsEs),
+    // El mismo descargo que acompaña a este texto en el catálogo (más abajo,
+    // en renderCatalogResults). Bajo un botón llamado "Guía" el texto gana una
+    // autoridad que no tiene, así que el matiz no puede ser más flojo aquí.
+    createElement("small", "muted", "Texto del dataset pendiente de revisión profesional. No es consejo médico."),
+    close,
+  );
+  overlay.appendChild(sheet);
+  overlay.addEventListener("pointerdown", (event) => {
+    if (event.target === overlay) close.click();
+  });
+  document.body.appendChild(overlay);
+  document.body.classList.add("overlay-open");
+  releaseFocus = trapModalFocus(overlay, { initialFocus: close, onEscape: dismiss });
+}
+
+function openSessionNoteSheet(session, sessionExercise) {
+  const overlay = createElement("div", "workout-sheet-overlay");
+  const sheet = createElement("section", "workout-sheet exercise-note-sheet");
+  sheet.setAttribute("role", "dialog");
+  sheet.setAttribute("aria-modal", "true");
+  const form = createElement("form", "exercise-note-form");
+  const title = createElement("h3", "", `Nota · ${sessionExercise.exerciseName}`);
+  title.id = `exerciseNoteTitle-${sessionExercise.id}`;
+  sheet.setAttribute("aria-labelledby", title.id);
+  const copy = createElement("p", "muted", "Solo para este ejercicio en la sesión de hoy.");
+  const textarea = document.createElement("textarea");
+  textarea.name = "sessionNote";
+  textarea.maxLength = 300;
+  textarea.rows = 4;
+  textarea.value = sessionExercise.sessionNote ?? "";
+  textarea.placeholder = "Sensaciones, técnica, molestias, ajuste del banco…";
+  textarea.setAttribute("aria-label", "Nota del ejercicio en esta sesión");
+  const counter = createElement("small", "muted", `${textarea.value.length}/300`);
+  textarea.addEventListener("input", () => { counter.textContent = `${textarea.value.length}/300`; });
+  const actions = createElement("div", "workout-sheet-actions");
+  const cancel = createButton("Cancelar", "button-secondary", () => close());
+  const save = createElement("button", "button button-primary", "Guardar nota");
+  save.type = "submit";
+  actions.append(cancel, save);
+  form.append(title, copy, textarea, counter, actions);
+  sheet.appendChild(form);
+  overlay.appendChild(sheet);
+  let closed = false;
+  let releaseFocus = () => {};
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    overlay.remove();
+    document.body.classList.remove("overlay-open");
+    releaseFocus();
+  };
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const saved = commit(
+      next => setSessionExerciseNote(next, session.id, sessionExercise.id, textarea.value),
+      textarea.value.trim() ? "Nota guardada para esta sesión." : "Nota eliminada de esta sesión.",
+    );
+    if (saved) close();
+  });
+  overlay.addEventListener("pointerdown", (event) => {
+    if (event.target === overlay) close();
+  });
+  document.body.appendChild(overlay);
+  document.body.classList.add("overlay-open");
+  releaseFocus = trapModalFocus(overlay, { initialFocus: textarea, onEscape: close });
+}
+
+function openExerciseReplacement(sessionExercise) {
+  replacementTargetExerciseId = sessionExercise.id;
+  $("catalogSearch").value = "";
+  const picker = document.querySelector(".exercise-picker");
+  picker.open = true;
+  renderCatalogResults();
+  picker.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
+  window.requestAnimationFrame(() => $("catalogSearch").focus());
+  showNotice(`Busca una alternativa para ${sessionExercise.exerciseName}. La rutina original no cambiará.`);
+}
+
 function renderSessionExercise(session, sessionExercise) {
-  const article = createElement("details", "session-exercise");
+  const completedCount = sessionExercise.sets.filter((item) => item.status === "completed").length;
+  const article = createElement("details", "session-exercise session-exercise-compact");
   article.dataset.sessionExerciseId = sessionExercise.id;
   article.open = expandedSessionExerciseId
     ? expandedSessionExerciseId === sessionExercise.id
@@ -3076,6 +3595,7 @@ function renderSessionExercise(session, sessionExercise) {
   if (article.open) expandedSessionExerciseId = sessionExercise.id;
   article.classList.toggle("session-exercise-skipped", sessionExercise.status === "skipped");
   article.classList.toggle("session-exercise-extra", Boolean(sessionExercise.isExtra));
+
   const summary = createElement("summary", "session-exercise-summary");
   const summaryText = createElement("div");
   summaryText.append(
@@ -3083,161 +3603,228 @@ function renderSessionExercise(session, sessionExercise) {
     createElement(
       "small",
       "",
-      sessionExercise.isExtra
-        ? "Extra solo hoy"
-        : sessionExercise.sets.length
-          ? `${countLabel(sessionExercise.sets.length, "serie")} registrada${sessionExercise.sets.length === 1 ? "" : "s"}`
-          : "Pulsa para registrar la primera serie",
+      sessionExercise.pendingPlanRemoved
+        ? "Retirado del plan · lo realizado se conserva"
+        : sessionExercise.isExtra
+          ? "Extra solo hoy"
+          : completedCount
+            ? `${completedCount}/${sessionExercise.plannedSets ?? completedCount} series realizadas`
+            : "Pulsa para registrar",
     ),
   );
-  const summaryStatus = createElement(
-    "span",
-    "exercise-summary-status",
-    sessionExercise.status === "skipped"
-      ? "Omitido"
-      : sessionExercise.sets.length
-        ? `✓ ${sessionExercise.sets.length}`
-        : "Abrir",
+  summary.append(
+    summaryText,
+    createElement("span", "exercise-summary-status", sessionExercise.status === "skipped" ? "Hoy no" : completedCount ? `✓ ${completedCount}` : "Abrir"),
   );
-  summary.append(summaryText, summaryStatus);
   article.addEventListener("toggle", () => {
-    if (!article.open) return;
+    if (!article.open) {
+      if (sessionExercise.routineExerciseId) void offerGuidedPlanUpdate(session, sessionExercise);
+      return;
+    }
     expandedSessionExerciseId = sessionExercise.id;
-    [...restTimerStates.keys()]
-      .filter((exerciseId) => exerciseId !== sessionExercise.id)
-      .forEach(stopExerciseTimer);
     document.querySelectorAll(".session-exercise[open]").forEach((other) => {
       if (other !== article) other.open = false;
     });
   });
-  const header = createElement("div", "exercise-header");
-  const titleBlock = document.createElement("div");
+
+  const header = createElement("header", "exercise-header compact-exercise-header");
+  const heading = createElement("div", "compact-exercise-heading");
   const source = exerciseSource(sessionExercise.exerciseId);
-  titleBlock.appendChild(createElement(
-    "span",
-    "exercise-source",
-    sessionExercise.isSubstitution
+  heading.append(
+    createElement("span", "exercise-source", sessionExercise.isSubstitution
       ? `Alternativa solo hoy · antes: ${sessionExercise.substitutedFrom?.exerciseName ?? "otro ejercicio"}`
-      : source?.type === "dataset" ? "Catálogo auditado · revisión pendiente" : "Ejercicio personal",
-  ));
-  titleBlock.appendChild(createElement("h3", "", sessionExercise.exerciseName));
-  titleBlock.appendChild(createElement(
-    "p",
-    "exercise-plan",
-    sessionExercise.isExtra ? "Ejercicio extra · solo hoy" : "Registra únicamente lo que hagas hoy",
-  ));
-  if (sessionExercise.planNote) titleBlock.appendChild(createElement("p", "muted", sessionExercise.planNote));
+      : source?.type === "dataset" ? "Catálogo auditado · revisión pendiente" : "Ejercicio personal"),
+    createElement("h3", "", sessionExercise.exerciseName),
+  );
+  if (sessionExercise.planNote) heading.appendChild(createElement("p", "muted compact-plan-note", sessionExercise.planNote));
+  if (sessionExercise.sessionNote) heading.appendChild(createElement("p", "session-note-preview", sessionExercise.sessionNote));
+
+  const actions = createElement("div", "exercise-quick-actions");
+  const guideEntry = catalog.find((item) => item.id === sessionExercise.exerciseId)
+    ?? catalogEntryForName(sessionExercise.exerciseName);
+  const guide = createExerciseQuickAction("Guía", "guide", "guide", () => openExerciseGuide(sessionExercise));
+  guide.disabled = !guideEntry?.instructionsEs;
+  if (guide.disabled) guide.title = "Este ejercicio no tiene instrucciones en el catálogo";
+  const note = createExerciseQuickAction(
+    sessionExercise.sessionNote ? "Nota guardada" : "Nota",
+    "note",
+    "note",
+    () => openSessionNoteSheet(session, sessionExercise),
+  );
+  const change = createExerciseQuickAction("Cambiar", "swap", "change", () => openExerciseReplacement(sessionExercise));
+  change.disabled = sessionExercise.sets.length > 0 || sessionExercise.status === "skipped";
+  const today = createExerciseQuickAction(
+    sessionExercise.status === "skipped" ? "Incluir" : "Hoy no",
+    sessionExercise.status === "skipped" ? "check" : "skip",
+    "skip",
+    () => commit(
+      next => setSessionExerciseSkipped(next, session.id, sessionExercise.id, sessionExercise.status !== "skipped"),
+      sessionExercise.status === "skipped" ? "Ejercicio incluido de nuevo." : "Marcado como no realizado solo hoy.",
+    ),
+  );
+  today.disabled = sessionExercise.sets.length > 0;
+  actions.append(guide, note, change, today);
+  if (session.source?.routineId && sessionExercise.routineExerciseId && !sessionExercise.pendingPlanRemoved) {
+    const plannedExerciseId = sessionExercise.substitutedFrom?.exerciseId ?? sessionExercise.exerciseId;
+    const plannedExerciseName = sessionExercise.substitutedFrom?.exerciseName ?? sessionExercise.exerciseName;
+    const remove = createExerciseQuickAction("Eliminar", "trash", "delete", async () => {
+      const hasWork = completedCount > 0;
+      const message = hasWork
+        ? "Se retirará de todos los días de esta rutina. Las series ya realizadas seguirán en el Diario y se quitarán solo las pendientes."
+        : "Se retirará de todos los días y variantes de esta rutina. Podrás deshacer la acción.";
+      if (!(await confirmDialog(message, {
+        title: `Eliminar ${plannedExerciseName}`,
+        confirmLabel: "Eliminar de la rutina",
+        cancelLabel: "Cancelar",
+        danger: true,
+      }))) return;
+      commit(
+        next => removeExerciseFromRoutine(next, session.source.routineId, plannedExerciseId, { sessionId: session.id }),
+        "Ejercicio retirado de toda la rutina. Puedes deshacerlo.",
+      );
+    });
+    remove.classList.add("exercise-delete-action");
+    actions.appendChild(remove);
+  }
+  header.append(heading, actions);
 
   const reference = findLastComparableExercise(state, sessionExercise.exerciseId, session.id);
-  titleBlock.appendChild(createPersonalRecordCard(sessionExercise.exerciseId));
-  titleBlock.appendChild(createLastReferenceCard(reference));
-  header.appendChild(titleBlock);
-  const statusBlock = createElement("div", "exercise-status-actions");
-  statusBlock.appendChild(createElement("span", "count-badge", countLabel(sessionExercise.sets.length, "serie")));
-  if (!sessionExercise.isExtra && !sessionExercise.sets.length) {
-    if (sessionExercise.status === "skipped") {
-      statusBlock.appendChild(createButton(
-        "Volver a incluir hoy",
-        "button-secondary",
-        () => commit(
-          (next) => setSessionExerciseSkipped(next, session.id, sessionExercise.id, false),
-          "Ejercicio incluido de nuevo en el entrenamiento de hoy.",
-        ),
-      ));
-    } else {
-      const exceptionMenu = createElement("details", "exercise-exception-menu");
-      const exceptionSummary = createElement(
-        "summary",
-        "exercise-exception-summary",
-        "¿No puedes realizar este ejercicio hoy?",
+  const references = createElement("div", "exercise-reference-pair");
+  references.append(createPersonalRecordCard(sessionExercise.exerciseId), createLastReferenceCard(reference));
+
+  const headings = createElement("div", "set-list-headings");
+  ["Set", "Peso", "Reps", "RIR", "Estado"].forEach((label) => headings.appendChild(createElement("span", "", label)));
+  const list = createElement("ol", "set-list compact-set-list");
+
+  const editCompletedValue = async (workoutSet, field) => {
+    const options = field === "loadKg"
+      ? { label: "Peso en kilos", value: workoutSet.loadKg, min: 0, max: 2000, step: 0.25, nullable: true }
+      : field === "reps"
+        ? { label: "Repeticiones", value: workoutSet.reps, min: 1, max: 1000, step: 1 }
+        : { label: "RIR", value: workoutSet.rir, min: 0, max: 5, step: 1, nullable: true };
+    const value = await openNumericWheel(options);
+    if (value === undefined) return;
+    commit(next => updateSet(next, session.id, sessionExercise.id, workoutSet.id, {
+      reps: field === "reps" ? value : workoutSet.reps,
+      loadKg: field === "loadKg" ? value : workoutSet.loadKg,
+      rir: field === "rir" ? value : workoutSet.rir,
+      setType: workoutSet.setType ?? (workoutSet.isWarmup ? "warmup" : "effective"),
+      note: workoutSet.note ?? "",
+      ...(workoutSet.planOrder === undefined ? {} : { planOrder: workoutSet.planOrder }),
+    }), "Serie actualizada.");
+  };
+
+  sessionExercise.sets.slice().sort((a, b) => a.order - b.order).forEach((workoutSet) => {
+    if (workoutSet.status === "skipped") {
+      const row = createElement("li", "set-row compact-set-row set-skipped");
+      const foreground = createElement("div", "set-row-content compact-set-row-content");
+      foreground.append(
+        createElement("span", "set-number", String(workoutSet.planOrder ?? workoutSet.order)),
+        createElement("span", "set-cell", "—"),
+        createElement("span", "set-cell", "Anulada"),
+        createElement("span", "set-cell", "—"),
+        createButton("↺", "set-restore-button", () => commit(
+          next => deleteSet(next, session.id, sessionExercise.id, workoutSet.id),
+          "La serie vuelve a estar pendiente.",
+        )),
       );
-      const exceptionActions = createElement("div", "exercise-exception-actions");
-      const alternative = createButton("Elegir una alternativa para hoy", "button-secondary", () => {
-        replacementTargetExerciseId = sessionExercise.id;
-        $("catalogSearch").value = "";
-        const picker = document.querySelector(".exercise-picker");
-        picker.open = true;
-        renderCatalogResults();
-        window.requestAnimationFrame(() => $("catalogSearch").focus());
-        showNotice(
-          `Busca una alternativa para ${sessionExercise.exerciseName}. La rutina original no cambiará.`,
-        );
-      });
-      const notPerformed = createButton("Marcar como no realizado", "button-quiet", () => commit(
-        (next) => setSessionExerciseSkipped(next, session.id, sessionExercise.id, true),
-        "Ejercicio marcado como no realizado hoy. La rutina original no ha cambiado.",
-      ));
-      exceptionActions.append(
-        createElement("p", "muted", "Estas opciones solo afectan al entrenamiento de hoy."),
-        alternative,
-        notPerformed,
-      );
-      exceptionMenu.append(exceptionSummary, exceptionActions);
-      statusBlock.appendChild(exceptionMenu);
+      foreground.lastElementChild.setAttribute("aria-label", `Volver a dejar pendiente la serie ${workoutSet.planOrder}`);
+      row.appendChild(foreground);
+      list.appendChild(row);
+      return;
     }
-  }
-  header.appendChild(statusBlock);
 
-  const content = createElement("div", "set-area");
-  const list = createElement("ol", "set-list");
-  const form = renderSetForm(session, sessionExercise, reference);
-
-  sessionExercise.sets.forEach((workoutSet) => {
-    const duplicateCurrentSet = () => commit(
-      (next) => duplicateSet(next, session.id, sessionExercise.id, workoutSet.id),
-      `Serie ${workoutSet.order} duplicada con los mismos valores.`,
-    );
     const deleteCurrentSet = async () => {
-      if (!(await confirmDialog(`¿Borrar la serie ${workoutSet.order}? Podrás deshacerla después.`, { title: "Borrar serie", confirmLabel: "Borrar", danger: true }))) return;
-      commit((next) => {
-        deleteSet(next, session.id, sessionExercise.id, workoutSet.id);
-      }, "Serie borrada. Puedes deshacerla.");
+      if (!(await confirmDialog(`¿Borrar la serie ${workoutSet.order}? Podrás deshacerla.`, {
+        title: "Borrar serie", confirmLabel: "Borrar", danger: true,
+      }))) return;
+      commit(next => deleteSet(next, session.id, sessionExercise.id, workoutSet.id), "Serie borrada. Puedes deshacerla.");
     };
-    const row = createElement("li", "set-row swipe-set-row");
+    const row = createElement("li", "set-row compact-set-row swipe-set-row");
     if (freshSet && freshSet.id === workoutSet.id) {
       row.classList.add("is-fresh");
       if (freshSet.record) row.classList.add("is-record");
       freshSet = null;
-      // Las clases se quitan al acabar la animación. No es cosmético: cambiar
-      // de pestaña no relanza render(), así que sin esto la fila se quedaría
-      // marcada indefinidamente y cualquier estilo que alguien añada mañana a
-      // .is-fresh se volvería permanente sin que se note al escribirlo.
       row.addEventListener("animationend", () => {
         row.classList.remove("is-fresh", "is-record");
       }, { once: true });
     }
-    row.append(
-      createElement("span", "set-swipe-action set-swipe-duplicate", "Duplicar"),
-      createElement("span", "set-swipe-action set-swipe-delete", "Borrar"),
-    );
-    const foreground = createElement("div", "set-row-content");
+    const allowDuplicate = !sessionExercise.routineExerciseId;
+    if (allowDuplicate) row.appendChild(createElement("span", "set-swipe-action set-swipe-duplicate", "Duplicar"));
+    row.appendChild(createElement("span", "set-swipe-action set-swipe-delete", "Borrar"));
+    const foreground = createElement("div", "set-row-content compact-set-row-content completed-set-row");
     foreground.appendChild(createElement("span", "set-number set-complete", String(workoutSet.order)));
-    const loadCell = createElement("strong", "set-cell set-load", workoutSet.loadKg === null ? "—" : `${workoutSet.loadKg} kg`);
-    loadCell.dataset.label = "Peso";
-    const repsCell = createElement("span", "set-cell set-reps", `${workoutSet.reps}`);
-    repsCell.dataset.label = "Reps";
-    const rirCell = createElement("span", "set-cell set-rir", workoutSet.rir ?? "—");
-    rirCell.dataset.label = "RIR";
-    foreground.append(loadCell, repsCell, rirCell);
-    foreground.appendChild(createElement("span", `set-type-badge ${setTypeClass(workoutSet)}`, setTypeText(workoutSet)));
-    const actions = createElement("div", "item-actions set-row-actions");
-    actions.append(
-      createButton("Duplicar", "button-quiet", duplicateCurrentSet),
-      createButton("Editar", "button-secondary", () => form.startEditing(workoutSet)),
-      createButton("Borrar", "button-danger", deleteCurrentSet),
-    );
-    foreground.appendChild(actions);
-    if (workoutSet.note) foreground.appendChild(createElement("small", "set-row-note", workoutSet.note));
+    const load = createButton(workoutSet.loadKg === null ? "—" : String(workoutSet.loadKg), "set-cell compact-set-value", () => editCompletedValue(workoutSet, "loadKg"));
+    const reps = createButton(String(workoutSet.reps), "set-cell compact-set-value", () => editCompletedValue(workoutSet, "reps"));
+    const rir = createButton(workoutSet.rir ?? "—", "set-cell compact-set-value", () => editCompletedValue(workoutSet, "rir"));
+    load.setAttribute("aria-label", `Peso: ${workoutSet.loadKg ?? "sin valor"} kilos. Toca para editar.`);
+    reps.setAttribute("aria-label", `Repeticiones: ${workoutSet.reps}. Toca para editar.`);
+    rir.setAttribute("aria-label", `RIR: ${workoutSet.rir ?? "vacío"}. Toca para editar.`);
+    const type = createButton("✓", `set-check-button is-complete ${setTypeClass(workoutSet)}`, async () => {
+      const selected = await openSetTypePicker(type, workoutSet.setType ?? "effective");
+      if (!selected) return;
+      commit(next => updateSet(next, session.id, sessionExercise.id, workoutSet.id, {
+        reps: workoutSet.reps,
+        loadKg: workoutSet.loadKg,
+        rir: workoutSet.rir,
+        setType: selected,
+        note: workoutSet.note ?? "",
+        ...(workoutSet.planOrder === undefined ? {} : { planOrder: workoutSet.planOrder }),
+      }), `Serie marcada como ${setTypeText(selected).toLowerCase()}.`);
+    });
+    type.setAttribute("aria-label", `Serie ${workoutSet.order} completada como ${setTypeText(workoutSet)}. Toca para cambiar el tipo.`);
+    type.title = setTypeText(workoutSet);
+    foreground.append(load, reps, rir, type);
     row.appendChild(foreground);
-    attachSetSwipe(row, foreground, { onDuplicate: duplicateCurrentSet, onDelete: deleteCurrentSet });
+    const keyboardDelete = createButton("Borrar serie", "set-row-keyboard-action", deleteCurrentSet);
+    row.appendChild(keyboardDelete);
+    let duplicateCurrentSet = null;
+    if (allowDuplicate) {
+      duplicateCurrentSet = () => commit(
+        next => duplicateSet(next, session.id, sessionExercise.id, workoutSet.id),
+        `Serie ${workoutSet.order} duplicada.`,
+      );
+    }
+    attachSetSwipe(row, foreground, { onRight: duplicateCurrentSet, onLeft: deleteCurrentSet });
     list.appendChild(row);
   });
 
-  if (!list.children.length) {
-    const empty = createElement("li", "empty-state");
-    empty.textContent = "Aún no hay series. Registra la primera en el formulario inferior.";
-    list.appendChild(empty);
+  pendingPlannedSets(sessionExercise).forEach((order) => {
+    const annul = () => commit(
+      next => skipPlannedSet(next, session.id, sessionExercise.id, order),
+      `Serie ${order} anulada. No cuenta como trabajo.`,
+    );
+    const row = createElement("li", "set-row compact-set-row planned-set-row swipe-set-row");
+    row.appendChild(createElement("span", "set-swipe-action set-swipe-delete", "Anular"));
+    const foreground = createElement("div", "set-row-content compact-set-row-content");
+    foreground.appendChild(renderSetForm(session, sessionExercise, reference, order));
+    row.append(foreground, createButton("Anular serie", "set-row-keyboard-action", annul));
+    attachSetSwipe(row, foreground, { onLeft: annul });
+    list.appendChild(row);
+  });
+
+  const currentPanel = createElement("section", "exercise-view-panel exercise-current-panel");
+  currentPanel.dataset.exerciseView = "current";
+  const setArea = createElement("div", "set-area compact-set-area");
+  if (sessionExercise.status === "skipped") {
+    setArea.append(header, createElement("p", "empty-state", "Este ejercicio no se realizará hoy. Puedes volver a incluirlo arriba."));
+  } else {
+    const freeForm = renderSetForm(session, sessionExercise, reference);
+    // In log mode there is no plan to explain: keep headings and first row together.
+    const registration = createElement("div", "compact-registration");
+    registration.appendChild(headings);
+    if (list.children.length) registration.appendChild(list);
+    if (!sessionExercise.routineExerciseId) registration.appendChild(freeForm);
+    setArea.append(header, references, registration);
+    if (sessionExercise.routineExerciseId) {
+      const extra = createElement("details", "guided-extra-set compact-extra-set");
+      extra.append(createElement("summary", "", "+ Registrar serie extra"), freeForm);
+      setArea.appendChild(extra);
+    } else {
+      setArea.appendChild(freeForm);
+    }
   }
+  currentPanel.appendChild(setArea);
 
   const viewTabs = createElement("div", "exercise-view-tabs");
   viewTabs.setAttribute("role", "tablist");
@@ -3249,17 +3836,7 @@ function renderSessionExercise(session, sessionExercise) {
     button.addEventListener("click", () => activateExerciseView(article, sessionExercise.id, view));
     viewTabs.appendChild(button);
   });
-  const historyPanel = createExerciseHistoryPanel(sessionExercise);
-  const currentPanel = createElement("section", "exercise-view-panel exercise-current-panel");
-  currentPanel.dataset.exerciseView = "current";
-  const progressPanel = createExerciseProgressPanel(sessionExercise);
-  if (sessionExercise.status === "skipped") {
-    content.append(header, createElement("p", "empty-state", "Este ejercicio se ha marcado como no realizado hoy."));
-  } else {
-    content.append(header, list, form, createExerciseRestTimer(sessionExercise.id));
-  }
-  currentPanel.appendChild(content);
-  article.append(summary, viewTabs, historyPanel, currentPanel, progressPanel);
+  article.append(summary, viewTabs, createExerciseHistoryPanel(sessionExercise), currentPanel, createExerciseProgressPanel(sessionExercise));
   window.requestAnimationFrame(() => activateExerciseView(
     article,
     sessionExercise.id,
@@ -3268,16 +3845,53 @@ function renderSessionExercise(session, sessionExercise) {
   return article;
 }
 
+function catalogEditingSession() {
+  return getActiveSession(state) ?? getFreeSessionDraft(state);
+}
+
+function renderFreeWorkoutDraft(draft) {
+  const list = $("freeDraftExerciseList");
+  list.replaceChildren();
+  $("freeDraftMeta").textContent = draft.exercises.length
+    ? `${countLabel(draft.exercises.length, "ejercicio")} preparados. El cronómetro empezará al iniciar.`
+    : "Añade los ejercicios que quieras hacer antes de empezar.";
+  $("startFreeDraftBtn").disabled = !draft.exercises.length;
+  draft.exercises
+    .slice()
+    .sort((left, right) => left.order - right.order)
+    .forEach((exercise, index) => {
+      const item = createElement("li", "free-draft-exercise surface");
+      const order = createElement("span", "free-draft-exercise-order", String(index + 1));
+      const copy = createElement("span", "free-draft-exercise-copy");
+      copy.append(createElement("strong", "", exercise.exerciseName), createElement("small", "", "Preparado · aún sin series"));
+      const remove = createButton("Quitar", "button button-quiet free-draft-remove", () => {
+        commit(
+          next => removeExerciseFromFreeSessionDraft(next, draft.id, exercise.id),
+          `${exercise.exerciseName} quitado del borrador.`,
+        );
+      });
+      item.append(order, copy, remove);
+      list.appendChild(item);
+    });
+  if (!draft.exercises.length) {
+    renderEmpty(list, "Tu borrador está vacío", "Abre el catálogo de abajo para añadir el primer ejercicio.");
+  }
+}
+
 function renderTraining() {
   const active = getActiveSession(state);
+  const freeDraft = getFreeSessionDraft(state);
   const activeRoutine = routineForSession(active);
-  if (!active) trainingView = "routines";
+  if (!active && trainingView === "session") trainingView = "routines";
+  if (!freeDraft && trainingView === "free-draft") trainingView = "routines";
   applyRoutineVisualClasses($("activeSessionPanel"), activeRoutine);
   applyRoutineVisualClasses($("activeSessionResume"), activeRoutine);
   $("routineManager").hidden = trainingView !== "routines";
   $("activeSessionPanel").hidden = !active || trainingView !== "session";
+  $("freeWorkoutDraftPanel").hidden = !freeDraft || trainingView !== "free-draft";
   $("activeSessionResume").hidden = !active;
   $("startFreeSessionBtn").disabled = Boolean(active);
+  $("startFreeSessionBtn").classList.toggle("has-draft", Boolean(freeDraft));
 
   if (active) {
     const isCardioSession = (active.sessionType ?? "strength") === "cardio";
@@ -3292,7 +3906,7 @@ function renderTraining() {
     $("sessionExerciseList").replaceChildren();
     $("sessionExerciseList").hidden = isCardioSession;
     $("cardioSessionForm").hidden = !isCardioSession || trainingView !== "session";
-    document.querySelector(".exercise-picker").hidden = isCardioSession;
+    $("exercisePicker").hidden = isCardioSession || trainingView !== "session";
     if (isCardioSession) {
       setCardioForm(active);
       updateCardioPacePreview();
@@ -3311,10 +3925,17 @@ function renderTraining() {
   } else {
     $("sessionExerciseList").hidden = false;
     $("cardioSessionForm").hidden = true;
-    document.querySelector(".exercise-picker").hidden = false;
+    $("exercisePicker").hidden = !(freeDraft && trainingView === "free-draft");
   }
 
+  if (freeDraft && trainingView === "free-draft") renderFreeWorkoutDraft(freeDraft);
+
   $("undoBar").hidden = !state.training.undo;
+  if (state.training.undo) {
+    $("undoBarMessage").textContent = state.training.undo.type === "remove_routine_exercise"
+      ? "Ejercicio retirado de toda la rutina."
+      : "Serie borrada.";
+  }
   renderCatalogResults();
   updateActiveSessionElapsed();
 }
@@ -3491,6 +4112,7 @@ function renderCatalogFilters() {
 function renderCatalogResults() {
   const container = $("catalogResults");
   const resultActions = $("catalogResultActions");
+  const editingSession = catalogEditingSession();
   resultActions.replaceChildren();
   $("cancelReplacementBtn").hidden = !replacementTargetExerciseId;
   if (!catalog.length) {
@@ -3508,6 +4130,8 @@ function renderCatalogResults() {
     $("catalogCount").textContent = `${catalog.length.toLocaleString("es-ES")} disponibles`;
     $("catalogStatus").textContent = replacementTargetExerciseId
       ? "Modo alternativa: elige un ejercicio; la rutina original no cambiará."
+      : editingSession?.status === "draft"
+        ? "Añade ejercicios al borrador. Nada empieza a contar hasta pulsar Empezar."
       : "Busca por nombre, músculo o equipo para ver una selección breve.";
     renderEmpty(
       container,
@@ -3517,12 +4141,15 @@ function renderCatalogResults() {
     return;
   }
   const usedExerciseIds = new Set(state.training.exercises.map((exercise) => exercise.id));
+  const sessionExerciseIds = new Set(editingSession?.exercises.map((exercise) => exercise.exerciseId) ?? []);
   const matches = catalog.filter((entry) => {
     const normalizedSearchable = catalogSearchText(entry);
     return (!queryTokens.length || queryTokens.every((token) => normalizedSearchable.includes(token)))
       && (!category || entry.categoryEs === category)
       && (!equipment || entry.equipmentEs === equipment)
-      && (!target || (entry.targetEs ?? entry.target) === target);
+      && (!target || (entry.targetEs ?? entry.target) === target)
+      // Already-added options should make room for other suggestions in this session.
+      && (replacementTargetExerciseId || !sessionExerciseIds.has(entry.id));
   }).sort((left, right) => {
     return catalogSearchScore(right, query, usedExerciseIds)
       - catalogSearchScore(left, query, usedExerciseIds)
@@ -3530,7 +4157,11 @@ function renderCatalogResults() {
   });
 
   $("catalogCount").textContent = `${catalog.length.toLocaleString("es-ES")} ejercicios`;
-  $("catalogStatus").textContent = `${matches.length.toLocaleString("es-ES")} resultados · catálogo auditado, sin imágenes ni GIF.`;
+  $("catalogStatus").textContent = replacementTargetExerciseId
+    ? `Cambiando solo hoy · ${matches.length.toLocaleString("es-ES")} alternativas. La rutina original no cambiará.`
+    : editingSession?.status === "draft"
+      ? `${matches.length.toLocaleString("es-ES")} resultados · se añadirán a este borrador.`
+    : `${matches.length.toLocaleString("es-ES")} resultados · catálogo auditado, sin imágenes ni GIF.`;
   container.replaceChildren();
   matches.slice(0, catalogResultLimit).forEach((entry) => {
     const card = createElement("article", "catalog-card");
@@ -3549,9 +4180,9 @@ function renderCatalogResults() {
     if (entry.reviewStatus === "pending_professional_review") {
       text.appendChild(createElement("small", "catalog-review-pending", "Sin revisión profesional todavía"));
     }
-    const active = getActiveSession(state);
+    const active = catalogEditingSession();
     const add = createButton(replacementTargetExerciseId ? "Elegir alternativa" : "Añadir", "button-secondary", () => {
-      if (!active) return;
+      if (!active || (replacementTargetExerciseId && active.status !== "in_progress")) return;
       const replacementId = replacementTargetExerciseId;
       const saved = runOnce(add, () => commit((next) => {
         const sessionExercise = replacementId
@@ -3577,7 +4208,7 @@ function renderCatalogResults() {
         renderCatalogResults();
       }
     });
-    add.disabled = !active;
+    add.disabled = !active || (replacementTargetExerciseId && active.status !== "in_progress");
 
     const details = document.createElement("details");
     details.className = "catalog-instructions";
@@ -3642,7 +4273,7 @@ function backfillExerciseMuscles() {
 
 async function loadCatalog() {
   try {
-    const response = await fetch("./data/exercises.es.json?v=73", { cache: "no-cache" });
+    const response = await fetch("./data/exercises.es.json?v=98", { cache: "no-cache" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     if (!Array.isArray(payload.exercises)) throw new Error("Estructura no válida");
@@ -3684,6 +4315,8 @@ function figureFor(view) {
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 let muscleMapPeriod = "week";
+// Una zona abierta cada vez, como el acordeón de ejercicios de la sesión.
+let openMuscleZone = null;
 
 function muscleShapeElement(d) {
   const element = document.createElementNS(SVG_NS, "path");
@@ -3803,6 +4436,11 @@ function renderMuscleMap() {
     button.setAttribute("aria-pressed", String(button.dataset.musclePeriod === muscleMapPeriod));
   });
 
+  const figuraActual = state.owner.preferences?.mapFigure === "female" ? "female" : "male";
+  document.querySelectorAll("[data-map-figure]").forEach((button) => {
+    button.setAttribute("aria-pressed", String(button.dataset.mapFigure === figuraActual));
+  });
+
   figures.replaceChildren(
     renderMuscleFigure("front", volume),
     renderMuscleFigure("back", volume),
@@ -3817,19 +4455,27 @@ function renderMuscleMap() {
   const titulo = document.createElement("li");
   titulo.className = "muscle-legend-title";
   titulo.append(createElement("small", "", "Series directas:"));
-  legend.replaceChildren(titulo, ...MUSCLE_INTENSITY_STEPS.map((step) => {
-    const item = document.createElement("li");
-    item.className = `muscle-legend-item intensity-${step.id}`;
-    const swatch = createElement("span", "muscle-legend-swatch");
-    swatch.setAttribute("aria-hidden", "true");
+
+  // Los cuatro tramos van pegados formando una barra, con "menos" y "más" en
+  // los extremos. Sueltos, cada uno con su número, obligaban a leer la leyenda
+  // para saber hacia dónde crece la escala: la intuición de "más oscuro = más
+  // trabajo" vale en tema claro y se invierte en oscuro, porque ahí el "sin
+  // trabajo" ya está en el suelo de luminosidad y solo se puede subir. La
+  // dirección tiene que verse, no deducirse.
+  const escala = document.createElement("li");
+  escala.className = "muscle-legend-scale";
+  escala.append(createElement("small", "muscle-legend-end", "menos"));
+  const barra = createElement("span", "muscle-legend-bar");
+  MUSCLE_INTENSITY_STEPS.forEach((step) => {
     const siguiente = MUSCLE_INTENSITY_STEPS[MUSCLE_INTENSITY_STEPS.indexOf(step) + 1];
-    const detail = step.id === "none"
-      ? "0"
-      : `${step.min}${siguiente ? `-${siguiente.min - 1}` : "+"}`;
-    item.append(swatch, createElement("small", "", detail));
-    item.title = step.labelEs;
-    return item;
-  }));
+    const detail = step.id === "none" ? "0" : `${step.min}${siguiente ? `-${siguiente.min - 1}` : "+"}`;
+    const tramo = createElement("span", `muscle-legend-step intensity-${step.id}`, detail);
+    tramo.title = step.labelEs;
+    barra.appendChild(tramo);
+  });
+  escala.appendChild(barra);
+  escala.append(createElement("small", "muscle-legend-end", "más"));
+  legend.replaceChildren(titulo, escala);
   const implicacion = document.createElement("li");
   implicacion.className = "muscle-legend-item";
   const trama = createElement("span", "muscle-legend-swatch swatch-secondary");
@@ -3855,17 +4501,69 @@ function renderMuscleMap() {
     empty.appendChild(cell);
     rows.replaceChildren(empty);
   } else {
-    rows.replaceChildren(...filas.map(({ region, data }) => {
+    // Los ejercicios de cada zona van PLEGADOS. Abiertos todos a la vez eran
+    // cuarenta líneas seguidas, con los mismos nombres repetidos en cada zona
+    // que tocan, y la tabla dejaba de poderse recorrer de un vistazo. Ahora la
+    // tabla se lee como catorce números y el detalle está a un toque.
+    rows.replaceChildren(...filas.flatMap(({ region, data }) => {
       const row = document.createElement("tr");
+      row.className = "muscle-row";
       const nombre = document.createElement("th");
       nombre.scope = "row";
-      nombre.textContent = region.labelEs;
       const directas = document.createElement("td");
       directas.textContent = String(data.directSets);
       const secundarias = document.createElement("td");
       secundarias.textContent = String(data.secondarySets);
+
+      const ejercicios = data.exercises ?? [];
+      if (!ejercicios.length) {
+        nombre.textContent = region.labelEs;
+        row.append(nombre, directas, secundarias);
+        return [row];
+      }
+
+      const detalleId = `muscleZone-${region.id}`;
+      const toggle = createElement("button", "muscle-zone-toggle", region.labelEs);
+      toggle.type = "button";
+      toggle.setAttribute("aria-expanded", String(openMuscleZone === region.id));
+      toggle.setAttribute("aria-controls", detalleId);
+      toggle.addEventListener("click", () => {
+        openMuscleZone = openMuscleZone === region.id ? null : region.id;
+        renderMuscleMap();
+      });
+      nombre.appendChild(toggle);
       row.append(nombre, directas, secundarias);
-      return row;
+
+      const detalle = document.createElement("tr");
+      detalle.className = "muscle-row-exercises";
+      detalle.id = detalleId;
+      detalle.hidden = openMuscleZone !== region.id;
+      const celda = document.createElement("td");
+      celda.colSpan = 3;
+
+      // Separadas por tipo: un ejercicio directo y uno de implicación con el
+      // mismo número no aportan lo mismo a la zona, y mezclados lo parecían.
+      [["direct", "Trabajo directo"], ["secondary", "Con implicación"]].forEach(([kind, titulo]) => {
+        const grupo = ejercicios.filter((ejercicio) => ejercicio.kind === kind);
+        if (!grupo.length) return;
+        celda.appendChild(createElement("p", "muscle-exercise-kind", titulo));
+        const lista = document.createElement("ul");
+        lista.className = "muscle-exercise-list";
+        grupo.forEach((ejercicio) => {
+          const item = document.createElement("li");
+          item.className = "muscle-exercise";
+          const nombreEjercicio = document.createElement("span");
+          nombreEjercicio.textContent = ejercicio.name;
+          const cuenta = document.createElement("span");
+          cuenta.className = "muscle-exercise-sets";
+          cuenta.textContent = countLabel(ejercicio.sets, "serie");
+          item.append(nombreEjercicio, cuenta);
+          lista.appendChild(item);
+        });
+        celda.appendChild(lista);
+      });
+      detalle.appendChild(celda);
+      return [row, detalle];
     }));
   }
 
@@ -3891,6 +4589,7 @@ function render() {
   renderRoutineManager();
   renderTraining();
   renderSettings();
+  renderCompactRestBar();
 }
 
 const tabIds = new Set([
@@ -3980,6 +4679,18 @@ document.querySelectorAll("[data-muscle-period]").forEach((button) => {
   button.addEventListener("click", () => {
     muscleMapPeriod = button.dataset.musclePeriod;
     renderMuscleMap();
+  });
+});
+
+// La figura vivía solo en Ajustes, a cuatro toques del mapa, así que quien
+// abría el mapa no sabía que se podía cambiar. Escribe la misma preferencia:
+// no es un ajuste nuevo, es el mismo donde se usa.
+document.querySelectorAll("[data-map-figure]").forEach((button) => {
+  button.addEventListener("click", () => {
+    if (state.owner.preferences?.mapFigure === button.dataset.mapFigure) return;
+    commit((next) => {
+      next.owner.preferences.mapFigure = button.dataset.mapFigure === "female" ? "female" : "male";
+    }, null);
   });
 });
 
@@ -4132,6 +4843,7 @@ $("createRoutineForm").addEventListener("submit", (event) => {
       accentColor: selectedColor === "auto" ? null : selectedColor,
       dayType: selectedType,
       cardioType: selectedType === "cardio" ? selectedCardioType : "run",
+      mode: selectedType === "cardio" ? "log" : document.querySelector('input[name="routineMode"]:checked')?.value ?? "log",
     }),
     `Rutina ${name.trim()} creada con ${countLabel(weekdays.length, "día")}.`,
   );
@@ -4189,12 +4901,43 @@ $("addRoutineDayForm").addEventListener("submit", (event) => {
 $("addRoutineDayType").addEventListener("change", syncAddRoutineCardioVisibility);
 
 $("startFreeSessionBtn").addEventListener("click", (event) => {
-  trainingView = "session";
-  const started = runOnce(
+  trainingView = "free-draft";
+  const created = runOnce(
     event.currentTarget,
-    () => commit((next) => startFreeSession(next), "Entrenamiento iniciado y guardado."),
+    () => commit((next) => createFreeSessionDraft(next), "Borrador creado. El tiempo empezará cuando tú decidas."),
   );
-  if (!started) trainingView = "routines";
+  if (!created) trainingView = "routines";
+});
+
+$("freeDraftBackBtn").addEventListener("click", () => {
+  trainingView = "routines";
+  renderTraining();
+});
+
+$("startFreeDraftBtn").addEventListener("click", () => {
+  const draft = getFreeSessionDraft(state);
+  if (!draft) return;
+  trainingView = "session";
+  const started = commit(
+    next => startFreeSessionDraft(next, draft.id),
+    "Entrenamiento iniciado. El tiempo y el Diario ya cuentan desde ahora.",
+  );
+  if (!started) trainingView = "free-draft";
+});
+
+$("discardFreeDraftBtn").addEventListener("click", async () => {
+  const draft = getFreeSessionDraft(state);
+  if (!draft) return;
+  if (!(await confirmDialog("Se borrará este borrador y sus ejercicios preparados. No había entrenamiento registrado todavía.", {
+    title: "Descartar borrador",
+    confirmLabel: "Descartar",
+    danger: true,
+  }))) return;
+  const discarded = commit(
+    next => discardFreeSessionDraft(next, draft.id),
+    "Borrador descartado.",
+  );
+  if (discarded) trainingView = "routines";
 });
 
 $("continueSessionBtn").addEventListener("click", () => {
@@ -4234,7 +4977,13 @@ $("cardioSessionForm").addEventListener("submit", (event) => {
   }), `Actividad de ${definition.label.toLowerCase()} guardada. Las métricas derivadas se calcularon automáticamente.`);
 });
 
-$("backToRoutinesBtn").addEventListener("click", () => {
+$("backToRoutinesBtn").addEventListener("click", async () => {
+  const active = getActiveSession(state);
+  if (active) {
+    for (const exercise of active.exercises.filter((item) => item.routineExerciseId)) {
+      await offerGuidedPlanUpdate(active, exercise);
+    }
+  }
   trainingView = "routines";
   renderTraining();
   window.scrollTo({ top: 0, behavior: scrollBehavior() });
@@ -4266,6 +5015,9 @@ $("discardSessionFromRoutinesBtn").addEventListener("click", confirmDiscardActiv
 $("finishSessionBtn").addEventListener("click", async () => {
   const active = getActiveSession(state);
   if (!active) return;
+  for (const exercise of active.exercises.filter((item) => item.routineExerciseId)) {
+    await offerGuidedPlanUpdate(active, exercise);
+  }
   const omittedExercises = active.exercises.filter((exercise) => exercise.status === "skipped").length;
   const untouchedExercises = active.exercises.filter((exercise) => (
     exercise.status !== "skipped" && !exercise.sets.length
@@ -4281,10 +5033,11 @@ $("finishSessionBtn").addEventListener("click", async () => {
 
 $("addExerciseForm").addEventListener("submit", (event) => {
   event.preventDefault();
-  const active = getActiveSession(state);
+  const active = catalogEditingSession();
   if (!active) return;
   const name = $("newExerciseName").value;
   const replacementId = replacementTargetExerciseId;
+  if (replacementId && active.status !== "in_progress") return;
   const saved = commit((next) => {
     if (replacementId) {
       replaceSessionExerciseForToday(next, active.id, replacementId, name);
@@ -4302,11 +5055,15 @@ $("addExerciseForm").addEventListener("submit", (event) => {
 $("cancelReplacementBtn").addEventListener("click", () => {
   replacementTargetExerciseId = null;
   renderCatalogResults();
-  showNotice("Alternativa cancelada.");
+  showNotice("Cambio de ejercicio cancelado.");
 });
 
 $("undoSetBtn").addEventListener("click", () => {
-  commit((next) => restoreLastDeletedSet(next), "Serie recuperada.");
+  const undoType = state.training.undo?.type;
+  commit(
+    next => restoreLastTrainingUndo(next),
+    undoType === "remove_routine_exercise" ? "Ejercicio restaurado en toda la rutina." : "Serie recuperada.",
+  );
 });
 
 ["catalogSearch", "catalogCategory", "catalogEquipment", "catalogTarget"].forEach((id) => {
@@ -4518,7 +5275,7 @@ $("removeDemoDataBtn").addEventListener("click", async () => {
   if (!confirmed) return;
   const saved = commit((next) => {
     removeDemoData(next);
-  }, "");
+  }, "", { preserveUpdatedAt: true });
   if (saved) {
     showNotice("Datos demo retirados. Los datos reales se han conservado.", { area: "appNotice" });
   }

@@ -1,17 +1,62 @@
 # Pruebas manuales reproducibles
 
+Última revisión: 11 de septiembre de 2026.
+
+## Rutinas guiadas (QA-GUIDED-001)
+
+1. Crear una rutina de fuerza en modo `Guiada`.
+2. Añadir un ejercicio con 3 series, rango 8–12 y peso vacío.
+3. Comprobar que la primera sesión dice «Primera vez: vamos a tomar tu
+   referencia» y no inventa ningún peso.
+4. Marcar la primera serie con peso, repeticiones y RIR: debe guardarse una sola
+   vez después de elegir el tipo y arrancar el descanso si está activado.
+5. Tocar peso, reps y RIR: debe aparecer la rueda; peso encaja cada 0,25 kg y
+   tocar el centro permite escribir. Usar `+30 s`, pausa y `Saltar` en la barra.
+6. En guiada no debe aparecer duplicar. Deslizar una realizada a la izquierda
+   pide confirmación y `Deshacer` restaura esa serie.
+7. Deslizar una pendiente a la izquierda: debe aparecer tachada y gris en entrenamiento,
+   el historial del ejercicio y el resumen del Diario.
+8. Añadir una nota y comprobar que no cambia la nota de la rutina. Registrar
+   varias efectivas fuera del plan y cerrar el ejercicio: la propuesta debe
+   aparecer agregada y editable, conservando lo realizado aunque se elija `Solo hoy`.
+9. Eliminar el ejercicio: debe desaparecer de todos los bloques; si había series,
+   estas siguen en la sesión. `Deshacer` restaura todas las posiciones.
+10. Finalizar y comprobar que pendientes/anuladas no cuentan en volumen, mapa
+   muscular, récords ni progreso.
+
+## Demostración guiada (QA-GUIDED-002)
+
+1. En `Ajustes > Datos`, exportar una copia si se va a probar con datos reales.
+2. Pulsar `Cargar datos de demostración`.
+3. Comprobar que existen rutinas `Solo registro` y `Guiada`, una serie anulada y
+   un ejercicio guiado sin peso objetivo.
+4. En Diario, elegir `Press de banca con barra` y comprobar que la línea de peso
+   progresa; no debe ser plana.
+5. Volver a `Ajustes > Datos` y pulsar `Quitar datos de demostración`.
+6. Comprobar que las rutinas, sesiones, comidas, objetivos y ajustes anteriores
+   quedan exactamente como estaban.
+
+Automatización equivalente:
+
+```bash
+node scripts/qa-guided-browser.mjs
+node scripts/qa-guided-demo.mjs
+node scripts/check-guided-mutations.mjs
+```
+
 ## Incremento 1: sesión libre y series
 
 1. Ejecutar `python3 -m http.server 8000`.
 2. Abrir `http://localhost:8000`.
-3. Entrar en `Entrenamiento` y pulsar `Iniciar entrenamiento libre`.
-4. Recargar la página: la misma sesión debe seguir visible y en curso.
-5. Añadir `Press banca`.
+3. Entrar en `Entrenamiento` y pulsar `Entrenamiento libre`.
+4. Comprobar que aparece un borrador, sin cronómetro activo ni entrada en el
+   Diario; añadir `Press banca` y recargar: el borrador debe conservarse.
+5. Pulsar `Empezar entrenamiento`: solo entonces debe empezar el tiempo.
 6. Registrar `10` repeticiones, `60` kg y RIR `2`.
 7. Editar la serie a `9` repeticiones y `62,5` kg.
 8. Borrarla, confirmar y pulsar `Deshacer`.
 9. Añadir otra serie y finalizar el entrenamiento.
-10. Iniciar otra sesión y volver a añadir `Press banca`.
+10. Iniciar otro borrador y volver a añadir `Press banca`.
 11. Comprobar que aparece la referencia de la sesión finalizada.
 
 ## Casos de error

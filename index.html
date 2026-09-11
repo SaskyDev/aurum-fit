@@ -21,10 +21,10 @@
         } catch {}
       })();
     </script>
-    <link rel="manifest" href="manifest.json?v=73" />
-    <link rel="icon" type="image/svg+xml" href="icon.svg?v=73" />
-    <link rel="apple-touch-icon" href="icon.svg?v=73" />
-    <link rel="stylesheet" href="styles.css?v=73" />
+    <link rel="manifest" href="manifest.json?v=98" />
+    <link rel="icon" type="image/svg+xml" href="icon.svg?v=98" />
+    <link rel="apple-touch-icon" href="icon.svg?v=98" />
+    <link rel="stylesheet" href="styles.css?v=98" />
   </head>
   <body>
     <main>
@@ -104,6 +104,10 @@
             <button class="period-tab" type="button" data-muscle-period="session" aria-pressed="false">Sesión</button>
             <button class="period-tab active" type="button" data-muscle-period="week" aria-pressed="true">Semana</button>
             <button class="period-tab" type="button" data-muscle-period="month" aria-pressed="false">Mes</button>
+          </div>
+          <div class="muscle-figure-switch" role="group" aria-label="Figura del mapa">
+            <button type="button" data-map-figure="male" aria-pressed="true">Hombre</button>
+            <button type="button" data-map-figure="female" aria-pressed="false">Mujer</button>
           </div>
           <div id="muscleMapFigures" class="muscle-map-figures"></div>
           <ul id="muscleMapLegend" class="muscle-map-legend"></ul>
@@ -314,6 +318,14 @@
                     <div id="cardioActivityOptions" class="cardio-activity-picker" aria-label="Actividad cardio"></div>
                     <small id="cardioActivityHelp">Mostraremos solo las métricas que necesita esa actividad.</small>
                   </fieldset>
+                  <fieldset id="routineModePicker" class="routine-type-fieldset">
+                    <legend>¿Quién pone los números?</legend>
+                    <div class="routine-type-picker routine-mode-picker" aria-label="Modo de la rutina">
+                      <label><input type="radio" name="routineMode" value="log" checked /><span><strong>Los pones tú</strong><small>La rutina solo recuerda qué ejercicios tocan cada día. El peso y las repeticiones los escribes mientras entrenas, como en un cuaderno.</small></span></label>
+                      <label><input type="radio" name="routineMode" value="guided" /><span><strong>Los prepara la rutina</strong><small>Dejas escritos ahora las series, las repeticiones y el peso de cada ejercicio. Entrenar es ir confirmando serie a serie.</small></span></label>
+                    </div>
+                    <small class="routine-mode-note">Si no lo tienes claro, empieza con <strong>Los pones tú</strong>: se puede convertir en rutina preparada más adelante, pero no al revés. En los dos casos solo cuenta lo que confirmes tú.</small>
+                  </fieldset>
                   <fieldset class="routine-color-fieldset">
                     <legend>Color de la rutina</legend>
                     <div class="routine-color-picker" aria-label="Color de la nueva rutina">
@@ -364,6 +376,7 @@
               <div><p class="eyebrow">Entrenamiento</p><h2 id="routineDetailTitle">Rutina</h2><p id="routineDetailMeta" class="muted"></p></div>
             </header>
             <div id="routineSpotlight" aria-label="Resumen visual de la rutina"></div>
+            <div id="routineModeEditor"></div>
             <details id="selectedRoutineColorEditor" class="routine-color-editor">
               <summary>Editar color</summary>
               <fieldset class="routine-color-fieldset routine-detail-color">
@@ -383,13 +396,30 @@
             <div id="routineDetailDays" class="routine-day-list"></div>
             <form id="addRoutineDayForm" class="add-routine-day surface">
               <div><strong>+ Crear entrenamiento diferente</strong><small>Solo si quieres una variante distinta dentro de esta rutina.</small></div>
-              <label class="routine-day-type-select">Tipo<select id="addRoutineDayType"><option value="strength">Fuerza</option><option value="cardio">Cardio</option></select></label>
-              <label id="addRoutineCardioTypeLabel" class="routine-day-type-select" hidden>Actividad<select id="addRoutineCardioType"></select></label>
+              <div class="routine-variant-controls">
+                <label class="routine-day-type-select">Tipo<select id="addRoutineDayType"><option value="strength">Fuerza</option><option value="cardio">Cardio</option></select></label>
+                <label id="addRoutineCardioTypeLabel" class="routine-day-type-select" hidden>Actividad<select id="addRoutineCardioType"></select></label>
+              </div>
               <div id="addRoutineDayWeekdays" class="weekday-selector compact-weekdays" aria-label="Nuevo día de entrenamiento"></div>
               <small id="addRoutineDayWeekdaysHelp" class="muted"></small>
-              <button class="button button-secondary" type="submit">Crear variante</button>
+              <button class="button button-secondary routine-variant-submit" type="submit">Crear variante</button>
             </form>
           </section>
+        </section>
+
+        <section id="freeWorkoutDraftPanel" class="free-workout-draft-panel" hidden>
+          <header class="subpage-header">
+            <button id="freeDraftBackBtn" class="minimal-icon-button bare-arrow-button" type="button" aria-label="Volver a rutinas">←</button>
+            <div><p class="eyebrow">Entrenamiento libre</p><h2>Prepara tu sesión</h2><p class="muted">Aún no ha empezado: el tiempo y el Diario comenzarán cuando pulses Empezar.</p></div>
+          </header>
+          <section class="free-draft-summary surface" aria-labelledby="freeDraftTitle">
+            <div><p class="eyebrow">Borrador guardado</p><h3 id="freeDraftTitle">Tu entrenamiento puntual</h3><p id="freeDraftMeta" class="muted">Añade los ejercicios que quieras hacer.</p></div>
+            <div class="free-draft-actions">
+              <button id="startFreeDraftBtn" class="button button-accent" type="button">▶ Empezar entrenamiento</button>
+              <button id="discardFreeDraftBtn" class="button button-quiet" type="button">Descartar borrador</button>
+            </div>
+          </section>
+          <ol id="freeDraftExerciseList" class="free-draft-exercise-list" aria-label="Ejercicios del borrador"></ol>
         </section>
 
         <section id="activeSessionPanel" hidden>
@@ -408,7 +438,7 @@
           </div>
 
           <div id="undoBar" class="undo-bar" hidden>
-            <span>Serie borrada.</span>
+            <span id="undoBarMessage">Acción realizada.</span>
             <button id="undoSetBtn" class="button button-link" type="button">Deshacer</button>
           </div>
 
@@ -448,8 +478,9 @@
             </section>
             <button class="button button-accent button-large" type="submit">Guardar actividad</button>
           </form>
+        </section>
 
-          <details class="exercise-picker surface">
+        <details id="exercisePicker" class="exercise-picker surface" hidden>
             <summary class="exercise-picker-summary">
               <span aria-hidden="true">＋</span>
               <span><strong>Añadir ejercicio solo hoy</strong><small>No modifica la rutina original</small></span>
@@ -461,7 +492,6 @@
                   <h3 id="exercisePickerTitle">Añadir ejercicio extra hoy</h3>
                 </div>
                 <div class="picker-heading-actions">
-                  <button id="cancelReplacementBtn" class="button button-quiet" type="button" hidden>Cancelar alternativa</button>
                   <span id="catalogCount" class="count-badge">Cargando…</span>
                 </div>
               </div>
@@ -483,7 +513,10 @@
                   <select id="catalogTarget"><option value="">Todos</option></select>
                 </label>
               </div>
-              <p id="catalogStatus" class="field-help">Escribe para buscar. El ejercicio se guardará en el Diario, no en la rutina.</p>
+              <div class="catalog-status-row">
+                <p id="catalogStatus" class="field-help">Escribe para buscar. El ejercicio se guardará en el Diario, no en la rutina.</p>
+                <button id="cancelReplacementBtn" class="button replacement-cancel" type="button" hidden>Cancelar cambio</button>
+              </div>
               <div id="catalogResults" class="catalog-results"></div>
               <div id="catalogResultActions" class="catalog-result-actions"></div>
 
@@ -499,8 +532,7 @@
                 </form>
               </div>
             </div>
-          </details>
-        </section>
+        </details>
 
       </section>
 
@@ -655,6 +687,6 @@
 
     </main>
 
-    <script type="module" src="app.js?v=73"></script>
+    <script type="module" src="app.js?v=98"></script>
   </body>
 </html>

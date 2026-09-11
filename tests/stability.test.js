@@ -192,7 +192,9 @@ test("las confirmaciones usan un diálogo accesible propio y no window.confirm",
   assert.match(styles, /\.overlay-open \{ overflow: hidden; \}/);
 
   const confirmaciones = app.match(/await confirmDialog\(/g) ?? [];
-  assert.equal(confirmaciones.length, 9);
+  // La eliminación global y descartar un borrador son acciones destructivas.
+  assert.equal(confirmaciones.length, 11);
+  assert.match(app, /title: "Descartar borrador"/);
 });
 
 test("el catálogo avisa de los ejercicios sin revisión profesional", () => {
@@ -202,6 +204,109 @@ test("el catálogo avisa de los ejercicios sin revisión profesional", () => {
   assert.match(app, /entry\.reviewStatus === "pending_professional_review"/);
   assert.match(app, /"catalog-review-pending", "Sin revisión profesional todavía"/);
   assert.match(styles, /\.catalog-card \.catalog-review-pending \{/);
+
+  // El matiz del origen se perdió una vez al rehacer la cabecera del ejercicio:
+  // quedó "Catálogo auditado" a secas, y encima pintado en mayúsculas y color
+  // de acento, o sea afirmando más justo después de perder la reserva.
+  assert.match(app, /"Catálogo auditado · revisión pendiente"/);
+  assert.doesNotMatch(app, /"Catálogo auditado"/);
+
+  // El botón Guía enseña las instrucciones del dataset. Bajo ese nombre ganan
+  // autoridad, así que llevan el mismo descargo que en el catálogo, y no se
+  // llaman "verificadas" cuando nadie las ha verificado.
+  const guia = app.slice(app.indexOf("function openExerciseGuide"), app.indexOf("function openSessionNoteSheet"));
+  assert.match(guia, /Texto del dataset pendiente de revisión profesional\. No es consejo médico\./);
+  assert.doesNotMatch(app, /guía verificada/);
+});
+
+test("el detalle por zona nombra los ejercicios y se puede tocar", () => {
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const css = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+  const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+
+  // El número dice cuánto; el ejercicio dice de dónde viene, que es lo que
+  // permite decidir qué cambiar. Los datos ya venían de computeMuscleVolume.
+  assert.match(app, /detalle\.className = "muscle-row-exercises"/);
+  assert.match(css, /\.muscle-exercise-list \{/);
+
+  // Directo e implicación van en grupos separados con su título. Mezclados,
+  // dos ejercicios con el mismo número parecían aportar lo mismo a la zona.
+  assert.match(app, /\[\["direct", "Trabajo directo"\], \["secondary", "Con implicación"\]\]/);
+  assert.match(app, /ejercicios\.filter\(\(ejercicio\) => ejercicio\.kind === kind\)/);
+  assert.match(app, /if \(!grupo\.length\) return;/, "un grupo vacío no puede dejar un título suelto");
+
+  // Y van plegados, una zona cada vez: abiertos todos a la vez eran cuarenta
+  // líneas seguidas y la tabla dejaba de poderse recorrer.
+  assert.match(app, /let openMuscleZone = null;/);
+  assert.match(app, /detalle\.hidden = openMuscleZone !== region\.id;/);
+  assert.match(app, /openMuscleZone = openMuscleZone === region\.id \? null : region\.id;/);
+  assert.match(app, /toggle\.setAttribute\("aria-expanded", String\(openMuscleZone === region\.id\)\)/);
+  assert.match(app, /toggle\.setAttribute\("aria-controls", detalleId\)/);
+
+  // El summary era un <details> pelado, sin una sola regla de estilo: se leía
+  // como texto muerto. Ahora es un control con objetivo táctil de 44 px.
+  // Una sola regla para el summary, no una nueva encima de la vieja, o la
+  // comprobación mira un bloque y el navegador aplica otro: así fue como bajar
+  // la altura a 20px no ponía nada en rojo.
+  const reglasSummary = css.match(/\.muscle-map-detail > summary \{[^}]*\}/g) ?? [];
+  assert.equal(reglasSummary.length, 1, "hay dos reglas para el mismo summary");
+  assert.match(reglasSummary[0], /min-height: 44px;/, "el control de detalle perdió su objetivo táctil");
+  assert.match(reglasSummary[0], /border: 1px solid rgba\(var\(--accent-rgb\)/, "y su peso visual: en gris apagado parecía un pie de tabla");
+  assert.match(html, /Ver detalle por zona/);
+
+  // Y la figura se cambia donde se usa, no a cuatro toques en Ajustes. Escribe
+  // la MISMA preferencia: si fuese otra, las dos pantallas se contradirían.
+  assert.match(html, /data-map-figure="male"/);
+  assert.match(html, /data-map-figure="female"/);
+  assert.match(app, /next\.owner\.preferences\.mapFigure = button\.dataset\.mapFigure === "female" \? "female" : "male"/);
+  assert.match(app, /button\.setAttribute\("aria-pressed", String\(button\.dataset\.mapFigure === figuraActual\)\)/);
+});
+
+test("la leyenda del mapa dice hacia dónde crece la escala", () => {
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const css = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+
+  // La intuición de "más oscuro = más trabajo" vale en tema claro y se invierte
+  // en oscuro por fuerza: allí el "sin trabajo" está pegado al suelo de
+  // luminosidad (0.282 contra 0.217 de la tarjeta) y solo queda subir. Con
+  // cuatro muestras sueltas había que leer los números para saber la dirección;
+  // en una barra continua con extremos rotulados se ve.
+  assert.match(app, /escala\.append\(createElement\("small", "muscle-legend-end", "menos"\)\)/);
+  assert.match(app, /escala\.append\(createElement\("small", "muscle-legend-end", "más"\)\)/);
+  assert.match(app, /const barra = createElement\("span", "muscle-legend-bar"\)/);
+  assert.match(css, /\.muscle-legend-bar \{[^}]*overflow: hidden;/);
+
+  // Cada tramo lleva la tinta que se lee sobre SU color, no una por tema: el
+  // cobre y el ámbar son de luminosidad media y piden lados distintos. Con una
+  // sola tinta por tema el cobre se quedaba en 3,04:1.
+  assert.match(css, /:root:not\(\[data-theme="light"\]\) \.muscle-legend-step\.intensity-low \{ color: #ffffff; \}/);
+  assert.match(css, /:root\[data-theme="light"\] \.muscle-legend-step\.intensity-medium,\s*\n:root\[data-theme="light"\] \.muscle-legend-step\.intensity-high \{ color: #ffffff; \}/);
+});
+
+test("el mapa no inventa color: la trama, el tramo y el trazo compartido", () => {
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const css = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+
+  // Una zona con implicación pero sin trabajo directo NO se pinta con la escala
+  // de color: se marca con trama. Colorearla diría que la has entrenado.
+  assert.match(app, /const onlySecondary = intensity === "none" && secondarySets > 0;/);
+  assert.match(app, /if \(onlySecondary\) group\.style\.fill = `url\(#\$\{hatchId\}\)`;/);
+  assert.match(css, /\.muscle-hatch-line \{/);
+
+  // Los abductores comparten trazo con el glúteo porque el glúteo medio ES el
+  // abductor de cadera. Al compartir forma manda la región con más volumen
+  // directo, así que el dibujo puede enseñar los abductores "trabajados" con 0
+  // series propias. No es un invento —es el mismo músculo— pero el título del
+  // grupo tiene que seguir declarando los números de CADA región por separado,
+  // que es lo único que impide que el mapa mienta.
+  assert.match(app, /const REGION_SHARED_SHAPE = \{ abductors: "glutes" \};/);
+  assert.match(app, /el glúteo medio es\s*\n\/\/ precisamente el abductor de la cadera/);
+  const titulo = app.slice(app.indexOf("const title = document.createElementNS(SVG_NS, \"title\")"), app.indexOf("svg.appendChild(group)"));
+  assert.match(titulo, /datos\s*\n\s*\.map\(/, "el título recorre TODAS las regiones del trazo, no solo la principal");
+  assert.match(titulo, /\$\{item\.directSets\} series directas, \$\{item\.secondarySets\} con implicación/);
+
+  // Y el resumen en texto nombra la región que manda, no la que va de paso.
+  assert.match(app, /trabajados\.push\(`\$\{muscleRegionLabel\(principal\.regionId\)\} \(\$\{principal\.directSets\}\)`\)/);
 });
 
 test("el mapa muscular vive en el Diario con periodo propio y alternativa en texto", () => {
@@ -290,7 +395,7 @@ test("el submit de serie conserva el bloqueo aunque renderice otro formulario", 
   const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
   assert.match(app, /const pendingSetSubmissions = new Set\(\)/);
   assert.match(app, /pendingSetSubmissions\.has\(key\)/);
-  assert.match(app, /const submissionKey = `\$\{session\.id\}:\$\{sessionExercise\.id\}`/);
+  assert.match(app, /const submissionKey = `\$\{session\.id\}:\$\{sessionExercise\.id\}:\$\{order\}`/);
   // Se comprueba que el bloqueo envuelve al commit entero, no el literal del
   // mensaje: el aviso pasó a darse después del commit, porque hasta que la
   // serie no está guardada no se sabe si superó un récord. Lo que no puede
@@ -321,10 +426,10 @@ test("la navegación principal tiene tres destinos y Diario es el inicio", () =>
 test("el catálogo espera una búsqueda y la sesión distingue los tres tipos de serie", () => {
   const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
   assert.match(app, /No mostramos todo el catálogo de golpe/);
-  assert.match(app, /\["effective", "Efectiva", "Efectiva"\]/);
-  assert.match(app, /\["approach", "Aprox\.", "Aproximación"\]/);
-  assert.match(app, /\["warmup", "Calent\.", "Calentamiento"\]/);
-  assert.match(app, /set-type-options/);
+  assert.match(app, /\["effective", "Efectiva"\]/);
+  assert.match(app, /\["approach", "Aproximación"\]/);
+  assert.match(app, /\["warmup", "Calentamiento"\]/);
+  assert.match(app, /openSetTypePicker/);
   assert.doesNotMatch(app, /placeholder: "(?:10|60|2)"/);
 });
 
@@ -339,21 +444,19 @@ test("el catálogo reconoce variantes unilaterales en español", () => {
   assert.ok(catalog.exercises.some((exercise) => exercise.nameEs === "Jalón unilateral en polea"));
 });
 
-test("la interfaz limita el catálogo y coloca un temporizador dentro del ejercicio abierto", () => {
+test("la interfaz limita el catálogo y mantiene el descanso fuera del ejercicio", () => {
   const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
   const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
   const css = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
   assert.match(app, /let catalogResultLimit = 4/);
   assert.match(app, /Ver todos \(\$\{matches\.length\.toLocaleString/);
-  assert.match(app, /createExerciseRestTimer\(sessionExercise\.id\)/);
+  assert.match(app, /function renderCompactRestBar/);
   assert.match(app, /document\.querySelectorAll\("\.session-exercise\[open\]"\)/);
-  assert.match(app, /button-quiet timer-reset-button/);
-  assert.match(css, /\.timer-reset-button/);
+  assert.match(app, /compact-rest-action/);
+  assert.match(css, /\.compact-rest-bar/);
   assert.doesNotMatch(html, /id="restTimerDisplay"/);
-  assert.match(app, /¿No puedes realizar este ejercicio hoy\?/);
-  assert.match(app, /Elegir una alternativa para hoy/);
-  assert.match(app, /Marcar como no realizado/);
-  assert.match(app, /Volver a incluir hoy/);
+  assert.match(app, /createExerciseQuickAction\("Cambiar", "swap", "change"/);
+  assert.match(app, /sessionExercise\.status === "skipped" \? "Incluir" : "Hoy no"/);
   assert.doesNotMatch(app, /"Sustituir solo hoy"|"Omitir hoy"/);
 });
 
@@ -442,12 +545,12 @@ test("la nueva estructura separa Rutinas, Entrenamiento y el detalle completo de
   assert.match(app, /startSessionFromRoutineDay\(next, selected\.routineId, selected\.routineDayId/);
 });
 
-test("los días son reversibles y cada ejercicio ofrece duplicado, historial, actual y progreso", () => {
+test("los días son reversibles y cada ejercicio conserva vistas con acciones compactas", () => {
   const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
   const css = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
 
   assert.match(app, /setRoutineDayWeekdays\(next, routine\.id, routineDay\.id, updated\)/);
-  assert.match(app, /duplicateSet\(next, session\.id, sessionExercise\.id, workoutSet\.id/);
+  assert.match(app, /const allowDuplicate = !sessionExercise\.routineExerciseId/);
   assert.match(app, /\["history", "Historial"\]/);
   assert.match(app, /\["current", "Actual"\]/);
   assert.match(app, /\["progress", "Progreso"\]/);
@@ -456,16 +559,15 @@ test("los días son reversibles y cada ejercicio ofrece duplicado, historial, ac
   assert.match(app, /attachSetSwipe/);
   assert.match(app, /set-swipe-duplicate/);
   assert.match(app, /set-swipe-delete/);
-  assert.match(app, /RIR máximo permitido: 5/);
-  assert.match(app, /set-type-options/);
+  assert.match(app, /label: "RIR", value: workoutSet\.rir, min: 0, max: 5/);
+  assert.match(app, /openSetTypePicker/);
   assert.match(app, /setInputHints/);
-  assert.match(app, /load-stepper/);
-  assert.match(app, /stepLoadValue/);
-  assert.match(app, /set-field-label/);
-  assert.match(app, /dataset\.fullLabel = fullLabel/);
-  assert.match(app, /dataset\.label = "Peso"/);
-  assert.match(app, /Registra la primera en el formulario inferior/);
-  assert.match(app, /Última referencia usada como guía visual/);
+  assert.match(app, /step: 0\.25/);
+  assert.match(app, /compact-set-form/);
+  assert.match(app, /compact-set-row-content/);
+  assert.match(app, /set-row-keyboard-action/);
+  assert.doesNotMatch(app, /Aún no hay series registradas/);
+  assert.match(app, /exercise-reference-pair/);
   assert.match(app, /chart-legend exercise-chart-legend/);
   assert.match(app, /Todas tus sesiones anteriores, sin modificar el histórico/);
   assert.match(app, /Mejor serie efectiva de cada entrenamiento/);
@@ -616,7 +718,7 @@ test("cardio se integra en rutinas, sesión activa y diario sin usar series", ()
   assert.match(app, /paceSecondsPer100m/);
   assert.match(app, /averageSpeedKmh/);
   assert.match(app, /routineDayType\(suggested\.routineDay\) === "cardio"/);
-  assert.match(app, /document\.querySelector\("\.exercise-picker"\)\.hidden = isCardioSession/);
+  assert.match(app, /\$\("exercisePicker"\)\.hidden = isCardioSession \|\| trainingView !== "session"/);
   assert.match(app, /Las métricas derivadas se calcularon automáticamente/);
   assert.match(app, /function renderCardioHistory/);
   assert.match(css, /\.cardio-session-card/);
@@ -639,14 +741,86 @@ test("Biblioteca permite archivar una rutina con gesto hacia la izquierda", () =
   assert.match(css, /touch-action: pan-y/);
 });
 
+test("una serie anulada no mete el ejercicio en el selector de Progreso", () => {
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+
+  // Una serie anulada no lleva setType ni isWarmup, así que `?? "effective"`
+  // la daba por efectiva: el ejercicio aparecía en el desplegable y la gráfica
+  // salía vacía, porque los puntos sí filtran por completed. El filtro tiene
+  // que estar en los DOS sitios, y este es el que se olvidó.
+  const progreso = app.slice(app.indexOf("function renderProgress()"), app.indexOf("const rows = $(\"exerciseProgressRows\")"));
+  const predicados = progreso.match(/exercise\.sets\.(?:some|filter)\([\s\S]*?\)\)/g) ?? [];
+  assert.equal(predicados.length, 2, "renderProgress recorre las series dos veces: el selector y los puntos");
+  predicados.forEach((predicado, indice) => {
+    assert.match(
+      predicado,
+      /workoutSet\.status === "completed"/,
+      `el recorrido ${indice + 1} de renderProgress no descarta las series anuladas`,
+    );
+  });
+});
+
+test("elegir el modo de rutina se explica opción por opción", () => {
+  const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
+
+  const picker = html.slice(html.indexOf('id="routineModePicker"'), html.indexOf("routine-color-fieldset"));
+
+  // Antes las dos opciones eran dos píldoras con nombre y UNA sola línea de
+  // texto debajo con todo junto. Quien empieza tiene que poder comparar: cada
+  // opción explica qué pasa al entrenar, en su propia tarjeta.
+  const explicaciones = picker.match(/<small>[^<]+<\/small>/g) ?? [];
+  assert.equal(explicaciones.length, 2, "cada modalidad necesita su propia explicación");
+  explicaciones.forEach((texto) => {
+    assert.ok(texto.length > 80, `la explicación se quedó en un titular: ${texto}`);
+  });
+
+  // Y el dato que baja el riesgo de equivocarse: la conversión va en un solo
+  // sentido, así que empezar por el modo simple no cierra ninguna puerta.
+  assert.match(picker, /no al revés/);
+  assert.match(picker, /routine-mode-note/);
+  assert.doesNotMatch(picker, /weekday-choice/, "el modo no es un día de la semana: reutiliza el patrón de Fuerza/Cardio");
+});
+
+test("la hoja de desviación dice de qué número a qué número", () => {
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+
+  const hoja = app.slice(app.indexOf("function planUpdateRows"), app.indexOf("async function offerGuidedPlanUpdate"));
+
+  // El mensaje era "tus N series se alejan del plan actual", sin decir de qué
+  // a qué. La comparación concreta ES el mensaje: plan 50 kg → hoy 42,5 kg.
+  assert.match(hoja, /`Plan: \$\{antes\}`/);
+  assert.match(hoja, /`Hoy: \$\{hoy\}`/);
+
+  // Solo lo que se ha movido: preguntar por las repeticiones cuando solo cambió
+  // el peso convierte una decisión de un segundo en un formulario de tres.
+  assert.match(hoja, /if \("targetLoadKg" in proposal\)/);
+  assert.match(hoja, /if \("repMin" in proposal \|\| "repMax" in proposal\)/);
+
+  // Los botones nombran el número en el que se queda el plan.
+  assert.match(hoja, /`Dejar el plan en \$\{resumenPlan\}`/);
+  assert.match(hoja, /`Cambiar el plan a \$\{resumenHoy\}`/);
+
+  // Concordancia: decía "Tus 1 series efectivas".
+  assert.match(hoja, /countLabel\(proposal\.observedSetCount, "serie efectiva"\)/);
+
+  // Tocar fuera NO puede contestar por el usuario: la firma de la desviación se
+  // marca como preguntada antes de abrir, así que un toque despistado cerraba
+  // la hoja como "no" y no volvía a salir nunca para esos mismos números.
+  assert.doesNotMatch(hoja, /overlay\.addEventListener\("pointerdown"/);
+
+  // Y el foco inicial va a un botón: enfocar un número abre el teclado del
+  // móvil justo encima de la pregunta.
+  assert.match(hoja, /initialFocus: today/);
+});
+
 test("guardar una serie arranca el descanso, corregirla no", () => {
   const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
 
   assert.match(app, /function startRestAfterSet\(exerciseId\)/);
   // Solo en series nuevas: corregir un número no es acabar de entrenar.
-  assert.match(app, /if \(!editingSetId && autoRestTimerEnabled\(\)\) startRestAfterSet\(sessionExercise\.id\);/);
+  assert.match(app, /if \(autoRestTimerEnabled\(\)\) startRestAfterSet\(sessionExercise\.id\);/);
   // Y después de guardar, no antes: si fallara la validación no debe arrancar.
-  const submit = app.slice(app.indexOf("const saved = runOnce(submit"), app.indexOf("form.startEditing"));
+  const submit = app.slice(app.indexOf("const saved = runOnce(submit"), app.indexOf("async function offerGuidedPlanUpdate"));
   assert.ok(
     submit.indexOf("const saved") < submit.indexOf("startRestAfterSet"),
     "el descanso no puede arrancar antes de saber si la serie se guardó",
@@ -663,6 +837,37 @@ test("guardar una serie arranca el descanso, corregirla no", () => {
   assert.match(html, /id="autoRestTimer" type="checkbox" role="switch"/);
   assert.match(app, /autoRestTimer: true,/);
   assert.match(app, /autoRestTimer: \$\("autoRestTimer"\)\.checked/);
+});
+
+test("la tinta sobre los rellenos de color se lee en los dos temas", async () => {
+  const { checkFills } = await import("../scripts/check-theme-contrast.mjs");
+  const { problemas, tintas, rellenos } = checkFills();
+
+  // El fallo que motivó esto: `.set-check-button.is-complete` rellenaba con
+  // --success y escribía con un #071009 fijo, elegido para el neón del tema
+  // oscuro. Al volverse --success un tono oscuro en el tema claro, el ✓ de la
+  // serie hecha se quedó en 2,78:1 y los seis acentos caían por debajo de 4,5.
+  assert.deepEqual(problemas, [], "hay tinta ilegible sobre un relleno de color");
+
+  // Comprobar que mira algo: si dejara de encontrar rellenos, pasaría vacío.
+  assert.ok(Object.keys(rellenos.dark).length >= 7, "no encontró los rellenos del tema oscuro");
+  assert.ok(Object.keys(rellenos.light).length >= 7, "no encontró los rellenos del tema claro");
+  assert.notEqual(tintas.dark, tintas.light, "una sola tinta no puede servir para los dos temas");
+
+  // Y que el check de serie use el token, no un hex a mano: validar solo el
+  // token dejaba reintroducir el fallo exacto sin que nada se pusiera rojo.
+  const css = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+  const reglas = css.match(/^\.set-check-button\.is-complete[^{]*\{[^}]*\}$/gm) ?? [];
+  assert.ok(reglas.length >= 2, "no se encontraron las reglas del ✓ completado");
+  reglas.forEach((regla) => {
+    const color = regla.match(/[^-]color:\s*([^;]+);/);
+    if (!color) return;
+    assert.doesNotMatch(
+      color[1],
+      /#[0-9a-f]{3,8}/i,
+      `el ✓ completado fija la tinta a mano en vez de usar --ink-on-fill: ${regla}`,
+    );
+  });
 });
 
 test("la paleta del tema claro cumple el contraste y coincide con el código", async () => {
@@ -880,11 +1085,10 @@ test("guardar una serie la destaca una vez y solo canta récord si había uno", 
   // lo que ese bloque usa .01ms y no 0.
   assert.match(app, /addEventListener\("animationend"[\s\S]{0,160}?classList\.remove\("is-fresh", "is-record"\)[\s\S]{0,60}?once: true/);
 
-  // Corregir una serie ya guardada no destella: ahí no acabas de entrenar,
-  // estás arreglando un número. Misma regla que el descanso automático.
-  const guardado = app.slice(app.indexOf("const saved = runOnce(submit"), app.indexOf("form.startEditing ="));
-  assert.match(guardado, /updateSet\([^)]*\);\s*return;/);
-  assert.doesNotMatch(guardado.slice(0, guardado.indexOf("return;")), /freshSet =/);
+  // Corregir una serie ya guardada no arranca descanso ni relanza el destello.
+  const correccion = app.slice(app.indexOf("const editCompletedValue"), app.indexOf("sessionExercise.sets.slice"));
+  assert.match(correccion, /updateSet\(next, session\.id/);
+  assert.doesNotMatch(correccion, /startRestAfterSet|freshSet =/);
 });
 
 test("el récord solo se canta cuando había un récord anterior que superar", () => {
@@ -902,4 +1106,41 @@ test("el récord solo se canta cuando había un récord anterior que superar", (
 
   // Sin récord, no se dice nada: el aviso se compone filtrando lo que no hay.
   assert.match(app, /\[\s*"Serie guardada\.",\s*logro,[\s\S]*?\]\.filter\(Boolean\)\.join\(" "\)/);
+});
+
+test("el entrenamiento compacto concentra serie, referencia, rueda y descanso sin controles redundantes", () => {
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const css = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+
+  assert.match(app, /routine-mode-tag/);
+  assert.match(app, /Guiada/);
+  assert.match(app, /Solo registro/);
+  assert.match(app, /function openNumericWheel/);
+  assert.match(app, /step: 0\.25/);
+  assert.match(app, /function trapModalFocus/);
+  assert.match(app, /option\.tabIndex = index === selectedIndex \? 0 : -1/);
+  assert.match(app, /ArrowUp: -1/);
+  assert.match(app, /event\.stopPropagation\(\);[\s\S]*finish\(false\)/);
+  assert.match(app, /function openSetTypePicker/);
+  assert.match(app, /Calentamiento/);
+  assert.match(app, /Aproximación/);
+  assert.match(app, /Efectiva/);
+  assert.match(app, /function renderCompactRestBar/);
+  assert.match(app, /setSessionExerciseNote/);
+  assert.match(app, /removeExerciseFromRoutine/);
+  assert.match(app, /function createExerciseQuickAction/);
+  assert.match(app, /button\.dataset\.quickAction = action/);
+  assert.match(app, /\$\("cancelReplacementBtn"\)\.hidden = !replacementTargetExerciseId/);
+  assert.match(app, /if \(exercise\.isSubstitution \|\| exercise\.substitutedFrom\) return/);
+  assert.match(app, /plannedExerciseId = sessionExercise\.substitutedFrom\?\.exerciseId \?\? sessionExercise\.exerciseId/);
+  assert.match(app, /removeExerciseFromRoutine\(next, session\.source\.routineId, plannedExerciseId/);
+  assert.match(css, /\.numeric-wheel-sheet/);
+  assert.match(css, /scroll-snap-type: y mandatory/);
+  assert.match(css, /\.compact-rest-bar/);
+  assert.match(css, /\.exercise-reference-pair/);
+  assert.match(css, /\.routine-mode-log/);
+  assert.match(css, /\.catalog-status-row/);
+  assert.match(css, /\.exercise-quick-actions \{[\s\S]*grid-template-columns: repeat\(auto-fit, minmax\(96px, 1fr\)\)/);
+  const compact = app.slice(app.indexOf("function renderSessionExercise(session"), app.indexOf("function renderTraining"));
+  assert.doesNotMatch(compact, /createExerciseRestTimer\(sessionExercise\.id\)/);
 });

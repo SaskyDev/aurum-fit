@@ -246,3 +246,107 @@ estoy respecto a los demás".
   llegado al entorno de trabajo, así que la parte de "zona de entrenamiento" de
   su encargo sigue sin especificar. El nivel de calidad al que se refiere no se
   ha podido contrastar contra la referencia real.
+
+## Lo que se intentó romper y aguantó
+
+Auditoría adversaria, no confirmatoria: el objetivo era que el mapa mintiera.
+
+- **No cuentan**: calentamiento, aproximación, serie anulada, serie planificada
+  sin confirmar, ni el borrador de entrenamiento libre.
+- **Una alternativa colorea SU músculo**, no el del ejercicio al que sustituye.
+- **Los huecos se declaran**: un ejercicio sin músculos asignados suma al total y
+  aparece en `unmappedExercises`; uno con implicación pero sin músculo principal
+  va a `indirectOnlyExercises`. Ninguna serie desaparece del recuento.
+- **Los límites del periodo son inclusivos** en los dos extremos.
+- **El dibujo, el título de cada zona y la tabla dicen lo mismo**, zona por zona,
+  y el color cae siempre en el tramo de la leyenda (0 / 1-4 / 5-9 / 10+).
+- **Una zona con implicación pero sin trabajo directo se marca con trama**, nunca
+  con la escala de color: pintarla diría que la has entrenado.
+
+**Un agujero encontrado y cerrado:** `computeMuscleVolume(state, { sessionId })`
+no comprobaba el estado de la sesión —el filtro vivía solo en la rama del
+periodo—, así que preguntar por el id de un borrador colaba sus series en el
+mapa. Ningún sitio de la app lo pedía, pero la garantía no puede depender de que
+todos los que llamen se acuerden.
+
+**Excepción conocida y aceptada:** los abductores comparten trazo con el glúteo,
+porque el glúteo medio *es* el abductor de cadera. Al compartir forma manda la
+región con más volumen directo, así que el dibujo puede mostrar los abductores
+coloreados con 0 series propias. El título del grupo declara los números de cada
+región por separado, y el resumen en texto nombra la que manda. Hay pruebas que
+se ponen rojas si alguna de esas dos cosas desaparece.
+
+## La escala de color
+
+Brasa: teja → ámbar → lima. El paso 0 se queda neutro a propósito: "sin
+trabajo" no es una cantidad pequeña, es ausencia, y darle tono la convertiría
+en un tramo más.
+
+| | 0 | 1-4 | 5-9 | 10+ |
+|---|---|---|---|---|
+| oscuro | `#232c25` | `#8a5220` | `#d98324` | `#e8e84a` |
+| claro | `#e2e7dd` | `#c9a227` | `#b05c17` | `#4f2d0d` |
+
+**No hay rojo en ninguno de los dos temas, y es deliberado.** La versión
+original de esta escala arrancaba en rojo ladrillo (`#8c3b2f`) y terminaba en
+granate (`#6b2016`) en claro. Las dos cosas se cambiaron:
+
+- **El paso bajo en oscuro es cobre**, no ladrillo. Con ladrillo, las piernas
+  poco entrenadas salían rojas: lo que MENOS trabajo tiene se pintaba del color
+  de alarma, que es la lectura al revés.
+- **El paso alto en claro es marrón quemado**, no granate. Sobre blanco el paso
+  alto es el más oscuro, y un granate ahí pintaba de color sangre justo el
+  músculo más entrenado.
+
+Un músculo rojo sobre una figura humana se lee como dolor o lesión, y la app no
+diagnostica. Además el cobre es lo que más margen da de todo lo probado: protan
+ΔE 18,4, frente a 12,4 del ladrillo y 15,2 de los verdes anteriores.
+
+**Lo que no sirve es verde → amarillo → naranja → rojo**, que es lo primero que
+pide el cuerpo. Medido: su luminosidad hace `0.282 → 0.673 → 0.886 → 0.608`,
+sube y luego baja, así que "10+" y "1-4" se confunden en escala de grises y con
+daltonismo. `check-muscle-palette.mjs` la rechaza.
+
+La escala sube en luminosidad de forma monótona en los dos temas y separa todos
+los pares por encima del umbral: el peor caso es protan ΔE 18,4 sobre un mínimo
+de 8, y visión normal 18,4 sobre un mínimo de 15.
+
+### Por qué la dirección se invierte entre temas
+
+La intuición razonable es **más oscuro = más trabajo**, y el tema claro la
+respeta. El oscuro la invierte por fuerza, no por gusto:
+
+| | sin trabajo | tarjeta | margen que queda |
+|---|---|---|---|
+| oscuro | 0.282 | 0.217 | **0.065 hacia abajo** |
+| claro | 0.921 | 1.000 | 0.079 hacia arriba |
+
+En tema oscuro el "sin trabajo" ya está pegado al suelo: por debajo quedan 0.065
+de luminosidad antes de confundirse con la propia tarjeta. Tres tramos no caben
+ahí, y el "10+" acabaría siendo lo menos visible del mapa justo donde más
+trabajo hay. La escala tiene que alejarse del "sin trabajo" hacia donde haya
+recorrido, y en oscuro eso es hacia arriba.
+
+Por eso la leyenda es **una barra continua con "menos" y "más" en los extremos**
+en vez de cuatro muestras sueltas: la dirección se ve, no hay que deducirla de
+los números ni acertar con la intuición.
+
+## El detalle por zona
+
+Cada zona se despliega para ver **los ejercicios que la trabajaron**, en dos
+grupos: trabajo directo y con implicación. El número dice cuánto; el ejercicio
+dice de dónde viene, que es lo que permite decidir qué cambiar. Los datos ya los
+devolvía `computeMuscleVolume` en `byRegion[id].exercises`, ordenados por
+series: la tabla no recalcula nada.
+
+**Van plegados, una zona cada vez.** Abiertos todos a la vez eran cuarenta
+líneas seguidas, con los mismos nombres repetidos en cada zona que tocan, y la
+tabla dejaba de poderse recorrer de un vistazo. Y los dos tipos van separados
+con su título: mezclados, un ejercicio directo y uno de implicación con el mismo
+número parecían aportar lo mismo a la zona.
+
+La figura (hombre o mujer) se cambia **desde el propio mapa**, no solo en
+Ajustes. Es la misma preferencia `mapFigure`, escrita desde otro sitio: no hay
+un ajuste nuevo que pueda contradecir al viejo. No se deduce de ningún campo de
+sexo en el perfil, porque no existe: la app no pide ese dato para nada más y no
+va a pedirlo solo para elegir un dibujo.

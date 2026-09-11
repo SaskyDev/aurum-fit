@@ -1,3 +1,5 @@
+import fs from "node:fs";
+
 // Comprueba el contraste de la paleta del tema claro.
 //
 // El tema claro no es el oscuro con menos brillo: son sus propios tonos. Y la
@@ -51,6 +53,64 @@ export const LIGHT_THEME = {
   danger: "#b3261e",
 };
 
+
+// Rellenos de color con texto encima. Se LEEN del código en vez de copiarse
+// aquí, porque el fallo que motivó esta comprobación fue justo una copia que
+// dejó de valer: `.set-check-button.is-complete` rellenaba con `--success` y
+// escribía con un `#071009` fijo, elegido para el neón del tema oscuro. Cuando
+// la paleta clara convirtió `--success` en un verde oscuro, la tinta se quedó
+// en 2,78:1 y ninguna comprobación lo miraba.
+//
+// `--success` sale de las paletas de app.js (cambia con el acento de la app) y
+// `--orange` de los bloques :root de styles.css.
+function leer(ruta) {
+  return fs.readFileSync(new URL(`../${ruta}`, import.meta.url), "utf8");
+}
+
+function tokenCss(fuente, bloque, token) {
+  const desde = fuente.indexOf(bloque);
+  if (desde === -1) throw new Error(`No se encontró el bloque ${bloque} en styles.css.`);
+  const hasta = fuente.indexOf("}", desde);
+  const encontrado = fuente.slice(desde, hasta).match(new RegExp(`${token}:\\s*(#[0-9a-f]{3,8})`, "i"));
+  if (!encontrado) throw new Error(`No se encontró ${token} en ${bloque}.`);
+  return encontrado[1];
+}
+
+function successDePaleta(fuente, nombrePaleta) {
+  const desde = fuente.indexOf(`const ${nombrePaleta} = {`);
+  if (desde === -1) throw new Error(`No se encontró ${nombrePaleta} en app.js.`);
+  const trozo = fuente.slice(desde, fuente.indexOf("};", desde));
+  const entradas = [...trozo.matchAll(/(\w+): \{[^}]*success: "(#[0-9a-f]{6})"/gi)];
+  if (!entradas.length) throw new Error(`${nombrePaleta} no declara ningún success.`);
+  return Object.fromEntries(entradas.map((entrada) => [`success ${entrada[1]}`, entrada[2]]));
+}
+
+export function rellenosPorTema() {
+  const css = leer("styles.css");
+  const app = leer("app.js");
+  return {
+    dark: { ...successDePaleta(app, "accentPalettes"), orange: tokenCss(css, ":root {", "--orange") },
+    light: { ...successDePaleta(app, "lightAccentPalettes"), orange: tokenCss(css, ':root[data-theme="light"] {', "--orange") },
+  };
+}
+
+export function checkFills() {
+  const css = leer("styles.css");
+  const tintas = {
+    dark: tokenCss(css, ":root {", "--ink-on-fill"),
+    light: tokenCss(css, ':root[data-theme="light"] {', "--ink-on-fill"),
+  };
+  const rellenos = rellenosPorTema();
+  const problemas = [];
+  Object.entries(rellenos).forEach(([tema, grupo]) => {
+    Object.entries(grupo).forEach(([nombre, relleno]) => {
+      const r = contrast(tintas[tema], relleno);
+      if (r < 4.5) problemas.push(`tema ${tema} · tinta ${tintas[tema]} sobre relleno ${nombre} ${relleno}: ${r.toFixed(2)}:1 (mínimo 4.5)`);
+    });
+  });
+  return { problemas, tintas, rellenos };
+}
+
 export function checkLightTheme() {
   const problemas = [];
   const exigir = (nombre, fg, bg, minimo) => {
@@ -83,6 +143,15 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   Object.entries(LIGHT_THEME.accents).forEach(([nombre, { accent, ink }]) => {
     console.log(`  ${nombre.padEnd(7)} relleno ${accent} ${contrast("#ffffff", accent).toFixed(2)}:1 · texto ${ink} ${contrast(ink, CANVAS).toFixed(2)}:1`);
   });
+  const { problemas: fallosRelleno, tintas, rellenos } = checkFills();
+  Object.entries(rellenos).forEach(([tema, grupo]) => {
+    console.log(`\n  tinta sobre relleno · tema ${tema} (${tintas[tema]})`);
+    Object.entries(grupo).forEach(([nombre, relleno]) => {
+      console.log(`    ${nombre.padEnd(16)} ${relleno} ${contrast(tintas[tema], relleno).toFixed(2)}:1`);
+    });
+  });
+  problemas.push(...fallosRelleno);
+
   if (problemas.length) {
     console.error("\nPROBLEMAS:");
     problemas.forEach((p) => console.error(`  ${p}`));

@@ -99,8 +99,25 @@ export function checkRamp(name, steps) {
 // Los mismos valores que styles.css. Si se tocan allí, hay que tocarlos aquí:
 // la prueba "la escala del mapa muscular sigue siendo legible" compara ambos.
 export const MUSCLE_RAMPS = {
-  oscuro: ["#232c25", "#3d5a2a", "#79ab3f", "#c7f464"],
-  claro: ["#e2e7dd", "#9cc93f", "#5f8a1a", "#365008"],
+  // Escala multitono, no cuatro verdes. El paso 0 se queda neutro a propósito:
+  // "sin trabajo" no es una cantidad pequeña, es ausencia, y darle tono la
+  // convertiría en un tramo más.
+  //
+  // NO es verde → amarillo → naranja → rojo, que es lo primero que pide el
+  // cuerpo: esa escala mide 0.282 → 0.673 → 0.886 → 0.608 de luminosidad, o sea
+  // sube y luego baja, así que "10+" y "1-4" se confunden en gris y con
+  // daltonismo. Y un músculo en rojo sobre una figura humana se lee como dolor
+  // o lesión: la app no diagnostica.
+  oscuro: ["#232c25", "#8a5220", "#d98324", "#e8e84a"],
+  // El paso bajo del tema oscuro es COBRE y no rojo ladrillo: con ladrillo las
+  // piernas poco entrenadas salían rojas, o sea que lo que MENOS trabajo tiene
+  // se pintaba del color de alarma. El cobre además es lo que más margen da:
+  // protan ΔE 18,4 frente a 12,4 del ladrillo y 15,2 de los verdes.
+  //
+  // El alto del tema claro es marrón quemado y NO granate. Sobre blanco, el
+  // paso alto es el más oscuro, y un granate ahí pintaba de color sangre
+  // justo el músculo más entrenado. Marrón se lee como brasa apagada.
+  claro: ["#e2e7dd", "#c9a227", "#b05c17", "#4f2d0d"],
 };
 
 if (import.meta.url === `file://${process.argv[1]}`) {

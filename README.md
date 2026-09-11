@@ -31,8 +31,10 @@ Nutrición sobre un modelo local versionado, sin cuentas ni backend.
 - Entrenamiento centrado primero en rutinas; una sesión en curso se puede
   continuar sin ocultar los planes y el entrenamiento libre queda como última opción.
 - Copia histórica del día para que editar la rutina no cambie sesiones pasadas.
-- Rutinas simples que guardan qué ejercicios corresponden a cada día; peso,
-  repeticiones, RIR, tipo y nota se registran al entrenar.
+- Rutinas en dos modos: `Solo registro`, que conserva el cuaderno actual, y
+  `Guiada`, que prepara series, rango de repeticiones y peso objetivo opcional.
+- Primera referencia guiada sin peso inventado, anulación neutral de series y
+  decisión explícita antes de trasladar una desviación al plan futuro.
 - Series independientes con repeticiones, peso en kg, RIR, nota y tipo: efectiva,
   aproximación o calentamiento.
 - Ejercicios de la sesión en acordeón: uno abierto cada vez, conservando sus
@@ -40,7 +42,8 @@ Nutrición sobre un modelo local versionado, sin cuentas ni backend.
 - Temporizador compacto con descansos de 30 segundos, 1, 2 o 3 minutos y una
   duración personalizada entre 00:01 y 59:59.
 - El descanso arranca solo al guardar una serie, usando tu descanso por defecto.
-  Se puede desactivar en Ajustes y no se dispara al corregir una serie.
+  Se puede desactivar en Ajustes, no se dispara al corregir una serie y admite
+  sumar 30 segundos, 1 minuto o 2 minutos solo al descanso actual.
 - Alternativas, ejercicios no realizados o extras que solo afectan a la sesión actual.
 - Guardado automático, recuperación tras recarga y copia local previa.
 - Opción explícita para descartar una sesión en curso y liberar otra rutina.
@@ -110,8 +113,24 @@ python3 -m http.server 8000
 Para ejecutar las comprobaciones:
 
 ```bash
-node --test
+node --test                                  # todas las pruebas
+node scripts/check-guided-mutations.mjs      # rompe el modelo a propósito y exige pruebas rojas
+node scripts/check-theme-contrast.mjs        # contraste del tema claro y de las tintas sobre relleno
+node scripts/check-muscle-palette.mjs        # escala del mapa y daltonismo
 ```
+
+Los dos recorridos de navegador necesitan **Playwright y el servidor levantado**
+en el puerto 8000. No son dependencia del proyecto; se instalan aparte:
+
+```bash
+npm install --no-save playwright && npx playwright install chromium
+python3 -m http.server 8000 &
+node scripts/qa-guided-browser.mjs           # rutina guiada a 390 px: oscuro, claro y movimiento reducido
+node scripts/qa-guided-demo.mjs              # demo, gráfica de progreso y restauración
+```
+
+Si ya tienes Playwright en otro sitio, `PLAYWRIGHT_MODULE=/ruta/a/playwright/index.mjs`
+evita instalarlo de nuevo.
 
 La versión de caché vive repartida entre `SHELL_VERSION` (`service-worker.js`) y
 las referencias `?v=` de `index.html` y `app.js`. No se editan a mano:
