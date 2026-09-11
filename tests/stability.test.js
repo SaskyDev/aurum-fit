@@ -219,6 +219,32 @@ test("el catálogo avisa de los ejercicios sin revisión profesional", () => {
   assert.doesNotMatch(app, /guía verificada/);
 });
 
+test("el mapa no inventa color: la trama, el tramo y el trazo compartido", () => {
+  const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
+  const css = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+
+  // Una zona con implicación pero sin trabajo directo NO se pinta con la escala
+  // de color: se marca con trama. Colorearla diría que la has entrenado.
+  assert.match(app, /const onlySecondary = intensity === "none" && secondarySets > 0;/);
+  assert.match(app, /if \(onlySecondary\) group\.style\.fill = `url\(#\$\{hatchId\}\)`;/);
+  assert.match(css, /\.muscle-hatch-line \{/);
+
+  // Los abductores comparten trazo con el glúteo porque el glúteo medio ES el
+  // abductor de cadera. Al compartir forma manda la región con más volumen
+  // directo, así que el dibujo puede enseñar los abductores "trabajados" con 0
+  // series propias. No es un invento —es el mismo músculo— pero el título del
+  // grupo tiene que seguir declarando los números de CADA región por separado,
+  // que es lo único que impide que el mapa mienta.
+  assert.match(app, /const REGION_SHARED_SHAPE = \{ abductors: "glutes" \};/);
+  assert.match(app, /el glúteo medio es\s*\n\/\/ precisamente el abductor de la cadera/);
+  const titulo = app.slice(app.indexOf("const title = document.createElementNS(SVG_NS, \"title\")"), app.indexOf("svg.appendChild(group)"));
+  assert.match(titulo, /datos\s*\n\s*\.map\(/, "el título recorre TODAS las regiones del trazo, no solo la principal");
+  assert.match(titulo, /\$\{item\.directSets\} series directas, \$\{item\.secondarySets\} con implicación/);
+
+  // Y el resumen en texto nombra la región que manda, no la que va de paso.
+  assert.match(app, /trabajados\.push\(`\$\{muscleRegionLabel\(principal\.regionId\)\} \(\$\{principal\.directSets\}\)`\)/);
+});
+
 test("el mapa muscular vive en el Diario con periodo propio y alternativa en texto", () => {
   const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
   const app = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");

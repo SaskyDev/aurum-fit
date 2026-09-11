@@ -54,8 +54,8 @@ import {
   skipPlannedSet,
   guidedExerciseDeviation,
   validateLabelPhotoFile,
-} from "./core.js?v=93";
-import { BODY_FIGURES } from "./body-paths.js?v=93";
+} from "./core.js?v=94";
+import { BODY_FIGURES } from "./body-paths.js?v=94";
 
 const defaultTargets = { calories: 2200, protein: 170, steps: 10000 };
 const defaultPreferences = {
@@ -4273,7 +4273,7 @@ function backfillExerciseMuscles() {
 
 async function loadCatalog() {
   try {
-    const response = await fetch("./data/exercises.es.json?v=93", { cache: "no-cache" });
+    const response = await fetch("./data/exercises.es.json?v=94", { cache: "no-cache" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     if (!Array.isArray(payload.exercises)) throw new Error("Estructura no válida");

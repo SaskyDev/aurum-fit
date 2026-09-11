@@ -246,3 +246,32 @@ estoy respecto a los demás".
   llegado al entorno de trabajo, así que la parte de "zona de entrenamiento" de
   su encargo sigue sin especificar. El nivel de calidad al que se refiere no se
   ha podido contrastar contra la referencia real.
+
+## Lo que se intentó romper y aguantó
+
+Auditoría adversaria, no confirmatoria: el objetivo era que el mapa mintiera.
+
+- **No cuentan**: calentamiento, aproximación, serie anulada, serie planificada
+  sin confirmar, ni el borrador de entrenamiento libre.
+- **Una alternativa colorea SU músculo**, no el del ejercicio al que sustituye.
+- **Los huecos se declaran**: un ejercicio sin músculos asignados suma al total y
+  aparece en `unmappedExercises`; uno con implicación pero sin músculo principal
+  va a `indirectOnlyExercises`. Ninguna serie desaparece del recuento.
+- **Los límites del periodo son inclusivos** en los dos extremos.
+- **El dibujo, el título de cada zona y la tabla dicen lo mismo**, zona por zona,
+  y el color cae siempre en el tramo de la leyenda (0 / 1-4 / 5-9 / 10+).
+- **Una zona con implicación pero sin trabajo directo se marca con trama**, nunca
+  con la escala de color: pintarla diría que la has entrenado.
+
+**Un agujero encontrado y cerrado:** `computeMuscleVolume(state, { sessionId })`
+no comprobaba el estado de la sesión —el filtro vivía solo en la rama del
+periodo—, así que preguntar por el id de un borrador colaba sus series en el
+mapa. Ningún sitio de la app lo pedía, pero la garantía no puede depender de que
+todos los que llamen se acuerden.
+
+**Excepción conocida y aceptada:** los abductores comparten trazo con el glúteo,
+porque el glúteo medio *es* el abductor de cadera. Al compartir forma manda la
+región con más volumen directo, así que el dibujo puede mostrar los abductores
+coloreados con 0 series propias. El título del grupo declara los números de cada
+región por separado, y el resumen en texto nombra la que manda. Hay pruebas que
+se ponen rojas si alguna de esas dos cosas desaparece.

@@ -2394,12 +2394,19 @@ export function computeMuscleVolume(state, { fromIso = null, toIso = null, sessi
   );
 
   (state?.training?.sessions ?? []).forEach((session) => {
+    // La sesión en curso cuenta: lo que ya has hecho hoy es trabajo hecho, y el
+    // mapa semanal del Diario se mueve mientras entrenas. El borrador de
+    // entrenamiento libre no: todavía no has empezado.
+    //
+    // El filtro va ANTES de mirar el sessionId a propósito. Estaba solo en la
+    // rama del periodo, así que preguntar por el id de un borrador colaba sus
+    // series en el mapa. Hoy ningún sitio de la app lo pide —el periodo
+    // "sesión" usa la activa o la última cerrada— pero la garantía no puede
+    // depender de que todos los que llamen se acuerden.
+    if (session.status !== "completed" && session.status !== "in_progress") return;
     if (sessionId) {
       if (session.id !== sessionId) return;
     } else {
-      // La sesión en curso también cuenta: lo que ya has hecho hoy es trabajo
-      // hecho, y el mapa semanal del Diario se mueve mientras entrenas.
-      if (session.status !== "completed" && session.status !== "in_progress") return;
       const stamp = session.status === "completed"
         ? (session.endedAt ?? session.startedAt)
         : session.startedAt;

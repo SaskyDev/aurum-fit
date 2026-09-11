@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createEmptyState, createRoutine, createRoutineWithWeekdays, validateState,
+import { createEmptyState, createFreeSessionDraft, addExerciseToSession,
+  createRoutine, createRoutineWithWeekdays, validateState,
   addExerciseToRoutineDay, updateRoutineExercisePlan, startSessionFromRoutineDay,
   computeMuscleVolume, exercisePersonalRecords, addSetToExercise, completeSession,
   skipPlannedSet, pendingPlannedSets, duplicateSet, updateSet, guidedPlanDeviation,
@@ -268,4 +269,32 @@ test("el plan guiado exige series y repes pero distingue peso vacío de cero", (
   item.targetLoadKg = null;
   delete item.repMin;
   assert.match(validateState(state), /rutina/i);
+});
+
+test("el mapa muscular no cuenta un borrador de entrenamiento libre ni preguntándole por su id", () => {
+  const state = createEmptyState();
+  const borrador = createFreeSessionDraft(state, { id: "borrador-1" });
+  const ejercicio = addExerciseToSession(state, borrador.id, "Fondo en paralelas", {
+    exerciseId: "x-fondo", sessionExerciseId: "se-1",
+  });
+  state.training.exercises.find((item) => item.id === "x-fondo").muscles = { direct: ["chest"], secondary: [] };
+
+  // Por la vía normal ni siquiera se pueden añadir series a un borrador.
+  assert.throws(
+    () => addSetToExercise(state, borrador.id, ejercicio.id, { reps: 10, loadKg: null, rir: null, setType: "effective" }, { id: "z1" }),
+    /no se puede editar/i,
+  );
+
+  // Fabricada a mano, como vendría de un fichero importado o de un estado
+  // guardado por una versión futura: el mapa tampoco puede creérsela.
+  ejercicio.sets.push({
+    id: "z1", order: 1, status: "completed", reps: 10, loadKg: null, rir: null,
+    setType: "effective", note: "", completedAt: "2026-09-07T18:00:00.000Z", updatedAt: "2026-09-07T18:00:00.000Z",
+  });
+
+  assert.equal(computeMuscleVolume(state, { fromIso: "2026-01-01T00:00:00.000Z" }).effectiveSets, 0);
+  // Este era el hueco: el filtro de estado vivía solo en la rama del periodo,
+  // así que pedir el mapa por el id del borrador colaba sus series.
+  assert.equal(computeMuscleVolume(state, { sessionId: borrador.id }).effectiveSets, 0);
+  assert.equal(exercisePersonalRecords(state, "x-fondo").mostReps, null);
 });
