@@ -181,7 +181,11 @@ Alex confirmó usar la suite canónica `node --test tests/*.test.js`:
 
 1. Prueba física de Alex en iPhone: acciones, rueda, gesto lateral, descanso y
    actualización de una PWA instalada desde GitHub Pages.
-2. Tras el push, comprobar el HTML y `?v=91` publicados. Si una instalación
+2. La rama `claude/gifted-thompson-45fcwz` se publicó en GitHub con
+   `e3e9d5d` el 11 de septiembre. **GitHub Pages solo despliega `main`**:
+   esta subida todavía no actualiza la web pública. Integrar o publicar en
+   `main` requiere una orden explícita distinta.
+3. Después de publicar `main`, comprobar el HTML y `?v=91`. Si una instalación
    antigua muestra el diseño anterior, cerrar y reabrir la app instalada para
    que el service worker reclame la nueva caché; no editar archivos para
    “forzar” una caché manual.
