@@ -463,7 +463,7 @@ test("los días son reversibles y cada ejercicio conserva vistas con acciones co
   assert.match(app, /compact-set-form/);
   assert.match(app, /compact-set-row-content/);
   assert.match(app, /set-row-keyboard-action/);
-  assert.match(app, /Aún no hay series registradas/);
+  assert.doesNotMatch(app, /Aún no hay series registradas/);
   assert.match(app, /exercise-reference-pair/);
   assert.match(app, /chart-legend exercise-chart-legend/);
   assert.match(app, /Todas tus sesiones anteriores, sin modificar el histórico/);
@@ -934,7 +934,7 @@ test("el entrenamiento compacto concentra serie, referencia, rueda y descanso si
   assert.match(css, /\.exercise-reference-pair/);
   assert.match(css, /\.routine-mode-log/);
   assert.match(css, /\.catalog-status-row/);
-  assert.match(css, /\.exercise-quick-actions \{[\s\S]*grid-template-columns: repeat\(6, minmax\(0, 1fr\)\)/);
+  assert.match(css, /\.exercise-quick-actions \{[\s\S]*grid-template-columns: repeat\(auto-fit, minmax\(96px, 1fr\)\)/);
   const compact = app.slice(app.indexOf("function renderSessionExercise(session"), app.indexOf("function renderTraining"));
   assert.doesNotMatch(compact, /createExerciseRestTimer\(sessionExercise\.id\)/);
 });

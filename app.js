@@ -54,8 +54,8 @@ import {
   skipPlannedSet,
   guidedExerciseDeviation,
   validateLabelPhotoFile,
-} from "./core.js?v=88";
-import { BODY_FIGURES } from "./body-paths.js?v=88";
+} from "./core.js?v=91";
+import { BODY_FIGURES } from "./body-paths.js?v=91";
 
 const defaultTargets = { calories: 2200, protein: 170, steps: 10000 };
 const defaultPreferences = {
@@ -3734,18 +3734,19 @@ function renderSessionExercise(session, sessionExercise) {
     list.appendChild(row);
   });
 
-  if (!list.children.length && sessionExercise.status !== "skipped") {
-    list.appendChild(createElement("li", "compact-empty-set", "Aún no hay series registradas."));
-  }
-
   const currentPanel = createElement("section", "exercise-view-panel exercise-current-panel");
   currentPanel.dataset.exerciseView = "current";
   const setArea = createElement("div", "set-area compact-set-area");
   if (sessionExercise.status === "skipped") {
     setArea.append(header, createElement("p", "empty-state", "Este ejercicio no se realizará hoy. Puedes volver a incluirlo arriba."));
   } else {
-    setArea.append(header, references, headings, list);
     const freeForm = renderSetForm(session, sessionExercise, reference);
+    // In log mode there is no plan to explain: keep headings and first row together.
+    const registration = createElement("div", "compact-registration");
+    registration.appendChild(headings);
+    if (list.children.length) registration.appendChild(list);
+    if (!sessionExercise.routineExerciseId) registration.appendChild(freeForm);
+    setArea.append(header, references, registration);
     if (sessionExercise.routineExerciseId) {
       const extra = createElement("details", "guided-extra-set compact-extra-set");
       extra.append(createElement("summary", "", "+ Registrar serie extra"), freeForm);
@@ -4203,7 +4204,7 @@ function backfillExerciseMuscles() {
 
 async function loadCatalog() {
   try {
-    const response = await fetch("./data/exercises.es.json?v=88", { cache: "no-cache" });
+    const response = await fetch("./data/exercises.es.json?v=91", { cache: "no-cache" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     if (!Array.isArray(payload.exercises)) throw new Error("Estructura no válida");
