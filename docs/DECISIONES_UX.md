@@ -115,3 +115,17 @@ un peso inicial inventado.
 La interfaz usa una selección local de Lucide Icons bajo licencia ISC. Esto da
 coherencia visual y evita depender de descargas externas durante el entrenamiento.
 La atribución se conserva en `THIRD_PARTY_NOTICES.md`.
+
+## Cierre del entrenamiento compacto
+
+- Las acciones de ejercicio son siempre icono + texto. En escritorio llenan el
+  ancho disponible; en móvil se distribuyen en dos filas equilibradas, nunca
+  quedan abandonadas a la izquierda.
+- `Solo registro` no se trata como una versión menor: usa una etiqueta azul
+  informativa y conserva Guía, Nota, Cambiar y Hoy no con la misma jerarquía que
+  una rutina Guiada.
+- Un modo sin series registradas no muestra un mensaje vacío entre las
+  cabeceras y la primera fila; la primera acción útil debe quedar inmediatamente
+  debajo de `Set · Peso · Reps · RIR`.
+- El catálogo de una sesión no vuelve a sugerir ejercicios ya añadidos, salvo
+  en el flujo explícito de sustituir un ejercicio solo hoy.

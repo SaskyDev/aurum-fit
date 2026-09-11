@@ -150,3 +150,38 @@ Alex confirmó usar la suite canónica `node --test tests/*.test.js`:
   catálogo, no como una acción competidora en la cabecera.
 - `Solo registro` usa azul/verde informativo: describe el modo de la rutina,
   no un estado inactivo o negativo.
+
+## Cierre de interfaz y publicación local · 11 de septiembre de 2026
+
+### Hecho y verificado
+
+- La rama reúne los diez pasos de rutinas guiadas y cuatro cierres de interfaz:
+  borrador de entrenamiento libre, registro compacto, revisión de controles y
+  pulido del modo `Solo registro`.
+- La suite canónica termina en **124/124**. El recorrido móvil automatizado se
+  ha repetido a **390 × 844 px** en oscuro, claro y movimiento reducido, sin
+  desbordamiento horizontal.
+- La caché PWA queda en **v91**, sincronizada exclusivamente con
+  `node scripts/bump-cache-version.mjs 91`.
+
+### Incidencias reales y prevención
+
+| Incidencia | Causa confirmada | Regla para no repetirla |
+| --- | --- | --- |
+| Acciones sin icono en la vista `file://` | Un `<use>` SVG externo puede no resolver en esa superficie, aunque cargue desde HTTP. | Las acciones dinámicas del ejercicio usan trazos SVG internos; comprobar ambos modos en la QA móvil. |
+| Acciones alineadas a la izquierda con cuatro botones | La cuadrícula reservaba siempre cinco columnas. | En escritorio usar columnas `auto-fit`; en móvil mantener tres arriba y dos centradas abajo. |
+| Hueco grande antes de la primera serie en `Solo registro` | Se pintaba el mensaje “Aún no hay series registradas” entre las cabeceras y el formulario. | Si no hay series previas, no renderizar una fila vacía; agrupar cabeceras y primer registro en `compact-registration`. |
+| “Añadir ejercicio solo hoy” quedaba pegado | Un selector CSS apuntaba a una jerarquía anterior del DOM. | Aplicar el margen al propio selector reutilizable, no a una ruta de DOM frágil. |
+| Entrenamiento libre contaminaba el Diario antes de empezar | Se creaba directamente una sesión activa. | Crear un borrador persistente y arrancar cronómetro/Diario solo con `Empezar`. |
+| Una sugerencia seguía visible después de añadirla | El catálogo no excluía los ejercicios ya presentes en la sesión. | Filtrar por los identificadores de la sesión salvo durante la sustitución explícita. |
+| Mensaje de plan futuro ambiguo | No explicaba motivo, alcance ni que el historial quedaba intacto. | Todo cambio de plan debe nombrar las series observadas, ofrecer `Solo hoy` y declarar que el día actual no cambia. |
+| Prueba estática rota tras una mejora visual | La prueba exigía una cuadrícula concreta en lugar del comportamiento deseado. | Las pruebas de estabilidad deben afirmar el contrato visual, no congelar una implementación que puede mejorar. |
+
+### Pendiente externo, no simulable aquí
+
+1. Prueba física de Alex en iPhone: acciones, rueda, gesto lateral, descanso y
+   actualización de una PWA instalada desde GitHub Pages.
+2. Tras el push, comprobar el HTML y `?v=91` publicados. Si una instalación
+   antigua muestra el diseño anterior, cerrar y reabrir la app instalada para
+   que el service worker reclame la nueva caché; no editar archivos para
+   “forzar” una caché manual.
