@@ -683,6 +683,37 @@ test("guardar una serie arranca el descanso, corregirla no", () => {
   assert.match(app, /autoRestTimer: \$\("autoRestTimer"\)\.checked/);
 });
 
+test("la tinta sobre los rellenos de color se lee en los dos temas", async () => {
+  const { checkFills } = await import("../scripts/check-theme-contrast.mjs");
+  const { problemas, tintas, rellenos } = checkFills();
+
+  // El fallo que motivó esto: `.set-check-button.is-complete` rellenaba con
+  // --success y escribía con un #071009 fijo, elegido para el neón del tema
+  // oscuro. Al volverse --success un tono oscuro en el tema claro, el ✓ de la
+  // serie hecha se quedó en 2,78:1 y los seis acentos caían por debajo de 4,5.
+  assert.deepEqual(problemas, [], "hay tinta ilegible sobre un relleno de color");
+
+  // Comprobar que mira algo: si dejara de encontrar rellenos, pasaría vacío.
+  assert.ok(Object.keys(rellenos.dark).length >= 7, "no encontró los rellenos del tema oscuro");
+  assert.ok(Object.keys(rellenos.light).length >= 7, "no encontró los rellenos del tema claro");
+  assert.notEqual(tintas.dark, tintas.light, "una sola tinta no puede servir para los dos temas");
+
+  // Y que el check de serie use el token, no un hex a mano: validar solo el
+  // token dejaba reintroducir el fallo exacto sin que nada se pusiera rojo.
+  const css = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+  const reglas = css.match(/^\.set-check-button\.is-complete[^{]*\{[^}]*\}$/gm) ?? [];
+  assert.ok(reglas.length >= 2, "no se encontraron las reglas del ✓ completado");
+  reglas.forEach((regla) => {
+    const color = regla.match(/[^-]color:\s*([^;]+);/);
+    if (!color) return;
+    assert.doesNotMatch(
+      color[1],
+      /#[0-9a-f]{3,8}/i,
+      `el ✓ completado fija la tinta a mano en vez de usar --ink-on-fill: ${regla}`,
+    );
+  });
+});
+
 test("la paleta del tema claro cumple el contraste y coincide con el código", async () => {
   const { checkLightTheme, LIGHT_THEME } = await import("../scripts/check-theme-contrast.mjs");
   const styles = fs.readFileSync(new URL("../styles.css", import.meta.url), "utf8");

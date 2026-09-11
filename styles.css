@@ -25,6 +25,11 @@
   --danger: #ff8c7a;
   --danger-soft: #3a201c;
   --success: #b7ef57;
+  /* Tinta que va ENCIMA de un relleno de color (--success, --orange). En
+     oscuro esos tonos son neones claros y piden tinta casi negra; en claro son
+     tonos oscuros y piden blanco. Estaba escrita a mano como #071009 en el
+     check de serie, elegida para el neón, y en claro caía a 2,78:1. */
+  --ink-on-fill: #071009;
   --focus: #ff9f1c;
   --radius-sm: 10px;
   --radius-md: 16px;
@@ -69,6 +74,7 @@
   --orange: #b45309;
   --steps-ink: #0369a1;
   --macro-fat-ink: #6d28d9;
+  --ink-on-fill: #ffffff;
 }
 
 * {
@@ -4947,8 +4953,17 @@ th {
   color: var(--accent-ink);
   font-size: 1rem;
 }
-.set-check-button.is-complete { border-color: var(--success); background: var(--success); color: #071009; }
-.set-check-button.is-complete.set-type-approach { border-color: var(--orange); background: rgba(255, 159, 28, .88); }
+/* El relleno se queda en --success a propósito: es el acento de la app, no el
+   de la rutina, así que el ✓ de una serie hecha significa lo mismo en todas.
+   Rellenar con --accent lo ataba al color del plan y una rutina roja pintaba
+   de rojo cada serie completada.
+   Lo que sí cambia es la tinta: era #071009 fija, elegida para el neón del
+   tema oscuro. En claro --success es un verde oscuro (#3d6408) y esa tinta
+   daba 2,78:1. --ink-on-fill la resuelve por tema.
+   El naranja de aproximación llevaba el rgba del tema oscuro escrito a mano,
+   así que no cambiaba en claro. */
+.set-check-button.is-complete { border-color: var(--success); background: var(--success); color: var(--ink-on-fill); }
+.set-check-button.is-complete.set-type-approach { border-color: var(--orange); background: var(--orange); color: var(--ink-on-fill); }
 .set-check-button.is-complete.set-type-warmup { border-color: var(--ink-soft); background: var(--surface-muted); color: var(--ink); }
 
 .compact-set-form .set-form-error {
