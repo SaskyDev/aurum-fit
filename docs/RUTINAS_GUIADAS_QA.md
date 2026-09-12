@@ -1,10 +1,11 @@
-# Implementación de rutinas guiadas
+# Rutinas planificadas: evidencia de QA
 
-Rama: `claude/gifted-thompson-45fcwz`. No publicar ni hacer push.
-Orden de trabajo: `/Users/alex/Downloads/PROMPT_CODEX.md`.
+Qué se comprobó del modo **Planificada** y cómo, para no repetirlo a ciegas.
+Publicado el 11 de septiembre de 2026.
 
-Alex confirmó usar la suite canónica `node --test tests/*.test.js`:
-95 pruebas iniciales; `_cerebro/tests` es archivo histórico y no se modifica.
+La suite es `node --test` desde la raíz. Las cifras de pruebas que aparecen más
+abajo son las del momento en que se escribió cada paso; la cuenta viva la da la
+suite, no este documento.
 
 ## Paso 1 — modo de rutina
 
@@ -69,7 +70,7 @@ Alex confirmó usar la suite canónica `node --test tests/*.test.js`:
 - Deslizar una pendiente hacia la izquierda la anula; la alternativa accesible
   por teclado ejecuta la misma operación. Volver a pendiente no registra nada.
 - Deslizar una realizada hacia la izquierda pide confirmación para borrarla y
-  ofrece deshacer. En una rutina guiada no se ofrece duplicar.
+  ofrece deshacer. En una rutina Planificada no se ofrece duplicar.
 - Sesión, historial por ejercicio y resumen completo del día muestran anulación
   neutral, gris y tachada, sin carga/repeticiones inventadas ni acciones de copiar.
 - Contadores del ejercicio solo suman realizadas.

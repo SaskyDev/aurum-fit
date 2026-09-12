@@ -128,7 +128,7 @@ en el puerto 8000. No son dependencia del proyecto; se instalan aparte:
 ```bash
 npm install --no-save playwright && npx playwright install chromium
 python3 -m http.server 8000 &
-node scripts/qa-guided-browser.mjs           # rutina guiada a 390 px: oscuro, claro y movimiento reducido
+node scripts/qa-guided-browser.mjs           # rutina Planificada a 390 px: oscuro, claro y movimiento reducido
 node scripts/qa-guided-demo.mjs              # demo, gráfica de progreso y restauración
 ```
 

@@ -102,8 +102,8 @@ y no salió*; el rojo culpabiliza, y un día flojo no es un error.
 ### La primera vez: tomar referencia
 
 Un principiante no sabe qué peso poner, y pedírselo en un formulario es pedirle
-que adivine algo que solo se sabe entrenando. La rutina guiada se crea con series
-y repeticiones, y el peso puede quedar vacío: la primera vez que toca ese
+que adivine algo que solo se sabe entrenando. La rutina Planificada se crea con
+series y repeticiones, y el peso puede quedar vacío: la primera vez que toca ese
 ejercicio se presenta como **"primera vez: vamos a tomar tu referencia"**.
 
 No es un hueco en un formulario, es un paso del método. Y encaja con la regla de
